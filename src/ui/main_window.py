@@ -1,7 +1,9 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QLineEdit, QPushButton, QFileDialog, QProgressBar, 
-                             QTextEdit, QRadioButton, QButtonGroup, QMessageBox)
-from PyQt6.QtCore import pyqtSignal, Qt, QSize
+# main_window.py
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QFileDialog,
+    QProgressBar, QTextEdit, QRadioButton, QButtonGroup, QMessageBox
+)
+from PyQt6.QtCore import pyqtSignal, QSize
 from PyQt6.QtGui import QMovie
 
 class MainWindow(QWidget):
@@ -20,7 +22,7 @@ class MainWindow(QWidget):
         self.input_type_group = QButtonGroup(self)
         self.file_radio = QRadioButton("Single File Processing")
         self.directory_radio = QRadioButton("Batch Processing (Directory)")
-        self.file_radio.setChecked(True)
+        self.directory_radio.setChecked(True)  # Default to batch processing
         self.input_type_group.addButton(self.file_radio)
         self.input_type_group.addButton(self.directory_radio)
         processing_type_layout.addWidget(self.file_radio)
@@ -58,7 +60,7 @@ class MainWindow(QWidget):
         
         self.spinner_label = QLabel()
         self.spinner_movie = QMovie("resources/spinner.gif")
-        self.spinner_size = 20  # Set this to your desired size
+        self.spinner_size = 20
         self.spinner_movie.setScaledSize(QSize(self.spinner_size, self.spinner_size))
         self.spinner_label.setMovie(self.spinner_movie)
         self.spinner_label.hide()
@@ -95,7 +97,9 @@ class MainWindow(QWidget):
 
     def select_input(self):
         if self.file_radio.isChecked():
-            file_path, _ = QFileDialog.getOpenFileName(self, "Select Input File", "", "PDF Files (*.pdf)")
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, "Select Input File", "", "PDF Files (*.pdf)"
+            )
             if file_path:
                 self.input_edit.setText(file_path)
         else:
@@ -139,7 +143,9 @@ class MainWindow(QWidget):
         QMessageBox.critical(self, "Error", error_message)
 
     def save_output(self):
-        file_path, _ = QFileDialog.getSaveFileName(self, "Save Output", "", "Text Files (*.txt)")
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Output", "", "Text Files (*.txt)"
+        )
         if file_path:
             with open(file_path, 'w') as f:
                 f.write(self.output_text.toPlainText())

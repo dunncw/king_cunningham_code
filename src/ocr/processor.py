@@ -1,12 +1,11 @@
+# processor.py
 import os
 import fitz
 import cv2
 import numpy as np
 from pyzbar.pyzbar import decode
 from PIL import Image
-import re
 import warnings
-from contextlib import redirect_stderr
 
 class SuppressStderr:
     def __enter__(self):
@@ -25,7 +24,8 @@ def extract_documents_by_barcode(pdf_path, output_dir, dpi=300, output_callback=
         raise Exception(f"Error opening PDF file: {str(e)}")
     
     barcode_pages = []
-    mtg_page = deed_page = None
+    mtg_page = None
+    deed_page = None
     
     for page_num in range(len(doc)):
         try:
@@ -41,9 +41,10 @@ def extract_documents_by_barcode(pdf_path, output_dir, dpi=300, output_callback=
                 barcode_pages.append(page_num)
                 for barcode in barcodes:
                     barcode_data = barcode.data.decode('utf-8')
-                    if re.search(r'\d{2}MTG$', barcode_data):
+                    # Search for "DEED" or "MTG" anywhere in the barcode data
+                    if "MTG" in barcode_data:
                         mtg_page = page_num
-                    elif re.search(r'\d{2}DEED$', barcode_data):
+                    if "DEED" in barcode_data:
                         deed_page = page_num
         except Exception as e:
             raise Exception(f"Error processing page {page_num + 1}: {str(e)}")
@@ -56,28 +57,58 @@ def extract_documents_by_barcode(pdf_path, output_dir, dpi=300, output_callback=
             try:
                 new_doc = fitz.open()
                 new_doc.insert_pdf(doc, from_page=start_page, to_page=end_page-1)
-                output_path = os.path.join(output_dir, f"{base_name}-{suffix}.pdf")
+                
+                # Adjust file naming convention for PowerApps compatibility
+                if suffix == 'deed':
+                    output_filename = f"{base_name}.pdf"
+                elif suffix == 'mtg':
+                    output_filename = f"{base_name}m.pdf"
+                else:
+                    output_filename = f"{base_name}-{suffix}.pdf"
+
+                output_path = os.path.join(output_dir, output_filename)
                 new_doc.save(output_path)
                 new_doc.close()
-                return True
+                return (start_page + 1, end_page)  # Return 1-based page numbers
             except Exception as e:
                 raise Exception(f"Error saving {suffix} section: {str(e)}")
-        return False
-    
-    mtg_saved = False
-    deed_saved = False
+        return None
 
-    if mtg_page is not None:
-        mtg_end = barcode_pages[barcode_pages.index(mtg_page) + 1] if mtg_page != barcode_pages[-1] else len(doc)
-        mtg_saved = save_section(mtg_page, mtg_end, "mtg")
-    
-    if deed_page is not None:
-        deed_end = barcode_pages[barcode_pages.index(deed_page) + 1] if deed_page != barcode_pages[-1] else len(doc)
-        deed_saved = save_section(deed_page, deed_end, "deed")
-    
+    mtg_saved = None
+    deed_saved = None
+
+    # Determine end pages for sections
+    mtg_end = None
+    deed_end = None
+
+    if barcode_pages:
+        barcode_pages_sorted = sorted(barcode_pages)
+        total_pages = len(doc)
+        
+        if mtg_page is not None:
+            next_pages = [p for p in barcode_pages_sorted if p > mtg_page]
+            mtg_end = next_pages[0] if next_pages else total_pages
+            mtg_saved = save_section(mtg_page, mtg_end, "mtg")
+        if deed_page is not None:
+            next_pages = [p for p in barcode_pages_sorted if p > deed_page]
+            deed_end = next_pages[0] if next_pages else total_pages
+            deed_saved = save_section(deed_page, deed_end, "deed")
+    else:
+        if output_callback:
+            output_callback(f"No barcodes found in {base_name}.\n")
+
     doc.close()
 
-    result = f"{base_name}:\n- DEED: {'Yes' if deed_saved else 'No'}\n- MTG: {'Yes' if mtg_saved else 'No'}\n"
+    result = f"{base_name}:\n"
+    if deed_saved:
+        result += f"- DEED extracted (pages {deed_saved[0]} to {deed_saved[1]})\n"
+    else:
+        result += "- DEED: Not found or not extracted\n"
+    if mtg_saved:
+        result += f"- MTG extracted (pages {mtg_saved[0]} to {mtg_saved[1]})\n"
+    else:
+        result += "- MTG: Not found or not extracted\n"
+
     if output_callback:
         output_callback(result)
     
@@ -91,7 +122,7 @@ def process_files(input_path, output_dir, is_directory, progress_callback=None, 
     total_mtgs = 0
 
     if is_directory:
-        pdf_files = [f for f in os.listdir(input_path) if f.endswith(".pdf")]
+        pdf_files = [f for f in os.listdir(input_path) if f.lower().endswith(".pdf")]
         total_files = len(pdf_files)
         
         if total_files == 0:
