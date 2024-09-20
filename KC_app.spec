@@ -22,7 +22,7 @@ a = Analysis(['src\\main.py'],
              pathex=[os.path.abspath('.')],
              binaries=[(tesseract_path, '.'), (ghostscript_path, '.')] + pyzbar_binaries,
              datas=[
-                 ('resources', 'resources'),
+                 ('resources\\*', 'resources'),
                  ('C:\\Program Files\\Tesseract-OCR\\tessdata', 'tessdata'),
              ] + pyzbar_datas,
              hiddenimports=['pyzbar'],
@@ -55,4 +55,5 @@ exe = EXE(pyz,
           target_arch=None,
           codesign_identity=None,
           entitlements_file=None,
-          icon='resources\\app_icon.ico')
+          icon='resources\\app_icon.ico',
+          splash='resources\\splash_image.png')

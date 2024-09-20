@@ -3,8 +3,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QFileDialog,
     QProgressBar, QTextEdit, QRadioButton, QButtonGroup, QMessageBox
 )
-from PyQt6.QtCore import pyqtSignal, QSize
-from PyQt6.QtGui import QMovie
+from PyQt6.QtCore import pyqtSignal, Qt
 
 class MainWindow(QWidget):
     start_processing = pyqtSignal(str, str, bool)
@@ -12,12 +11,13 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.init_ui()
+        self.resize(800, 600)  # Set the initial window size to be wider
 
     def init_ui(self):
         layout = QVBoxLayout()
 
-        # Processing type selection
-        processing_type_layout = QVBoxLayout()
+        # Processing type selection on the same line
+        processing_type_layout = QHBoxLayout()
         processing_type_layout.addWidget(QLabel("Select processing type:"))
         self.input_type_group = QButtonGroup(self)
         self.file_radio = QRadioButton("Single File Processing")
@@ -53,20 +53,19 @@ class MainWindow(QWidget):
         self.process_button.clicked.connect(self.on_process_clicked)
         layout.addWidget(self.process_button)
 
-        # Status layout with label and spinner
+        # Status layout with label and progress bar as spinner
         status_layout = QHBoxLayout()
         self.status_label = QLabel()
         status_layout.addWidget(self.status_label)
-        
-        self.spinner_label = QLabel()
-        self.spinner_movie = QMovie("resources/spinner.gif")
-        self.spinner_size = 20
-        self.spinner_movie.setScaledSize(QSize(self.spinner_size, self.spinner_size))
-        self.spinner_label.setMovie(self.spinner_movie)
-        self.spinner_label.hide()
-        status_layout.addWidget(self.spinner_label)
+
+        # Use QProgressBar in indeterminate mode as a spinner
+        self.spinner = QProgressBar()
+        self.spinner.setRange(0, 0)  # Indeterminate mode
+        self.spinner.setTextVisible(False)
+        self.spinner.hide()
+        status_layout.addWidget(self.spinner)
         status_layout.addStretch()
-        
+
         layout.addLayout(status_layout)
 
         self.progress_bar = QProgressBar()
@@ -120,8 +119,7 @@ class MainWindow(QWidget):
             self.start_processing.emit(input_path, output_dir, is_directory)
             self.process_button.setEnabled(False)
             self.status_label.setText("Processing...")
-            self.spinner_label.show()
-            self.spinner_movie.start()
+            self.spinner.show()
         else:
             self.status_label.setText("Please select input and output paths.")
 
@@ -134,12 +132,10 @@ class MainWindow(QWidget):
     def processing_finished(self):
         self.process_button.setEnabled(True)
         self.status_label.setText("Processing complete!")
-        self.spinner_movie.stop()
-        self.spinner_label.hide()
+        self.spinner.hide()
 
     def show_error(self, error_message):
-        self.spinner_movie.stop()
-        self.spinner_label.hide()
+        self.spinner.hide()
         QMessageBox.critical(self, "Error", error_message)
 
     def save_output(self):
