@@ -1,13 +1,13 @@
+# File: src/main.py
+
 import sys
 import os
 import traceback
 from PyQt6.QtWidgets import QApplication, QMessageBox, QSplashScreen
 from PyQt6.QtGui import QIcon, QPixmap
-from PyQt6.QtCore import QTimer, Qt, QThread, pyqtSignal
+from PyQt6.QtCore import QTimer, Qt
 from ui.main_window import MainWindow
-from document_processor.processor import process_files
-from utils.updater import UpdateChecker, Updater, restart_with_updated_exe
-from web_automation.automation import run_web_automation_thread
+from utils.updater import UpdateChecker
 
 __version__ = "0.0.2"
 
@@ -17,58 +17,6 @@ def get_resource_path(relative_path):
     except Exception:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
-
-class WebAutomationWorker(QThread):
-    progress_update = pyqtSignal(int)
-    output_update = pyqtSignal(str)
-    finished = pyqtSignal()
-    error = pyqtSignal(str)
-    request_user_input = pyqtSignal()
-
-    def __init__(self, excel_path, browser, url):
-        super().__init__()
-        self.excel_path = excel_path
-        self.browser = browser
-        self.url = url
-
-    def run(self):
-        try:
-            run_web_automation(
-                self.excel_path,
-                self.browser,
-                self.url,
-                self.progress_update.emit,
-                self.output_update.emit
-            )
-            self.request_user_input.emit()
-            self.finished.emit()
-        except Exception as e:
-            self.error.emit(str(e))
-
-class OCRWorker(QThread):
-    progress_update = pyqtSignal(int)
-    output_update = pyqtSignal(str)
-    finished = pyqtSignal()
-    error = pyqtSignal(str)
-
-    def __init__(self, input_path, output_dir, is_directory):
-        super().__init__()
-        self.input_path = input_path
-        self.output_dir = output_dir
-        self.is_directory = is_directory
-
-    def run(self):
-        try:
-            process_files(
-                self.input_path,
-                self.output_dir,
-                self.is_directory,
-                self.progress_update.emit,
-                self.output_update.emit
-            )
-            self.finished.emit()
-        except Exception as e:
-            self.error.emit(str(e))
 
 class KingCunninghamApp(QApplication):
     def __init__(self, argv):
@@ -100,8 +48,6 @@ class KingCunninghamApp(QApplication):
     def initialize_application(self):
         self.main_window = MainWindow(__version__)
         self.main_window.check_for_updates.connect(self.check_for_updates)
-        self.main_window.doc_processor.start_processing.connect(self.process_documents)
-        self.main_window.web_automation.start_automation.connect(self.run_web_automation)
         self.main_window.setWindowIcon(self.windowIcon())
 
         steps = [
@@ -149,59 +95,13 @@ class KingCunninghamApp(QApplication):
     def on_no_update(self):
         self.main_window.show_no_update()
 
-    def start_update(self, download_url):
-        self.updater = Updater(download_url)
-        self.updater.update_progress.connect(self.main_window.doc_processor.update_progress)
-        self.updater.update_completed.connect(self.finish_update)
-        self.updater.error_occurred.connect(self.on_error)
-        self.updater.start()
-
-    def finish_update(self, new_exe_path):
-        reply = QMessageBox.question(
-            self.main_window,
-            "Update Complete",
-            "The update has been downloaded. Do you want to restart the application now?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes
-        )
-        if reply == QMessageBox.StandardButton.Yes:
-            restart_with_updated_exe(new_exe_path)
-        else:
-            self.main_window.update_check_status("Update will be applied on next restart.")
-
     def on_error(self, error_message):
         self.main_window.update_check_status(f"Error: {error_message}")
         QMessageBox.critical(self.main_window, "Error", error_message)
 
-    def process_documents(self, input_path, output_dir, is_directory):
-        self.worker = OCRWorker(input_path, output_dir, is_directory)
-        self.worker.progress_update.connect(self.main_window.doc_processor.update_progress)
-        self.worker.output_update.connect(self.main_window.doc_processor.update_output)
-        self.worker.finished.connect(self.main_window.doc_processor.processing_finished)
-        self.worker.error.connect(self.handle_error)
-        self.worker.start()
-
-    def run_web_automation(self, excel_path, browser, url):
-        self.web_worker = WebAutomationWorker(excel_path, browser, url)
-        self.web_worker.progress_update.connect(self.main_window.web_automation.update_progress)
-        self.web_worker.output_update.connect(self.main_window.web_automation.update_output)
-        self.web_worker.finished.connect(self.main_window.web_automation.automation_finished)
-        self.web_worker.error.connect(self.handle_error)
-        self.web_worker.request_user_input.connect(self.request_user_input)
-        self.web_worker.start()
-
-    def request_user_input(self):
-        QInputDialog.getText(
-            self.main_window,
-            "Web Automation Complete",
-            "Web automation has completed. Press OK to close the browser.",
-            QInputDialog.InputMode.TextInput
-        )
-
-    def handle_error(self, error_message):
-        self.main_window.show_error(error_message)
-        self.main_window.doc_processor.processing_finished()
-        self.main_window.web_automation.automation_finished()
+    def start_update(self, download_url):
+        # Implement update process here
+        pass
 
 def excepthook(exc_type, exc_value, exc_tb):
     tb = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
