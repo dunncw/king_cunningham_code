@@ -1,30 +1,42 @@
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QPushButton,
-    QStackedWidget, QMessageBox, QHBoxLayout, QLabel
+    QStackedWidget, QMessageBox, QHBoxLayout, QLabel,
+    QMenuBar, QMenu, QStatusBar
 )
 from PyQt6.QtCore import pyqtSignal, Qt
-from PyQt6.QtGui import QFont, QIcon
+from PyQt6.QtGui import QFont, QIcon, QAction
 from .document_processor_ui import DocumentProcessorUI
+from .web_automation_ui import WebAutomationUI
+from web_automation.automation import run_web_automation_thread
 
 class MainWindow(QMainWindow):
     check_for_updates = pyqtSignal()
+    start_web_automation = pyqtSignal(str, str, str)
 
-    def __init__(self):
+    def __init__(self, version):
         super().__init__()
+        self.version = version
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowTitle("Multi-Task Application")
+        self.setWindowTitle("King & Cunningham Document Processor")
         
         self.central_widget = QStackedWidget()
         self.setCentralWidget(self.central_widget)
+
+        # Create menu bar
+        self.create_menu_bar()
+
+        # Create status bar
+        self.statusBar = QStatusBar()
+        self.setStatusBar(self.statusBar)
 
         # Main menu
         self.main_menu = QWidget()
         main_layout = QVBoxLayout()
         
         # Title
-        title_label = QLabel("Multi-Task Application")
+        title_label = QLabel("King & Cunningham App Suite")
         title_font = QFont()
         title_font.setPointSize(24)
         title_font.setBold(True)
@@ -37,7 +49,7 @@ class MainWindow(QMainWindow):
         buttons_layout = QHBoxLayout()
         
         # Function to create styled buttons
-        def create_button(text, icon_path):
+        def create_button(text, icon_path, click_handler):
             button = QPushButton(text)
             button.setIcon(QIcon(icon_path))
             button.setIconSize(button.sizeHint())
@@ -57,18 +69,13 @@ class MainWindow(QMainWindow):
                     background-color: #45a049;
                 }
             """)
+            button.clicked.connect(click_handler)
             return button
 
-        update_button = create_button("Check for Updates", "path/to/update_icon.png")
-        update_button.clicked.connect(self.check_for_updates.emit)
-        buttons_layout.addWidget(update_button)
-
-        doc_process_button = create_button("Document Processing", "path/to/doc_icon.png")
-        doc_process_button.clicked.connect(self.show_document_processor)
+        doc_process_button = create_button("Document Processing", "path/to/doc_icon.png", self.show_document_processor)
         buttons_layout.addWidget(doc_process_button)
 
-        web_auto_button = create_button("Web Automation", "path/to/web_icon.png")
-        web_auto_button.clicked.connect(self.show_web_automation)
+        web_auto_button = create_button("Web Automation", "path/to/web_icon.png", self.show_web_automation)
         buttons_layout.addWidget(web_auto_button)
 
         buttons_widget.setLayout(buttons_layout)
@@ -82,14 +89,12 @@ class MainWindow(QMainWindow):
         back_button.clicked.connect(self.show_main_menu)
         self.doc_processor.layout().addWidget(back_button)
 
-        # Web Automation (placeholder)
-        self.web_automation = QWidget()
-        web_layout = QVBoxLayout()
-        web_layout.addWidget(QLabel("Web Automation Placeholder"))
+        # Web Automation
+        self.web_automation = WebAutomationUI()
+        self.web_automation.start_automation.connect(self.start_web_automation)
         back_button = QPushButton("Back to Main Menu")
         back_button.clicked.connect(self.show_main_menu)
-        web_layout.addWidget(back_button)
-        self.web_automation.setLayout(web_layout)
+        self.web_automation.layout().addWidget(back_button)
 
         # Add widgets to stacked widget
         self.central_widget.addWidget(self.main_menu)
@@ -97,6 +102,37 @@ class MainWindow(QMainWindow):
         self.central_widget.addWidget(self.web_automation)
 
         self.show_main_menu()
+
+    def start_web_automation(self, excel_path, browser, username, password):
+        self.thread, self.worker = run_web_automation_thread(excel_path, browser, username, password)
+        
+        self.worker.status.connect(self.web_automation.update_output)
+        self.worker.progress.connect(self.web_automation.update_progress)
+        self.worker.error.connect(self.show_error)
+        self.worker.finished.connect(self.web_automation_finished)
+
+        self.web_automation.start_button.setEnabled(False)
+        self.thread.start()
+
+    def web_automation_finished(self):
+        self.web_automation.start_button.setEnabled(True)
+        self.web_automation.update_output("Web automation completed.")
+
+    def create_menu_bar(self):
+        menubar = self.menuBar()
+        
+        # Single menu called "Menu"
+        menu = menubar.addMenu('Menu')
+        
+        # Add "Check for Updates" action
+        update_action = QAction('Check for Updates', self)
+        update_action.triggered.connect(self.check_for_updates.emit)
+        menu.addAction(update_action)
+        
+        # Add version information
+        version_action = QAction(f'Version: {self.version}', self)
+        version_action.setEnabled(False)  # Make it non-clickable
+        menu.addAction(version_action)
 
     def show_main_menu(self):
         self.central_widget.setCurrentWidget(self.main_menu)
@@ -111,7 +147,7 @@ class MainWindow(QMainWindow):
         self.resize(800, 600)  # Set fixed size for web automation
 
     def update_check_status(self, status):
-        QMessageBox.information(self, "Update Status", status)
+        self.statusBar.showMessage(status, 5000)  # Show message for 5 seconds
 
     def show_update_available(self, new_version):
         reply = QMessageBox.question(
@@ -124,7 +160,7 @@ class MainWindow(QMainWindow):
         return reply == QMessageBox.StandardButton.Yes
 
     def show_no_update(self):
-        QMessageBox.information(self, "No Update Available", "You are using the latest version.")
+        self.statusBar.showMessage("You are using the latest version.", 5000)
 
     def show_error(self, error_message):
         QMessageBox.critical(self, "Error", error_message)

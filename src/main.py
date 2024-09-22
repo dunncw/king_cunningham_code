@@ -7,6 +7,7 @@ from PyQt6.QtCore import QTimer, Qt, QThread, pyqtSignal
 from ui.main_window import MainWindow
 from document_processor.processor import process_files
 from utils.updater import UpdateChecker, Updater, restart_with_updated_exe
+from web_automation.automation import run_web_automation_thread
 
 __version__ = "0.0.2"
 
@@ -16,6 +17,33 @@ def get_resource_path(relative_path):
     except Exception:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
+
+class WebAutomationWorker(QThread):
+    progress_update = pyqtSignal(int)
+    output_update = pyqtSignal(str)
+    finished = pyqtSignal()
+    error = pyqtSignal(str)
+    request_user_input = pyqtSignal()
+
+    def __init__(self, excel_path, browser, url):
+        super().__init__()
+        self.excel_path = excel_path
+        self.browser = browser
+        self.url = url
+
+    def run(self):
+        try:
+            run_web_automation(
+                self.excel_path,
+                self.browser,
+                self.url,
+                self.progress_update.emit,
+                self.output_update.emit
+            )
+            self.request_user_input.emit()
+            self.finished.emit()
+        except Exception as e:
+            self.error.emit(str(e))
 
 class OCRWorker(QThread):
     progress_update = pyqtSignal(int)
@@ -42,7 +70,7 @@ class OCRWorker(QThread):
         except Exception as e:
             self.error.emit(str(e))
 
-class MultiTaskApplication(QApplication):
+class KingCunninghamApp(QApplication):
     def __init__(self, argv):
         super().__init__(argv)
         self.main_window = None
@@ -70,9 +98,10 @@ class MultiTaskApplication(QApplication):
         self.splash.show()
 
     def initialize_application(self):
-        self.main_window = MainWindow()
+        self.main_window = MainWindow(__version__)
         self.main_window.check_for_updates.connect(self.check_for_updates)
         self.main_window.doc_processor.start_processing.connect(self.process_documents)
+        self.main_window.web_automation.start_automation.connect(self.run_web_automation)
         self.main_window.setWindowIcon(self.windowIcon())
 
         steps = [
@@ -152,9 +181,27 @@ class MultiTaskApplication(QApplication):
         self.worker.error.connect(self.handle_error)
         self.worker.start()
 
+    def run_web_automation(self, excel_path, browser, url):
+        self.web_worker = WebAutomationWorker(excel_path, browser, url)
+        self.web_worker.progress_update.connect(self.main_window.web_automation.update_progress)
+        self.web_worker.output_update.connect(self.main_window.web_automation.update_output)
+        self.web_worker.finished.connect(self.main_window.web_automation.automation_finished)
+        self.web_worker.error.connect(self.handle_error)
+        self.web_worker.request_user_input.connect(self.request_user_input)
+        self.web_worker.start()
+
+    def request_user_input(self):
+        QInputDialog.getText(
+            self.main_window,
+            "Web Automation Complete",
+            "Web automation has completed. Press OK to close the browser.",
+            QInputDialog.InputMode.TextInput
+        )
+
     def handle_error(self, error_message):
         self.main_window.show_error(error_message)
         self.main_window.doc_processor.processing_finished()
+        self.main_window.web_automation.automation_finished()
 
 def excepthook(exc_type, exc_value, exc_tb):
     tb = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
@@ -165,7 +212,7 @@ def excepthook(exc_type, exc_value, exc_tb):
 
 def main():
     sys.excepthook = excepthook
-    app = MultiTaskApplication(sys.argv)
+    app = KingCunninghamApp(sys.argv)
     app.run()
     sys.exit(app.exec())
 

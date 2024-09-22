@@ -56,9 +56,20 @@ class DocumentProcessorUI(QWidget):
         self.process_button.clicked.connect(self.on_process_clicked)
         layout.addWidget(self.process_button)
 
-        # Status and progress
+        # Status layout with label and progress bar as spinner
+        status_layout = QHBoxLayout()
         self.status_label = QLabel()
-        layout.addWidget(self.status_label)
+        status_layout.addWidget(self.status_label)
+
+        # Use QProgressBar in indeterminate mode as a spinner
+        self.spinner = QProgressBar()
+        self.spinner.setRange(0, 0)  # Indeterminate mode
+        self.spinner.setTextVisible(False)
+        self.spinner.hide()
+        status_layout.addWidget(self.spinner)
+        status_layout.addStretch()
+
+        layout.addLayout(status_layout)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
@@ -110,6 +121,7 @@ class DocumentProcessorUI(QWidget):
             self.start_processing.emit(input_path, output_dir, is_directory)
             self.process_button.setEnabled(False)
             self.status_label.setText("Processing...")
+            self.spinner.show()  # Show the spinner when processing starts
         else:
             self.status_label.setText("Please select input and output paths.")
 
@@ -122,9 +134,11 @@ class DocumentProcessorUI(QWidget):
     def processing_finished(self):
         self.process_button.setEnabled(True)
         self.status_label.setText("Processing complete!")
+        self.spinner.hide()  # Hide the spinner when processing is finished
 
     def show_error(self, error_message):
         self.status_label.setText(f"Error: {error_message}")
+        self.spinner.hide()  # Hide the spinner in case of an error
 
     def save_output(self):
         file_path, _ = QFileDialog.getSaveFileName(
