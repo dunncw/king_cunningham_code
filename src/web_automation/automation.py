@@ -14,6 +14,8 @@ from webdriver_manager.microsoft import EdgeChromiumDriverManager
 from .excel_processor import extract_data_from_excel, print_extracted_data
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 
+# TODO need to finish the logic to fill out entire form. and get the app to a stable state where it fills out all infor for 1 form and then just stops and waits for user. at this point we need to meet with jordan. 
+
 class WebAutomationWorker(QObject):
     finished = pyqtSignal()
     progress = pyqtSignal(int)

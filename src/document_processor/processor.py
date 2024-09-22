@@ -6,6 +6,8 @@ from pyzbar.pyzbar import decode
 from PIL import Image
 import warnings
 
+# BUG for some reason this stopped working
+
 class SuppressStderr:
     def __enter__(self):
         self._original_stderr = os.dup(2)
