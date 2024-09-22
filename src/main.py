@@ -2,10 +2,10 @@ import sys
 import os
 import traceback
 from PyQt6.QtWidgets import QApplication, QMessageBox, QSplashScreen
-from PyQt6.QtGui import QIcon, QPixmap, QAction
-from PyQt6.QtCore import QThread, pyqtSignal, Qt, QTimer
+from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtCore import QTimer, Qt, QThread, pyqtSignal
 from ui.main_window import MainWindow
-from ocr.processor import process_files
+from document_processor.processor import process_files
 from utils.updater import UpdateChecker, Updater, restart_with_updated_exe
 
 __version__ = "0.0.2"
@@ -42,7 +42,7 @@ class OCRWorker(QThread):
         except Exception as e:
             self.error.emit(str(e))
 
-class OCRApplication(QApplication):
+class MultiTaskApplication(QApplication):
     def __init__(self, argv):
         super().__init__(argv)
         self.main_window = None
@@ -71,23 +71,14 @@ class OCRApplication(QApplication):
 
     def initialize_application(self):
         self.main_window = MainWindow()
-        self.main_window.start_processing.connect(self.process_documents)
         self.main_window.check_for_updates.connect(self.check_for_updates)
+        self.main_window.doc_processor.start_processing.connect(self.process_documents)
         self.main_window.setWindowIcon(self.windowIcon())
-        
-        # Add version and creator info to the menu
-        version_action = QAction(f'Version: {__version__}', self.main_window)
-        version_action.setEnabled(False)
-        self.main_window.menu.addAction(version_action)
-        
-        creator_action = QAction('Made by Cayden Dunn', self.main_window)
-        creator_action.setEnabled(False)
-        self.main_window.menu.addAction(creator_action)
 
         steps = [
-            "Loading OCR engine...",
+            "Loading engines...",
             "Initializing UI...",
-            "Loading document templates...",
+            "Loading templates...",
             "Finalizing..."
         ]
         for i, message in enumerate(steps):
@@ -131,7 +122,7 @@ class OCRApplication(QApplication):
 
     def start_update(self, download_url):
         self.updater = Updater(download_url)
-        self.updater.update_progress.connect(self.main_window.update_progress)
+        self.updater.update_progress.connect(self.main_window.doc_processor.update_progress)
         self.updater.update_completed.connect(self.finish_update)
         self.updater.error_occurred.connect(self.on_error)
         self.updater.start()
@@ -155,15 +146,15 @@ class OCRApplication(QApplication):
 
     def process_documents(self, input_path, output_dir, is_directory):
         self.worker = OCRWorker(input_path, output_dir, is_directory)
-        self.worker.progress_update.connect(self.main_window.update_progress)
-        self.worker.output_update.connect(self.main_window.update_output)
-        self.worker.finished.connect(self.main_window.processing_finished)
+        self.worker.progress_update.connect(self.main_window.doc_processor.update_progress)
+        self.worker.output_update.connect(self.main_window.doc_processor.update_output)
+        self.worker.finished.connect(self.main_window.doc_processor.processing_finished)
         self.worker.error.connect(self.handle_error)
         self.worker.start()
 
     def handle_error(self, error_message):
         self.main_window.show_error(error_message)
-        self.main_window.processing_finished()
+        self.main_window.doc_processor.processing_finished()
 
 def excepthook(exc_type, exc_value, exc_tb):
     tb = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
@@ -174,7 +165,7 @@ def excepthook(exc_type, exc_value, exc_tb):
 
 def main():
     sys.excepthook = excepthook
-    app = OCRApplication(sys.argv)
+    app = MultiTaskApplication(sys.argv)
     app.run()
     sys.exit(app.exec())
 

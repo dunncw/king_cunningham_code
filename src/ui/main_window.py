@@ -1,24 +1,12 @@
-
-
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QFileDialog, QProgressBar, QTextEdit, QRadioButton, QButtonGroup, QMessageBox,
-    QMenuBar, QMenu, QDialog, QVBoxLayout
+    QMainWindow, QWidget, QVBoxLayout, QPushButton,
+    QStackedWidget, QMessageBox, QHBoxLayout, QLabel
 )
-from PyQt6.QtGui import QAction
 from PyQt6.QtCore import pyqtSignal, Qt
-
-class UpdateDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Check for Updates")
-        layout = QVBoxLayout()
-        self.status_label = QLabel("Checking for updates...")
-        layout.addWidget(self.status_label)
-        self.setLayout(layout)
+from PyQt6.QtGui import QFont, QIcon
+from .document_processor_ui import DocumentProcessorUI
 
 class MainWindow(QMainWindow):
-    start_processing = pyqtSignal(str, str, bool)
     check_for_updates = pyqtSignal()
 
     def __init__(self):
@@ -26,113 +14,106 @@ class MainWindow(QMainWindow):
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowTitle("Document Processor")
-        self.resize(800, 600)
-
-        # Create menu bar
-        self.menubar = self.menuBar()
-        self.menu = self.menubar.addMenu('Menu')
+        self.setWindowTitle("Multi-Task Application")
         
-        update_action = QAction('Check for Updates', self)
-        update_action.triggered.connect(self.show_update_dialog)
-        self.menu.addAction(update_action)
+        self.central_widget = QStackedWidget()
+        self.setCentralWidget(self.central_widget)
 
-        # version_action = QAction(f'Version: {self.version}', self)
-        # version_action.setEnabled(False)
-        # main_menu.addAction(version_action)
+        # Main menu
+        self.main_menu = QWidget()
+        main_layout = QVBoxLayout()
+        
+        # Title
+        title_label = QLabel("Multi-Task Application")
+        title_font = QFont()
+        title_font.setPointSize(24)
+        title_font.setBold(True)
+        title_label.setFont(title_font)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        main_layout.addWidget(title_label)
 
-        # creator_action = QAction('Made by Cayden Dunn', self)
-        # creator_action.setEnabled(False)
-        # main_menu.addAction(creator_action)
+        # Buttons container
+        buttons_widget = QWidget()
+        buttons_layout = QHBoxLayout()
+        
+        # Function to create styled buttons
+        def create_button(text, icon_path):
+            button = QPushButton(text)
+            button.setIcon(QIcon(icon_path))
+            button.setIconSize(button.sizeHint())
+            button.setMinimumSize(200, 100)
+            button_font = QFont()
+            button_font.setPointSize(12)
+            button.setFont(button_font)
+            button.setStyleSheet("""
+                QPushButton {
+                    background-color: #4CAF50;
+                    color: white;
+                    border: none;
+                    padding: 10px;
+                    border-radius: 5px;
+                }
+                QPushButton:hover {
+                    background-color: #45a049;
+                }
+            """)
+            return button
 
-        # # Main widget and layout
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        layout = QVBoxLayout(central_widget)
+        update_button = create_button("Check for Updates", "path/to/update_icon.png")
+        update_button.clicked.connect(self.check_for_updates.emit)
+        buttons_layout.addWidget(update_button)
 
-        processing_type_layout = QHBoxLayout()
-        processing_type_layout.addWidget(QLabel("Select processing type:"))
-        self.input_type_group = QButtonGroup(self)
-        self.file_radio = QRadioButton("Single File Processing")
-        self.directory_radio = QRadioButton("Batch Processing (Directory)")
-        self.directory_radio.setChecked(True)  # Default to batch processing
-        self.input_type_group.addButton(self.file_radio)
-        self.input_type_group.addButton(self.directory_radio)
-        processing_type_layout.addWidget(self.file_radio)
-        processing_type_layout.addWidget(self.directory_radio)
-        layout.addLayout(processing_type_layout)
+        doc_process_button = create_button("Document Processing", "path/to/doc_icon.png")
+        doc_process_button.clicked.connect(self.show_document_processor)
+        buttons_layout.addWidget(doc_process_button)
 
-        # Input selection
-        input_layout = QHBoxLayout()
-        self.input_edit = QLineEdit()
-        self.input_button = QPushButton("Select Input")
-        self.input_button.clicked.connect(self.select_input)
-        input_layout.addWidget(QLabel("Input:"))
-        input_layout.addWidget(self.input_edit)
-        input_layout.addWidget(self.input_button)
-        layout.addLayout(input_layout)
+        web_auto_button = create_button("Web Automation", "path/to/web_icon.png")
+        web_auto_button.clicked.connect(self.show_web_automation)
+        buttons_layout.addWidget(web_auto_button)
 
-        # Output selection
-        output_layout = QHBoxLayout()
-        self.output_dir_edit = QLineEdit()
-        output_button = QPushButton("Select Output Directory")
-        output_button.clicked.connect(self.select_output_dir)
-        output_layout.addWidget(QLabel("Output Directory:"))
-        output_layout.addWidget(self.output_dir_edit)
-        output_layout.addWidget(output_button)
-        layout.addLayout(output_layout)
+        buttons_widget.setLayout(buttons_layout)
+        main_layout.addWidget(buttons_widget)
 
-        self.process_button = QPushButton("Process Documents")
-        self.process_button.clicked.connect(self.on_process_clicked)
-        layout.addWidget(self.process_button)
+        self.main_menu.setLayout(main_layout)
 
-        # Status layout with label and progress bar as spinner
-        status_layout = QHBoxLayout()
-        self.status_label = QLabel()
-        status_layout.addWidget(self.status_label)
+        # Document Processor
+        self.doc_processor = DocumentProcessorUI()
+        back_button = QPushButton("Back to Main Menu")
+        back_button.clicked.connect(self.show_main_menu)
+        self.doc_processor.layout().addWidget(back_button)
 
-        # Use QProgressBar in indeterminate mode as a spinner
-        self.spinner = QProgressBar()
-        self.spinner.setRange(0, 0)  # Indeterminate mode
-        self.spinner.setTextVisible(False)
-        self.spinner.hide()
-        status_layout.addWidget(self.spinner)
-        status_layout.addStretch()
+        # Web Automation (placeholder)
+        self.web_automation = QWidget()
+        web_layout = QVBoxLayout()
+        web_layout.addWidget(QLabel("Web Automation Placeholder"))
+        back_button = QPushButton("Back to Main Menu")
+        back_button.clicked.connect(self.show_main_menu)
+        web_layout.addWidget(back_button)
+        self.web_automation.setLayout(web_layout)
 
-        layout.addLayout(status_layout)
+        # Add widgets to stacked widget
+        self.central_widget.addWidget(self.main_menu)
+        self.central_widget.addWidget(self.doc_processor)
+        self.central_widget.addWidget(self.web_automation)
 
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 100)
-        layout.addWidget(self.progress_bar)
+        self.show_main_menu()
 
-        self.output_text = QTextEdit()
-        self.output_text.setReadOnly(True)
-        layout.addWidget(self.output_text)
+    def show_main_menu(self):
+        self.central_widget.setCurrentWidget(self.main_menu)
+        self.adjustSize()  # Adjust size to fit content
 
-        # Add save button
-        self.save_button = QPushButton("Save Output")
-        self.save_button.clicked.connect(self.save_output)
-        layout.addWidget(self.save_button)
+    def show_document_processor(self):
+        self.central_widget.setCurrentWidget(self.doc_processor)
+        self.resize(800, 600)  # Set fixed size for document processor
 
-        self.setLayout(layout)
-        self.setWindowTitle("Document Processor")
-
-        # Connect radio buttons to update input button text
-        self.file_radio.toggled.connect(self.update_input_button_text)
-        self.directory_radio.toggled.connect(self.update_input_button_text)
-
-    def show_update_dialog(self):
-        self.update_dialog = UpdateDialog(self)
-        self.update_dialog.show()
-        self.check_for_updates.emit()
+    def show_web_automation(self):
+        self.central_widget.setCurrentWidget(self.web_automation)
+        self.resize(800, 600)  # Set fixed size for web automation
 
     def update_check_status(self, status):
-        if hasattr(self, 'update_dialog'):
-            self.update_dialog.status_label.setText(status)
+        QMessageBox.information(self, "Update Status", status)
 
     def show_update_available(self, new_version):
-        if hasattr(self, 'update_dialog'):
-            self.update_dialog.close()
         reply = QMessageBox.question(
             self,
             "Update Available",
@@ -143,65 +124,7 @@ class MainWindow(QMainWindow):
         return reply == QMessageBox.StandardButton.Yes
 
     def show_no_update(self):
-        if hasattr(self, 'update_dialog'):
-            self.update_dialog.close()
         QMessageBox.information(self, "No Update Available", "You are using the latest version.")
 
-    def update_input_button_text(self):
-        if self.file_radio.isChecked():
-            self.input_button.setText("Select File")
-        else:
-            self.input_button.setText("Select Directory")
-
-    def select_input(self):
-        if self.file_radio.isChecked():
-            file_path, _ = QFileDialog.getOpenFileName(
-                self, "Select Input File", "", "PDF Files (*.pdf)"
-            )
-            if file_path:
-                self.input_edit.setText(file_path)
-        else:
-            dir_path = QFileDialog.getExistingDirectory(self, "Select Input Directory")
-            if dir_path:
-                self.input_edit.setText(dir_path)
-
-    def select_output_dir(self):
-        dir_path = QFileDialog.getExistingDirectory(self, "Select Output Directory")
-        if dir_path:
-            self.output_dir_edit.setText(dir_path)
-
-    def on_process_clicked(self):
-        input_path = self.input_edit.text()
-        output_dir = self.output_dir_edit.text()
-        is_directory = self.directory_radio.isChecked()
-        if input_path and output_dir:
-            self.start_processing.emit(input_path, output_dir, is_directory)
-            self.process_button.setEnabled(False)
-            self.status_label.setText("Processing...")
-            self.spinner.show()
-        else:
-            self.status_label.setText("Please select input and output paths.")
-
-    def update_progress(self, value):
-        self.progress_bar.setValue(value)
-
-    def update_output(self, text):
-        self.output_text.append(text)
-
-    def processing_finished(self):
-        self.process_button.setEnabled(True)
-        self.status_label.setText("Processing complete!")
-        self.spinner.hide()
-
     def show_error(self, error_message):
-        self.spinner.hide()
         QMessageBox.critical(self, "Error", error_message)
-
-    def save_output(self):
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "Save Output", "", "Text Files (*.txt)"
-        )
-        if file_path:
-            with open(file_path, 'w') as f:
-                f.write(self.output_text.toPlainText())
-            QMessageBox.information(self, "Save Successful", f"Output saved to {file_path}")

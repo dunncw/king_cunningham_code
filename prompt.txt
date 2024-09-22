@@ -1,0 +1,42 @@
+project_root/
+│
+├── src/
+│   ├── main.py
+│   ├── config.py
+│   │
+│   ├── document_processor/
+│   │   ├── __init__.py
+│   │   ├── processor.py
+│   │   └── ocr_utils.py
+│   │
+│   ├── web_automation/
+│   │   ├── __init__.py
+│   │   ├── excel_reader.py
+│   │   ├── form_filler.py
+│   │   └── browser_utils.py
+│   │
+│   └── ui/
+│       ├── __init__.py
+│       ├── main_window.py
+│       ├── document_processor_ui.py
+│       └── web_automation_ui.py
+│
+├── resources/
+│   ├── app_icon.ico
+│   ├── spinner.gif
+│   └── splash_image.png
+│
+├── drivers/
+│   ├── chromedriver.exe
+│   ├── geckodriver.exe
+│   └── msedgedriver.exe
+│
+├── tests/
+│   ├── test_document_processor.py
+│   ├── test_web_automation.py
+│   └── test_update_checker.py
+│
+├── build.py
+├── KC_app.spec
+├── requirements.txt
+└── README.md
