@@ -22,7 +22,7 @@ a = Analysis(['src\\main.py'],
              pathex=[os.path.abspath('.')],
              binaries=[(tesseract_path, '.'), (ghostscript_path, '.')] + pyzbar_binaries,
              datas=[
-                 ('resources\\*', 'resources'),
+                 ('resources', 'resources'),
                  ('C:\\Program Files\\Tesseract-OCR\\tessdata', 'tessdata'),
              ] + pyzbar_datas,
              hiddenimports=['pyzbar'],

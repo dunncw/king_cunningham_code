@@ -1,22 +1,55 @@
-# main_window.py
+
+
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QFileDialog,
-    QProgressBar, QTextEdit, QRadioButton, QButtonGroup, QMessageBox
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QFileDialog, QProgressBar, QTextEdit, QRadioButton, QButtonGroup, QMessageBox,
+    QMenuBar, QMenu, QDialog, QVBoxLayout
 )
+from PyQt6.QtGui import QAction
 from PyQt6.QtCore import pyqtSignal, Qt
 
-class MainWindow(QWidget):
+class UpdateDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Check for Updates")
+        layout = QVBoxLayout()
+        self.status_label = QLabel("Checking for updates...")
+        layout.addWidget(self.status_label)
+        self.setLayout(layout)
+
+class MainWindow(QMainWindow):
     start_processing = pyqtSignal(str, str, bool)
+    check_for_updates = pyqtSignal()
 
     def __init__(self):
         super().__init__()
         self.init_ui()
-        self.resize(800, 600)  # Set the initial window size to be wider
 
     def init_ui(self):
-        layout = QVBoxLayout()
+        self.setWindowTitle("Document Processor")
+        self.resize(800, 600)
 
-        # Processing type selection on the same line
+        # Create menu bar
+        self.menubar = self.menuBar()
+        self.menu = self.menubar.addMenu('Menu')
+        
+        update_action = QAction('Check for Updates', self)
+        update_action.triggered.connect(self.show_update_dialog)
+        self.menu.addAction(update_action)
+
+        # version_action = QAction(f'Version: {self.version}', self)
+        # version_action.setEnabled(False)
+        # main_menu.addAction(version_action)
+
+        # creator_action = QAction('Made by Cayden Dunn', self)
+        # creator_action.setEnabled(False)
+        # main_menu.addAction(creator_action)
+
+        # # Main widget and layout
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        layout = QVBoxLayout(central_widget)
+
         processing_type_layout = QHBoxLayout()
         processing_type_layout.addWidget(QLabel("Select processing type:"))
         self.input_type_group = QButtonGroup(self)
@@ -87,6 +120,32 @@ class MainWindow(QWidget):
         # Connect radio buttons to update input button text
         self.file_radio.toggled.connect(self.update_input_button_text)
         self.directory_radio.toggled.connect(self.update_input_button_text)
+
+    def show_update_dialog(self):
+        self.update_dialog = UpdateDialog(self)
+        self.update_dialog.show()
+        self.check_for_updates.emit()
+
+    def update_check_status(self, status):
+        if hasattr(self, 'update_dialog'):
+            self.update_dialog.status_label.setText(status)
+
+    def show_update_available(self, new_version):
+        if hasattr(self, 'update_dialog'):
+            self.update_dialog.close()
+        reply = QMessageBox.question(
+            self,
+            "Update Available",
+            f"A new version (v{new_version}) is available. Do you want to update?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        return reply == QMessageBox.StandardButton.Yes
+
+    def show_no_update(self):
+        if hasattr(self, 'update_dialog'):
+            self.update_dialog.close()
+        QMessageBox.information(self, "No Update Available", "You are using the latest version.")
 
     def update_input_button_text(self):
         if self.file_radio.isChecked():
