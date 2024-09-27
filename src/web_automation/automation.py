@@ -1,6 +1,10 @@
-# File: web_automation/automation.py
-
 import time
+import sys
+import os
+
+# Add the parent directory to the Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.firefox.service import Service as FirefoxService
@@ -8,13 +12,13 @@ from selenium.webdriver.edge.service import Service as EdgeService
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import Select
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
-from .excel_processor import extract_data_from_excel, print_extracted_data
+from excel_processor import extract_data_from_excel, print_extracted_data
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 
-# TODO need to finish the logic to fill out entire form. and get the app to a stable state where it fills out all infor for 1 form and then just stops and waits for user. at this point we need to meet with jordan. 
 
 class WebAutomationWorker(QObject):
     finished = pyqtSignal()
@@ -38,9 +42,27 @@ class WebAutomationWorker(QObject):
             self.finished.emit()
 
     def run_web_automation(self):
+        # Define local variables
+        business_name = 'CENTENNIAL PARK DEVELOPMENT LLC'
+        address_1 = 'C/O 115 CENTENNIAL OLYMPIC PARK DRIVE NW'
+        city = 'ATLANTA'
+        zip_code = '30313'
+        street = '155'
+        street_name = 'Centennial Olympic Park'
+        map_pn = "14-0078-0007-096-9"
+
         # Extract data from Excel
         people_data = extract_data_from_excel(self.excel_path)
         self.status.emit(f"Extracted data for {len(people_data)} people from Excel file")
+
+        # Print out the first row of extracted data
+        if people_data:
+            first_person = people_data[0]
+            self.status.emit("First row of extracted data:")
+            for key, value in first_person.items():
+                self.status.emit(f"{key}: {value}")
+        else:
+            self.status.emit("No data found in the Excel file")
 
         # Setup WebDriver
         if self.browser == "Chrome":
@@ -54,6 +76,7 @@ class WebAutomationWorker(QObject):
             driver = webdriver.Edge(service=service)
         else:
             raise ValueError(f"Unsupported browser: {self.browser}")
+
 
         try:
             # Open the browser and navigate to the specified URL
@@ -93,30 +116,167 @@ class WebAutomationWorker(QObject):
             )
             self.status.emit("Logged in successfully")
 
-            # Loop through each person's data and submit the form
-            for i, person in enumerate(people_data):
-                self.status.emit(f"Processing person {i + 1} of {len(people_data)}")
+            # Navigate to the form page
+            driver.get("https://apps.gsccca.org/pt61efiling/PT61.asp")
+            self.status.emit("Navigated to PT-61 form page")
 
-                # Navigate to the form page
-                driver.get("https://apps.gsccca.org/pt61efiling/PT61.asp")
+            # On the next page, click the radio button
+            business_radio = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, "//input[@name='businessFlag' and @value='1']"))
+            )
+            business_radio.click()
+            self.status.emit("Selected business radio button")
+
+            # Fill out the business name field
+            business_name_field = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.ID, "businessName"))
+            )
+            business_name_field.send_keys(business_name)
+            self.status.emit("Filled out business name")
+
+            # Fill out the address field
+            address_field = driver.find_element(By.ID, "street1")
+            address_field.send_keys(address_1)
+            self.status.emit("Filled out address")
+
+            # Fill out the city field
+            city_field = driver.find_element(By.ID, "city")
+            city_field.send_keys(city)
+            self.status.emit("Filled out city")
+
+            # Fill out the zip code field
+            zip_field = driver.find_element(By.ID, "zip")
+            zip_field.send_keys(zip_code)
+            self.status.emit("Filled out zip code")
+
+            # Click "Next Step" button
+            next_step_button = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.ID, "btnNext"))
+            )
+            next_step_button.click()
+            self.status.emit("Clicked 'Next Step' button")
+
+            # Fill out additional fields on the next page
+            if people_data:
+                person = people_data[0]
                 
-                # Fill out the form using the person's data
-                # (Fill in the form fields here)
+                # Fill out first name
+                first_name_field = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.ID, "firstName"))
+                )
+                first_name_field.send_keys(person['individual_name']['first'])
+                self.status.emit(f"Filled out first name: {person['individual_name']['first']}")
+
+                # Fill out middle name
+                middle_name_field = driver.find_element(By.ID, "middleName")
+                middle_name_field.send_keys(person['individual_name']['middle'])
+                self.status.emit(f"Filled out middle name: {person['individual_name']['middle']}")
+
+                # Fill out last name
+                last_name_field = driver.find_element(By.ID, "lastName")
+                last_name_field.send_keys(person['individual_name']['last'])
+                self.status.emit(f"Filled out last name: {person['individual_name']['last']}")
+
+                # Fill out address
+                address_field = driver.find_element(By.ID, "street1")
+                address_field.send_keys(address_1)
+                self.status.emit(f"Filled out address: {address_1}")
+
+                # Fill out city
+                city_field = driver.find_element(By.ID, "city")
+                city_field.send_keys(city)
+                self.status.emit(f"Filled out city: {city}")
+
+                # Fill out zip code
+                zip_field = driver.find_element(By.ID, "zip")
+                zip_field.send_keys(zip_code)
+                self.status.emit(f"Filled out zip code: {zip_code}")
+
+                # Check for additional name
+                if 'additional_name' in person and person['additional_name']:
+                    # Fill out additional first name
+                    additional_first_name_field = WebDriverWait(driver, 10).until(
+                        EC.presence_of_element_located((By.ID, "AdditionalFirstName"))
+                    )
+                    additional_first_name_field.send_keys(person['additional_name']['first'])
+                    self.status.emit(f"Filled out additional first name: {person['additional_name']['first']}")
+
+                    # Fill out additional middle name
+                    additional_middle_name_field = driver.find_element(By.ID, "AdditionalMiddleName")
+                    additional_middle_name_field.send_keys(person['additional_name']['middle'])
+                    self.status.emit(f"Filled out additional middle name: {person['additional_name']['middle']}")
+
+                    # Fill out additional last name
+                    additional_last_name_field = driver.find_element(By.ID, "AdditionalLastName")
+                    additional_last_name_field.send_keys(person['additional_name']['last'])
+                    self.status.emit(f"Filled out additional last name: {person['additional_name']['last']}")
+
+                    # Click "Add to Additional Names" button
+                    add_additional_button = WebDriverWait(driver, 10).until(
+                        EC.element_to_be_clickable((By.ID, "btnAdd"))
+                    )
+                    add_additional_button.click()
+                    self.status.emit("Clicked 'Add to Additional Names' button")
+                else:
+                    self.status.emit("No additional name found in the data")
 
                 # Click "Next Step" button
                 next_step_button = WebDriverWait(driver, 10).until(
                     EC.element_to_be_clickable((By.ID, "btnNext"))
                 )
                 next_step_button.click()
-                self.status.emit(f"Submitted form for person {i + 1}")
+                self.status.emit("Clicked 'Next Step' button")
+
+                 # Fill out the date of sale
+                sale_date_field = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.ID, "saleDate"))
+                )
+                sale_date_field.send_keys(person['date_on_deed'])
+                self.status.emit(f"Filled out date of sale: {person['date_on_deed']}")
+
+                # Fill out street number
+                street_number_field = driver.find_element(By.ID, "houseNumber")
+                street_number_field.send_keys(street)
+                self.status.emit(f"Filled out street number: {street}")
+
+                # Fill out street name
+                street_name_field = driver.find_element(By.ID, "houseStreetName")
+                street_name_field.send_keys(street_name)
+                self.status.emit(f"Filled out street name: {street_name}")
+
+                # Select 'Drive' from street type dropdown
+                street_type_dropdown = Select(driver.find_element(By.ID, "houseStreetType"))
+                street_type_dropdown.select_by_value("DR")
+                self.status.emit("Selected 'Drive' as street type")
+
+                # Select post direction
+                post_dir_dropdown = Select(driver.find_element(By.ID, "housePostDirection"))
+                post_dir_dropdown.select_by_value("NW")
+                self.status.emit(f"Selected post direction: {"NW"}")
+
+                # Select county
+                county_dropdown = Select(driver.find_element(By.ID, "county"))
+                county_dropdown.select_by_value("60")
+                self.status.emit(f"Selected county: {"Fulton"}")
+
+                # Fill out map/parcel number
+                map_number_field = driver.find_element(By.ID, "mapNumber")
+                map_number_field.send_keys(map_pn)
+                self.status.emit(f"Filled out map/parcel number: {map_pn}")
+
+                # Click "Next Step" button
+                next_step_button = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.ID, "btnNext"))
+                )
+                next_step_button.click()
+                self.status.emit("Clicked 'Next Step' button")
 
                 # Update progress
-                self.progress.emit(int((i + 1) / len(people_data) * 100))
+                self.progress.emit(100)
 
-                # Add a small delay between submissions
-                time.sleep(2)
-
-            self.status.emit("All forms submitted. Browser will remain open.")
+                self.status.emit("Form filled out for the first person. Browser will remain open.")
+            else:
+                self.status.emit("No data found in the Excel file to fill the form")
             
             # Wait for user input to close the browser
             input("Press Enter to close the browser...")
@@ -140,14 +300,13 @@ def run_web_automation_thread(excel_path, browser, username, password):
 if __name__ == "__main__":
     # This block is for testing purposes only
     from PyQt6.QtWidgets import QApplication
-    import sys
 
     app = QApplication(sys.argv)
 
     test_excel_path = r"data\raw\WYN B119 Example PT61.xlsx"
     test_browser = "Chrome"
-    test_username = "your_username"
-    test_password = "your_password"
+    test_username = "jcunningham@kingcunningham.com"
+    test_password = "Kc123!@#"
 
     thread, worker = run_web_automation_thread(test_excel_path, test_browser, test_username, test_password)
     
