@@ -13,12 +13,35 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import UnexpectedAlertPresentException
+from selenium.webdriver.support.wait import WebDriverWait
+from selenium.common.exceptions import TimeoutException, NoAlertPresentException, UnexpectedAlertPresentException
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
-from excel_processor import extract_data_from_excel, print_extracted_data
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 
+class alert_is_present_or_element(object):
+    def __init__(self, locator):
+        self.locator = locator
+
+    def __call__(self, driver):
+        try:
+            alert = driver.switch_to.alert
+            return alert
+        except NoAlertPresentException:
+            try:
+                return EC.presence_of_element_located(self.locator)(driver)
+            except:
+                return False
+
+def is_alert_present(driver):
+    try:
+        driver.switch_to.alert
+        return True
+    except NoAlertPresentException:
+        return False
 
 class WebAutomationWorker(QObject):
     finished = pyqtSignal()
@@ -271,19 +294,77 @@ class WebAutomationWorker(QObject):
                 next_step_button.click()
                 self.status.emit("Clicked 'Next Step' button")
 
+                # Wait for a short time to allow the alert to appear if it's going to
+                time.sleep(2)
+
+                # Check for alert
+                if is_alert_present(driver):
+                    alert = driver.switch_to.alert
+                    alert_text = alert.text
+                    self.status.emit(f"Alert detected: {alert_text}")
+                    alert.accept()
+                    self.status.emit("Alert accepted")
+                else:
+                    self.status.emit("No alert detected, proceeding with form fill")
+
+                # Wait for the sales price field to be present
+                sales_price_field = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.ID, "actualValue"))
+                )
+                sales_price_field.send_keys(person['sales_price'])
+                self.status.emit(f"Filled out sales price: {person['sales_price']}")
+
+                # Set fair market value to zero
+                fair_market_value_field = driver.find_element(By.ID, "fairMarketValue")
+                fair_market_value_field.send_keys("0")
+                self.status.emit("Set fair market value to zero")
+
+                # Set liens and encumbrances to zero
+                liens_field = driver.find_element(By.ID, "liensAndEncumberances")
+                liens_field.send_keys("0")
+                self.status.emit("Set liens and encumbrances to zero")
+
+                # Click "Next Step" button
+                next_step_button = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.ID, "btnNext"))
+                )
+                next_step_button.click()
+                self.status.emit("Clicked 'Next Step' button")
+
+                # Click the checkboxes
+                checkboxes = ["chkCounty", "chkAccept", "chkTaxAccept"]
+                for checkbox_id in checkboxes:
+                    checkbox = WebDriverWait(driver, 10).until(
+                        EC.element_to_be_clickable((By.ID, checkbox_id))
+                    )
+                    checkbox.click()
+                    self.status.emit(f"Clicked checkbox: {checkbox_id}")
+
                 # Update progress
                 self.progress.emit(100)
 
-                self.status.emit("Form filled out for the first person. Browser will remain open.")
-            else:
-                self.status.emit("No data found in the Excel file to fill the form")
-            
-            # Wait for user input to close the browser
+                self.status.emit("Form filled out completely. Waiting for user input.")
+                self.status.emit("Press Enter in the console to close the browser...")
+                input("Press Enter to close the browser...")
+
+        except UnexpectedAlertPresentException as uae:
+            self.status.emit(f"Unexpected alert appeared: {uae.alert_text}")
+            self.status.emit("Attempting to accept the alert...")
+            try:
+                driver.switch_to.alert.accept()
+                self.status.emit("Alert accepted")
+            except:
+                self.status.emit("Failed to accept the alert")
+
+        except Exception as e:
+            self.error.emit(str(e))
+            self.status.emit("An error occurred. Press Enter in the console to close the browser...")
             input("Press Enter to close the browser...")
 
         finally:
-            driver.quit()
-            self.status.emit("Browser closed.")
+            if 'driver' in locals():
+                driver.quit()
+                self.status.emit("Browser closed.")
 
 def run_web_automation_thread(excel_path, browser, username, password):
     thread = QThread()
@@ -298,7 +379,7 @@ def run_web_automation_thread(excel_path, browser, username, password):
     return thread, worker
 
 if __name__ == "__main__":
-    # This block is for testing purposes only
+    from excel_processor import extract_data_from_excel, print_extracted_data
     from PyQt6.QtWidgets import QApplication
 
     app = QApplication(sys.argv)
@@ -317,3 +398,6 @@ if __name__ == "__main__":
     thread.start()
 
     sys.exit(app.exec())
+else:
+    # When imported as a module
+    from .excel_processor import extract_data_from_excel, print_extracted_data
