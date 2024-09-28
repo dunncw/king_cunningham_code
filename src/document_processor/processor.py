@@ -1,3 +1,4 @@
+import sys
 import os
 import fitz
 import cv2
@@ -8,7 +9,38 @@ import warnings
 from PyQt6.QtCore import QThread, pyqtSignal
 import pytesseract
 
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+def get_tesseract_path():
+    if getattr(sys, 'frozen', False):
+        # The application is running as a bundled executable
+        application_path = sys._MEIPASS
+    else:
+        # The application is running in a normal Python environment
+        application_path = os.path.dirname(os.path.abspath(__file__))
+
+    # Try to find Tesseract in the application directory
+    tesseract_path = os.path.join(application_path, 'tesseract.exe')
+    
+    if os.path.exists(tesseract_path):
+        return tesseract_path
+    else:
+        # If not found in the application directory, try the default installation path
+        default_path = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+        if os.path.exists(default_path):
+            return default_path
+        else:
+            return None
+
+tesseract_path = get_tesseract_path()
+if tesseract_path:
+    pytesseract.pytesseract.tesseract_cmd = tesseract_path
+else:
+    print("Tesseract executable not found. OCR functionality will not work.")
+
+def perform_ocr(image):
+    if tesseract_path:
+        return pytesseract.image_to_string(image)
+    else:
+        return "OCR unavailable: Tesseract not found"
 
 # BUG for some reason this stopped working
 
