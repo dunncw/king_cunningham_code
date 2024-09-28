@@ -6,6 +6,9 @@ from pyzbar.pyzbar import decode
 from PIL import Image
 import warnings
 from PyQt6.QtCore import QThread, pyqtSignal
+import pytesseract
+
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 # BUG for some reason this stopped working
 
@@ -18,6 +21,10 @@ class SuppressStderr:
     def __exit__(self, exc_type, exc_val, exc_tb):
         os.dup2(self._original_stderr, 2)
         os.close(self._original_stderr)
+
+def perform_ocr(image):
+    return pytesseract.image_to_string(image)
+
 
 def extract_documents_by_barcode(pdf_path, output_dir, dpi=300, output_callback=None):
     try:
@@ -36,7 +43,8 @@ def extract_documents_by_barcode(pdf_path, output_dir, dpi=300, output_callback=
             cv_image = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
             gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
             
-            with SuppressStderr():
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
                 barcodes = decode(gray)
             
             if barcodes:
@@ -57,19 +65,38 @@ def extract_documents_by_barcode(pdf_path, output_dir, dpi=300, output_callback=
         if start_page is not None:
             try:
                 new_doc = fitz.open()
-                new_doc.insert_pdf(doc, from_page=start_page, to_page=end_page-1)
+                for page_num in range(start_page, end_page):
+                    new_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
                 
-                if suffix == 'deed':
-                    output_filename = f"{base_name}.pdf"
-                elif suffix == 'mtg':
-                    output_filename = f"{base_name}m.pdf"
-                else:
-                    output_filename = f"{base_name}-{suffix}.pdf"
+                dropped_info = ""
+                if new_doc.page_count > 0:
+                    # Perform OCR on the last page
+                    last_page = new_doc.load_page(-1)
+                    pix = last_page.get_pixmap(matrix=fitz.Matrix(dpi/72, dpi/72))
+                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                    ocr_text = perform_ocr(img)
+                    
+                    if "NOTICE OF AVAILABILITY OF OWNER" in ocr_text:
+                        # Remove the last page
+                        new_doc.delete_page(-1)
+                        dropped_info = f" Dropped last page (page {end_page} in original document) as it's 'NOTICE OF AVAILABILITY OF OWNER'S COVERAGE'"
+                    
+                    if new_doc.page_count > 0:
+                        if suffix == 'deed':
+                            output_filename = f"{base_name}.pdf"
+                        elif suffix == 'mtg':
+                            output_filename = f"{base_name}m.pdf"
+                        else:
+                            output_filename = f"{base_name}-{suffix}.pdf"
 
-                output_path = os.path.join(output_dir, output_filename)
-                new_doc.save(output_path)
-                new_doc.close()
-                return (start_page + 1, end_page)  # Return 1-based page numbers
+                        output_path = os.path.join(output_dir, output_filename)
+                        new_doc.save(output_path)
+                        new_doc.close()
+                        return (start_page + 1, end_page, dropped_info)  # Return 1-based page numbers and dropped info
+                    else:
+                        return None
+                else:
+                    return None
             except Exception as e:
                 raise Exception(f"Error saving {suffix} section: {str(e)}")
         return None
@@ -100,11 +127,11 @@ def extract_documents_by_barcode(pdf_path, output_dir, dpi=300, output_callback=
 
     result = f"{base_name}:\n"
     if deed_saved:
-        result += f"- DEED extracted (pages {deed_saved[0]} to {deed_saved[1]})\n"
+        result += f"- DEED extracted (pages {deed_saved[0]} to {deed_saved[1]}){deed_saved[2]}\n"
     else:
         result += "- DEED: Not found or not extracted\n"
     if mtg_saved:
-        result += f"- MTG extracted (pages {mtg_saved[0]} to {mtg_saved[1]})\n"
+        result += f"- MTG extracted (pages {mtg_saved[0]} to {mtg_saved[1]}){mtg_saved[2]}\n"
     else:
         result += "- MTG: Not found or not extracted\n"
 
