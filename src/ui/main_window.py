@@ -109,11 +109,21 @@ class MainWindow(QMainWindow):
         self.ocr_worker = OCRWorker(input_path, output_dir, is_directory)
         self.ocr_worker.progress_update.connect(self.doc_processor.update_progress)
         self.ocr_worker.output_update.connect(self.doc_processor.update_output)
-        self.ocr_worker.finished.connect(self.doc_processor.processing_finished)
-        self.ocr_worker.error.connect(self.doc_processor.show_error)
+        self.ocr_worker.finished.connect(self.on_document_processing_finished)
+        self.ocr_worker.error.connect(self.on_document_processing_error)
         
         self.doc_processor.process_button.setEnabled(False)
+        self.doc_processor.update_output("Starting document processing with OCR...")
         self.ocr_worker.start()
+
+    def on_document_processing_finished(self):
+        self.doc_processor.processing_finished()
+        self.doc_processor.process_button.setEnabled(True)
+        self.doc_processor.update_output("Document processing with OCR completed.")
+
+    def on_document_processing_error(self, error_message):
+        self.doc_processor.show_error(error_message)
+        self.doc_processor.process_button.setEnabled(True)
 
     def start_web_automation(self, excel_path, browser, username, password):
         self.thread, self.worker = run_web_automation_thread(excel_path, browser, username, password)
