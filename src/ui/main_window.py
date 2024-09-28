@@ -8,6 +8,7 @@ from PyQt6.QtGui import QFont, QIcon, QAction
 from .document_processor_ui import DocumentProcessorUI
 from .web_automation_ui import WebAutomationUI
 from web_automation.automation import run_web_automation_thread
+from document_processor.processor import OCRWorker
 
 class MainWindow(QMainWindow):
     check_for_updates = pyqtSignal()
@@ -85,6 +86,7 @@ class MainWindow(QMainWindow):
 
         # Document Processor
         self.doc_processor = DocumentProcessorUI()
+        self.doc_processor.start_processing.connect(self.start_document_processing)
         back_button = QPushButton("Back to Main Menu")
         back_button.clicked.connect(self.show_main_menu)
         self.doc_processor.layout().addWidget(back_button)
@@ -102,6 +104,16 @@ class MainWindow(QMainWindow):
         self.central_widget.addWidget(self.web_automation)
 
         self.show_main_menu()
+
+    def start_document_processing(self, input_path, output_dir, is_directory):
+        self.ocr_worker = OCRWorker(input_path, output_dir, is_directory)
+        self.ocr_worker.progress_update.connect(self.doc_processor.update_progress)
+        self.ocr_worker.output_update.connect(self.doc_processor.update_output)
+        self.ocr_worker.finished.connect(self.doc_processor.processing_finished)
+        self.ocr_worker.error.connect(self.doc_processor.show_error)
+        
+        self.doc_processor.process_button.setEnabled(False)
+        self.ocr_worker.start()
 
     def start_web_automation(self, excel_path, browser, username, password):
         self.thread, self.worker = run_web_automation_thread(excel_path, browser, username, password)

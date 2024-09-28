@@ -5,6 +5,7 @@ import numpy as np
 from pyzbar.pyzbar import decode
 from PIL import Image
 import warnings
+from PyQt6.QtCore import QThread, pyqtSignal
 
 # BUG for some reason this stopped working
 
@@ -164,3 +165,28 @@ def process_files(input_path, output_dir, is_directory, progress_callback=None, 
     
     if output_callback:
         output_callback(summary)
+
+class OCRWorker(QThread):
+    progress_update = pyqtSignal(int)
+    output_update = pyqtSignal(str)
+    finished = pyqtSignal()
+    error = pyqtSignal(str)
+
+    def __init__(self, input_path, output_dir, is_directory):
+        super().__init__()
+        self.input_path = input_path
+        self.output_dir = output_dir
+        self.is_directory = is_directory
+
+    def run(self):
+        try:
+            process_files(
+                self.input_path, 
+                self.output_dir, 
+                self.is_directory, 
+                progress_callback=self.progress_update.emit, 
+                output_callback=self.output_update.emit
+            )
+            self.finished.emit()
+        except Exception as e:
+            self.error.emit(str(e))
