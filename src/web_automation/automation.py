@@ -1,6 +1,8 @@
 import time
 import sys
 import os
+import requests
+from urllib.parse import urlparse, parse_qs
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -21,7 +23,9 @@ from selenium.webdriver.common.action_chains import ActionChains
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
+from selenium.webdriver.common.keys import Keys
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
+import pyautogui
 
 class alert_is_present_or_element(object):
     def __init__(self, locator):
@@ -349,40 +353,51 @@ class WebAutomationWorker(QObject):
                 submit_button.click()
                 self.status.emit("Clicked 'Submit PT-61 Form' button")
 
-                # Wait for the PDF to load
-                WebDriverWait(driver, 30).until(
-                    EC.frame_to_be_available_and_switch_to_it((By.TAG_NAME, "iframe"))
-                )
-                self.status.emit("PDF loaded in iframe")
+                # Wait for the specific iframe to be present
+                iframe_locator = (By.CSS_SELECTOR, "#dvPT61IFrame iframe")
+                WebDriverWait(driver, 30).until(EC.presence_of_element_located(iframe_locator))
+                self.status.emit("PT-61 iframe found")
 
-                # Wait for the print button to be clickable
-                print_button = WebDriverWait(driver, 10).until(
-                    EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Print the filing copy')]"))
-                )
-                print_button.click()
-                self.status.emit("Clicked 'Print the filing copy' button")
+                # Get the iframe element
+                iframe = driver.find_element(*iframe_locator)
 
-                # Switch back to the main content
-                driver.switch_to.default_content()
+                # Extract the src attribute
+                iframe_src = iframe.get_attribute('src')
+                self.status.emit(f"Iframe src: {iframe_src}")
 
-                # Wait for the print dialog to appear and save as PDF
-                # Note: This part might need adjustment based on the exact behavior of the site
-                save_button = WebDriverWait(driver, 10).until(
-                    EC.element_to_be_clickable((By.ID, "save"))  # Adjust the locator as needed
-                )
-                save_button.click()
+                # Open the PDF in a new tab
+                driver.execute_script(f"window.open('{iframe_src}', '_blank');")
+
+                # Switch to the new tab
+                driver.switch_to.window(driver.window_handles[-1])
+
+                # Wait for the PDF to load (you might need to adjust the time)
+                time.sleep(5)
 
                 # Generate filename
-                filename = f"{person['last_name']} {person['contract_number']} PT61.pdf"
+                filename = f"{person['individual_name']['last']}_{person['contract_number']}_PT61.pdf"
                 file_path = os.path.join(self.save_location, filename)
+                print(file_path)
 
-                # Use ActionChains to type the file path and press Enter
-                actions = ActionChains(driver)
-                actions.send_keys(file_path)
-                actions.send_keys(Keys.ENTER)
-                actions.perform()
+                # Use pyautogui to simulate Ctrl+P
+                pyautogui.hotkey('ctrl', 's')
+
+                # Wait for the print dialog to appear
+                time.sleep(2)
+
+                # Type the file path
+                pyautogui.write(file_path)
+                time.sleep(2)
+                pyautogui.press('enter')
+                time.sleep(2)
 
                 self.status.emit(f"Saved PDF as: {filename}")
+
+                # Close the PDF tab
+                driver.close()
+
+                # Switch back to the original tab
+                driver.switch_to.window(driver.window_handles[0])
 
                 # Update progress
                 self.progress.emit(100)
@@ -432,8 +447,9 @@ if __name__ == "__main__":
     test_browser = "Chrome"
     test_username = "jcunningham@kingcunningham.com"
     test_password = "Kc123!@#"
+    test_save_location = r"D:\repositorys\KC_appp\data\sorted\pt61"
 
-    thread, worker = run_web_automation_thread(test_excel_path, test_browser, test_username, test_password)
+    thread, worker = run_web_automation_thread(test_excel_path, test_browser, test_username, test_password, test_save_location)
     
     worker.status.connect(print)  # Print status updates to console
     worker.progress.connect(lambda p: print(f"Progress: {p}%"))
