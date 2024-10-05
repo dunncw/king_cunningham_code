@@ -23,7 +23,8 @@ def extract_data_from_excel(excel_path):
                 "last": row['Last 2']
             },
             "date_on_deed": row['date on deed'].strftime('%m/%d/%Y') if pd.notnull(row['date on deed']) else None,
-            "sales_price": f"{row['Sales Price']:.2f}" if pd.notnull(row['Sales Price']) else None
+            "sales_price": f"{row['Sales Price']:.2f}" if pd.notnull(row['Sales Price']) else None,
+            "contract_number": row['Contract Num']
         }
         people_data.append(person)
     

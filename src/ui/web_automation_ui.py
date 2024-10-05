@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSignal
 
 class WebAutomationUI(QWidget):
-    start_automation = pyqtSignal(str, str, str, str)
+    start_automation = pyqtSignal(str, str, str, str, str)
 
     def __init__(self):
         super().__init__()
@@ -52,6 +52,16 @@ class WebAutomationUI(QWidget):
         password_layout.addWidget(self.password_edit)
         layout.addLayout(password_layout)
 
+        # Add save location input
+        save_location_layout = QHBoxLayout()
+        self.save_location_edit = QLineEdit()
+        save_location_button = QPushButton("Select Save Location")
+        save_location_button.clicked.connect(self.select_save_location)
+        save_location_layout.addWidget(QLabel("Save Location:"))
+        save_location_layout.addWidget(self.save_location_edit)
+        save_location_layout.addWidget(save_location_button)
+        layout.addLayout(save_location_layout)
+
         # Start button
         self.start_button = QPushButton("Start Web Automation")
         self.start_button.clicked.connect(self.on_start_clicked)
@@ -87,14 +97,21 @@ class WebAutomationUI(QWidget):
         )
         if file_path:
             self.excel_edit.setText(file_path)
+    
+    def select_save_location(self):
+        folder_path = QFileDialog.getExistingDirectory(self, "Select Save Location")
+        if folder_path:
+            self.save_location_edit.setText(folder_path)
+
 
     def on_start_clicked(self):
         excel_path = self.excel_edit.text()
         browser = self.browser_combo.currentText()
         username = self.username_edit.text()
         password = self.password_edit.text()
-        if excel_path and username and password:
-            self.start_automation.emit(excel_path, browser, username, password)
+        save_location = self.save_location_edit.text()
+        if excel_path and username and password and save_location:
+            self.start_automation.emit(excel_path, browser, username, password, save_location)
             self.start_button.setEnabled(False)
             self.status_label.setText("Automation in progress...")
             self.spinner.show()

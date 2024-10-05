@@ -17,6 +17,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import UnexpectedAlertPresentException
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.common.exceptions import TimeoutException, NoAlertPresentException, UnexpectedAlertPresentException
+from selenium.webdriver.common.action_chains import ActionChains
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
@@ -49,12 +50,13 @@ class WebAutomationWorker(QObject):
     status = pyqtSignal(str)
     error = pyqtSignal(str)
 
-    def __init__(self, excel_path, browser, username, password):
+    def __init__(self, excel_path, browser, username, password, save_location):
         super().__init__()
         self.excel_path = excel_path
         self.browser = browser
         self.username = username
         self.password = password
+        self.save_location = save_location
 
     def run(self):
         try:
@@ -340,6 +342,48 @@ class WebAutomationWorker(QObject):
                     checkbox.click()
                     self.status.emit(f"Clicked checkbox: {checkbox_id}")
 
+                # Click "Submit PT-61 Form" button
+                submit_button = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.ID, "btnSubmitPT61"))
+                )
+                submit_button.click()
+                self.status.emit("Clicked 'Submit PT-61 Form' button")
+
+                # Wait for the PDF to load
+                WebDriverWait(driver, 30).until(
+                    EC.frame_to_be_available_and_switch_to_it((By.TAG_NAME, "iframe"))
+                )
+                self.status.emit("PDF loaded in iframe")
+
+                # Wait for the print button to be clickable
+                print_button = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Print the filing copy')]"))
+                )
+                print_button.click()
+                self.status.emit("Clicked 'Print the filing copy' button")
+
+                # Switch back to the main content
+                driver.switch_to.default_content()
+
+                # Wait for the print dialog to appear and save as PDF
+                # Note: This part might need adjustment based on the exact behavior of the site
+                save_button = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.ID, "save"))  # Adjust the locator as needed
+                )
+                save_button.click()
+
+                # Generate filename
+                filename = f"{person['last_name']} {person['contract_number']} PT61.pdf"
+                file_path = os.path.join(self.save_location, filename)
+
+                # Use ActionChains to type the file path and press Enter
+                actions = ActionChains(driver)
+                actions.send_keys(file_path)
+                actions.send_keys(Keys.ENTER)
+                actions.perform()
+
+                self.status.emit(f"Saved PDF as: {filename}")
+
                 # Update progress
                 self.progress.emit(100)
 
@@ -366,9 +410,9 @@ class WebAutomationWorker(QObject):
                 driver.quit()
                 self.status.emit("Browser closed.")
 
-def run_web_automation_thread(excel_path, browser, username, password):
+def run_web_automation_thread(excel_path, browser, username, password, save_location):
     thread = QThread()
-    worker = WebAutomationWorker(excel_path, browser, username, password)
+    worker = WebAutomationWorker(excel_path, browser, username, password, save_location)
     worker.moveToThread(thread)
     
     thread.started.connect(worker.run)

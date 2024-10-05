@@ -125,8 +125,8 @@ class MainWindow(QMainWindow):
         self.doc_processor.show_error(error_message)
         self.doc_processor.process_button.setEnabled(True)
 
-    def start_web_automation(self, excel_path, browser, username, password):
-        self.thread, self.worker = run_web_automation_thread(excel_path, browser, username, password)
+    def start_web_automation(self, excel_path, browser, username, password, save_location):
+        self.thread, self.worker = run_web_automation_thread(excel_path, browser, username, password, save_location)
         
         self.worker.status.connect(self.web_automation.update_output)
         self.worker.progress.connect(self.web_automation.update_progress)
