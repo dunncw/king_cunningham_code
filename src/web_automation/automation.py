@@ -87,9 +87,9 @@ class WebAutomationWorker(QObject):
         # Print out the first row of extracted data
         if people_data:
             first_person = people_data[0]
-            self.status.emit("First row of extracted data:")
-            for key, value in first_person.items():
-                self.status.emit(f"{key}: {value}")
+            # self.status.emit("First row of extracted data:")
+            # for key, value in first_person.items():
+            #     self.status.emit(f"{key}: {value}")
         else:
             self.status.emit("No data found in the Excel file")
 
@@ -145,50 +145,49 @@ class WebAutomationWorker(QObject):
             )
             self.status.emit("Logged in successfully")
 
-            # Navigate to the form page
-            driver.get("https://apps.gsccca.org/pt61efiling/PT61.asp")
-            self.status.emit("Navigated to PT-61 form page")
+            for index, person in enumerate(people_data, start=1):
+                self.status.emit(f"Processing person {index} of {len(people_data)}")
 
-            # On the next page, click the radio button
-            business_radio = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//input[@name='businessFlag' and @value='1']"))
-            )
-            business_radio.click()
-            self.status.emit("Selected business radio button")
+                # Navigate to the form page
+                driver.get("https://apps.gsccca.org/pt61efiling/PT61.asp")
+                self.status.emit("Navigated to PT-61 form page")
 
-            # Fill out the business name field
-            business_name_field = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.ID, "businessName"))
-            )
-            business_name_field.send_keys(business_name)
-            self.status.emit("Filled out business name")
+                # On the next page, click the radio button
+                business_radio = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, "//input[@name='businessFlag' and @value='1']"))
+                )
+                business_radio.click()
+                # self.status.emit("Selected business radio button")
 
-            # Fill out the address field
-            address_field = driver.find_element(By.ID, "street1")
-            address_field.send_keys(address_1)
-            self.status.emit("Filled out address")
+                # Fill out the business name field
+                business_name_field = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.ID, "businessName"))
+                )
+                business_name_field.send_keys(business_name)
+                # self.status.emit("Filled out business name")
 
-            # Fill out the city field
-            city_field = driver.find_element(By.ID, "city")
-            city_field.send_keys(city)
-            self.status.emit("Filled out city")
+                # Fill out the address field
+                address_field = driver.find_element(By.ID, "street1")
+                address_field.send_keys(address_1)
+                # self.status.emit("Filled out address")
 
-            # Fill out the zip code field
-            zip_field = driver.find_element(By.ID, "zip")
-            zip_field.send_keys(zip_code)
-            self.status.emit("Filled out zip code")
+                # Fill out the city field
+                city_field = driver.find_element(By.ID, "city")
+                city_field.send_keys(city)
+                # self.status.emit("Filled out city")
 
-            # Click "Next Step" button
-            next_step_button = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.ID, "btnNext"))
-            )
-            next_step_button.click()
-            self.status.emit("Clicked 'Next Step' button")
+                # Fill out the zip code field
+                zip_field = driver.find_element(By.ID, "zip")
+                zip_field.send_keys(zip_code)
+                # self.status.emit("Filled out zip code")
 
-            # Fill out additional fields on the next page
-            if people_data:
-                person = people_data[0]
-                
+                # Click "Next Step" button
+                next_step_button = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.ID, "btnNext"))
+                )
+                next_step_button.click()
+                # self.status.emit("Clicked 'Next Step' button")
+                    
                 # Fill out first name
                 first_name_field = WebDriverWait(driver, 10).until(
                     EC.presence_of_element_located((By.ID, "firstName"))
@@ -245,7 +244,7 @@ class WebAutomationWorker(QObject):
                         EC.element_to_be_clickable((By.ID, "btnAdd"))
                     )
                     add_additional_button.click()
-                    self.status.emit("Clicked 'Add to Additional Names' button")
+                    # self.status.emit("Clicked 'Add to Additional Names' button")
                 else:
                     self.status.emit("No additional name found in the data")
 
@@ -254,9 +253,9 @@ class WebAutomationWorker(QObject):
                     EC.element_to_be_clickable((By.ID, "btnNext"))
                 )
                 next_step_button.click()
-                self.status.emit("Clicked 'Next Step' button")
+                # self.status.emit("Clicked 'Next Step' button")
 
-                 # Fill out the date of sale
+                # Fill out the date of sale
                 sale_date_field = WebDriverWait(driver, 10).until(
                     EC.presence_of_element_located((By.ID, "saleDate"))
                 )
@@ -266,39 +265,39 @@ class WebAutomationWorker(QObject):
                 # Fill out street number
                 street_number_field = driver.find_element(By.ID, "houseNumber")
                 street_number_field.send_keys(street)
-                self.status.emit(f"Filled out street number: {street}")
+                # self.status.emit(f"Filled out street number: {street}")
 
                 # Fill out street name
                 street_name_field = driver.find_element(By.ID, "houseStreetName")
                 street_name_field.send_keys(street_name)
-                self.status.emit(f"Filled out street name: {street_name}")
+                # self.status.emit(f"Filled out street name: {street_name}")
 
                 # Select 'Drive' from street type dropdown
                 street_type_dropdown = Select(driver.find_element(By.ID, "houseStreetType"))
                 street_type_dropdown.select_by_value("DR")
-                self.status.emit("Selected 'Drive' as street type")
+                # self.status.emit("Selected 'Drive' as street type")
 
                 # Select post direction
                 post_dir_dropdown = Select(driver.find_element(By.ID, "housePostDirection"))
                 post_dir_dropdown.select_by_value("NW")
-                self.status.emit(f"Selected post direction: {"NW"}")
+                # self.status.emit(f"Selected post direction: {"NW"}")
 
                 # Select county
                 county_dropdown = Select(driver.find_element(By.ID, "county"))
                 county_dropdown.select_by_value("60")
-                self.status.emit(f"Selected county: {"Fulton"}")
+                # self.status.emit(f"Selected county: {"Fulton"}")
 
                 # Fill out map/parcel number
                 map_number_field = driver.find_element(By.ID, "mapNumber")
                 map_number_field.send_keys(map_pn)
-                self.status.emit(f"Filled out map/parcel number: {map_pn}")
+                # self.status.emit(f"Filled out map/parcel number: {map_pn}")
 
                 # Click "Next Step" button
                 next_step_button = WebDriverWait(driver, 10).until(
                     EC.element_to_be_clickable((By.ID, "btnNext"))
                 )
                 next_step_button.click()
-                self.status.emit("Clicked 'Next Step' button")
+                # self.status.emit("Clicked 'Next Step' button")
 
                 # Wait for a short time to allow the alert to appear if it's going to
                 time.sleep(2)
@@ -323,19 +322,19 @@ class WebAutomationWorker(QObject):
                 # Set fair market value to zero
                 fair_market_value_field = driver.find_element(By.ID, "fairMarketValue")
                 fair_market_value_field.send_keys("0")
-                self.status.emit("Set fair market value to zero")
+                # self.status.emit("Set fair market value to zero")
 
                 # Set liens and encumbrances to zero
                 liens_field = driver.find_element(By.ID, "liensAndEncumberances")
                 liens_field.send_keys("0")
-                self.status.emit("Set liens and encumbrances to zero")
+                # self.status.emit("Set liens and encumbrances to zero")
 
                 # Click "Next Step" button
                 next_step_button = WebDriverWait(driver, 10).until(
                     EC.element_to_be_clickable((By.ID, "btnNext"))
                 )
                 next_step_button.click()
-                self.status.emit("Clicked 'Next Step' button")
+                # self.status.emit("Clicked 'Next Step' button")
 
                 # Click the checkboxes
                 checkboxes = ["chkCounty", "chkAccept", "chkTaxAccept"]
@@ -344,7 +343,7 @@ class WebAutomationWorker(QObject):
                         EC.element_to_be_clickable((By.ID, checkbox_id))
                     )
                     checkbox.click()
-                    self.status.emit(f"Clicked checkbox: {checkbox_id}")
+                    # self.status.emit(f"Clicked checkbox: {checkbox_id}")
 
                 # Click "Submit PT-61 Form" button
                 submit_button = WebDriverWait(driver, 10).until(
@@ -377,6 +376,8 @@ class WebAutomationWorker(QObject):
                 # Generate filename
                 filename = f"{person['individual_name']['last']}_{person['contract_number']}_PT61.pdf"
                 file_path = os.path.join(self.save_location, filename)
+                # Normalize the path to use consistent separators
+                file_path = os.path.normpath(file_path)
                 print(file_path)
 
                 # Use pyautogui to simulate Ctrl+P
@@ -400,11 +401,10 @@ class WebAutomationWorker(QObject):
                 driver.switch_to.window(driver.window_handles[0])
 
                 # Update progress
-                self.progress.emit(100)
+                progress = int((index / len(people_data)) * 100)
+                self.progress.emit(progress)
 
-                self.status.emit("Form filled out completely. Waiting for user input.")
-                self.status.emit("Press Enter in the console to close the browser...")
-                input("Press Enter to close the browser...")
+            self.status.emit("All people processed. Automation complete.")
 
         except UnexpectedAlertPresentException as uae:
             self.status.emit(f"Unexpected alert appeared: {uae.alert_text}")
