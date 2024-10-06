@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QFileDialog, QProgressBar, QTextEdit, QComboBox
+    QFileDialog, QProgressBar, QTextEdit, QComboBox, QFrame
 )
 from PyQt6.QtCore import pyqtSignal
 
@@ -89,6 +89,22 @@ class WebAutomationUI(QWidget):
         self.output_text.setReadOnly(True)
         layout.addWidget(self.output_text)
 
+        # Add warning message
+        self.warning_frame = QFrame()
+        self.warning_frame.setStyleSheet("background-color: #FFF3CD; border: 1px solid #FFEEBA; border-radius: 4px;")
+        warning_layout = QVBoxLayout(self.warning_frame)
+        warning_label = QLabel("WARNING: Do not switch windows or use the keyboard until automation is complete. Doing so may interfere with the process. Note folder your writing output to should be empty! Click X to stop automation")
+        warning_label.setWordWrap(True)
+        warning_label.setStyleSheet("color: #856404; font-weight: bold;")
+        warning_layout.addWidget(warning_label)
+        self.warning_frame.hide()  # Initially hidden
+        layout.addWidget(self.warning_frame)
+
+        # Add Save Output button
+        self.save_button = QPushButton("Save Output")
+        self.save_button.clicked.connect(self.save_output)
+        layout.addWidget(self.save_button)
+
         self.setLayout(layout)
 
     def select_excel_file(self):
@@ -115,6 +131,7 @@ class WebAutomationUI(QWidget):
             self.start_button.setEnabled(False)
             self.status_label.setText("Automation in progress...")
             self.spinner.show()
+            self.warning_frame.show()
         else:
             self.status_label.setText("Please provide all required information.")
 
@@ -128,8 +145,19 @@ class WebAutomationUI(QWidget):
         self.start_button.setEnabled(True)
         self.status_label.setText("Automation complete!")
         self.spinner.hide()
+        self.warning_frame.hide()
 
     def show_error(self, error_message):
         self.status_label.setText(f"Error: {error_message}")
         self.spinner.hide()
         self.start_button.setEnabled(True)
+        self.warning_frame.hide()
+
+    def save_output(self):
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Output", "", "Text Files (*.txt)"
+        )
+        if file_path:
+            with open(file_path, 'w') as f:
+                f.write(self.output_text.toPlainText())
+            self.status_label.setText(f"Output saved to {file_path}")
