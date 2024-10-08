@@ -221,32 +221,37 @@ class WebAutomationWorker(QObject):
                 self.status.emit(f"Filled out zip code: {zip_code}")
 
                 # Check for additional name
-                if 'additional_name' in person and person['additional_name']:
-                    # Fill out additional first name
-                    additional_first_name_field = WebDriverWait(driver, 10).until(
-                        EC.presence_of_element_located((By.ID, "AdditionalFirstName"))
-                    )
-                    additional_first_name_field.send_keys(person['additional_name']['first'])
-                    self.status.emit(f"Filled out additional first name: {person['additional_name']['first']}")
+                if ('additional_name' in person and 
+                    person['additional_name'] and 
+                    any(person['additional_name'].values())):
+                    try:
+                        # Fill out additional first name
+                        additional_first_name_field = WebDriverWait(driver, 10).until(
+                            EC.presence_of_element_located((By.ID, "AdditionalFirstName"))
+                        )
+                        additional_first_name_field.send_keys(person['additional_name']['first'])
+                        self.status.emit(f"Filled out additional first name: {person['additional_name']['first']}")
 
-                    # Fill out additional middle name
-                    additional_middle_name_field = driver.find_element(By.ID, "AdditionalMiddleName")
-                    additional_middle_name_field.send_keys(person['additional_name']['middle'])
-                    self.status.emit(f"Filled out additional middle name: {person['additional_name']['middle']}")
+                        # Fill out additional middle name
+                        additional_middle_name_field = driver.find_element(By.ID, "AdditionalMiddleName")
+                        additional_middle_name_field.send_keys(person['additional_name']['middle'])
+                        self.status.emit(f"Filled out additional middle name: {person['additional_name']['middle']}")
 
-                    # Fill out additional last name
-                    additional_last_name_field = driver.find_element(By.ID, "AdditionalLastName")
-                    additional_last_name_field.send_keys(person['additional_name']['last'])
-                    self.status.emit(f"Filled out additional last name: {person['additional_name']['last']}")
+                        # Fill out additional last name
+                        additional_last_name_field = driver.find_element(By.ID, "AdditionalLastName")
+                        additional_last_name_field.send_keys(person['additional_name']['last'])
+                        self.status.emit(f"Filled out additional last name: {person['additional_name']['last']}")
 
-                    # Click "Add to Additional Names" button
-                    add_additional_button = WebDriverWait(driver, 10).until(
-                        EC.element_to_be_clickable((By.ID, "btnAdd"))
-                    )
-                    add_additional_button.click()
-                    # self.status.emit("Clicked 'Add to Additional Names' button")
+                        # Click "Add to Additional Names" button
+                        add_additional_button = WebDriverWait(driver, 10).until(
+                            EC.element_to_be_clickable((By.ID, "btnAdd"))
+                        )
+                        add_additional_button.click()
+                        self.status.emit("Added additional name successfully")
+                    except Exception as e:
+                        self.status.emit(f"Error adding additional name: {str(e)}")
                 else:
-                    self.status.emit("No additional name found in the data")
+                    self.status.emit("No additional name to process, skipping this part")
 
                 # Click "Next Step" button
                 next_step_button = WebDriverWait(driver, 10).until(
