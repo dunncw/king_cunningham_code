@@ -9,7 +9,7 @@ from PyQt6.QtCore import QTimer, Qt
 from ui.main_window import MainWindow
 from utils.updater import UpdateChecker
 
-__version__ = "0.0.2"
+__version__ = "0.0.5"
 
 def get_resource_path(relative_path):
     try:
