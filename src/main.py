@@ -3,6 +3,7 @@
 import sys
 import os
 import traceback
+from selenium.webdriver.chrome.options import Options as ChromeOptions
 from PyQt6.QtWidgets import QApplication, QMessageBox, QSplashScreen
 from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtCore import QTimer, Qt
