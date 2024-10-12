@@ -22,7 +22,7 @@ class MainWindow(QMainWindow):
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowTitle("King & Cunningham Document Processor")
+        self.setWindowTitle("King & Cunningham Software Suite")
         
         self.central_widget = QStackedWidget()
         self.setCentralWidget(self.central_widget)
