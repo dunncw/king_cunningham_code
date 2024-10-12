@@ -112,7 +112,7 @@ class CRGAutomationUI(QWidget):
 
     def select_excel_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select Excel File", "", "Excel Files (*.xlsx *.xls)"
+            self, "Select Excel File", "", "Excel Files (*.xlsx *.xls *.xlsm)"
         )
         if file_path:
             self.excel_edit.setText(file_path)
