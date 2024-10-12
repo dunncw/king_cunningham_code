@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QFont, QIcon, QAction
+from .crg_automation_ui import CRGAutomationUI
 from .document_processor_ui import DocumentProcessorUI
 from .web_automation_ui import WebAutomationUI
 from web_automation.automation import run_web_automation_thread
@@ -13,6 +14,7 @@ from document_processor.processor import OCRWorker
 class MainWindow(QMainWindow):
     check_for_updates = pyqtSignal()
     start_web_automation = pyqtSignal(str, str, str)
+    start_crg_automation = pyqtSignal()
 
     def __init__(self, version):
         super().__init__()
@@ -76,8 +78,11 @@ class MainWindow(QMainWindow):
         doc_process_button = create_button("Document Processing", "path/to/doc_icon.png", self.show_document_processor)
         buttons_layout.addWidget(doc_process_button)
 
-        web_auto_button = create_button("Web Automation", "path/to/web_icon.png", self.show_web_automation)
+        web_auto_button = create_button("PT61 Form", "path/to/web_icon.png", self.show_web_automation)
         buttons_layout.addWidget(web_auto_button)
+
+        crg_auto_button = create_button("CRG Automation", "path/to/crg_icon.png", self.show_crg_automation)
+        buttons_layout.addWidget(crg_auto_button)
 
         buttons_widget.setLayout(buttons_layout)
         main_layout.addWidget(buttons_widget)
@@ -98,12 +103,24 @@ class MainWindow(QMainWindow):
         back_button.clicked.connect(self.show_main_menu)
         self.web_automation.layout().addWidget(back_button)
 
+        # CRG Automation
+        self.crg_automation = CRGAutomationUI()
+        self.crg_automation.start_automation.connect(self.start_crg_automation)
+        back_button = QPushButton("Back to Main Menu")
+        back_button.clicked.connect(self.show_main_menu)
+        self.crg_automation.layout().addWidget(back_button)
+
         # Add widgets to stacked widget
         self.central_widget.addWidget(self.main_menu)
         self.central_widget.addWidget(self.doc_processor)
         self.central_widget.addWidget(self.web_automation)
+        self.central_widget.addWidget(self.crg_automation)
 
         self.show_main_menu()
+
+    def show_crg_automation(self):
+        self.central_widget.setCurrentWidget(self.crg_automation)
+        self.resize(800, 600)  # Set fixed size for CRG automation
 
     def start_document_processing(self, input_path, output_dir, is_directory):
         self.ocr_worker = OCRWorker(input_path, output_dir, is_directory)
