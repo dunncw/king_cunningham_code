@@ -1,5 +1,4 @@
 from PyQt6.QtCore import QObject, pyqtSignal
-from .excel_processor import ExcelProcessor
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -116,55 +115,65 @@ class CRGAutomationWorker(QObject):
         self.status.emit("Successfully logged in to Capital IT Files.")
 
     def process_account(self, account_number):
-        # Find and fill the search bar
-        search_bar = WebDriverWait(self.driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "input[placeholder='Search files and folders...']"))
-        )
-        search_bar.clear()
-        search_bar.send_keys(str(account_number))
-        search_bar.send_keys(Keys.RETURN)
+        print(account_number)
+        try:
+            # Navigate to the main page before each search
+            self.driver.get("https://capitalit.files.com/")
+            
+            # Wait for the page to load and find the search bar
+            search_bar = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "input[placeholder='Search files and folders...']"))
+            )
+            search_bar.clear()
+            search_bar.send_keys(str(account_number))
+            search_bar.send_keys(Keys.RETURN)
 
-        # Wait for search results and switch to grid view
-        time.sleep(2)  # Wait for search results to load
-        grid_view_button = WebDriverWait(self.driver, 10).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, "button[aria-label='Grid view']"))
-        )
-        grid_view_button.click()
+            # Wait for search results and switch to grid view
+            time.sleep(2)  # Wait for search results to load
+            grid_view_button = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "button[aria-label='Grid view']"))
+            )
+            grid_view_button.click()
 
-        # Select all files
-        select_all_button = WebDriverWait(self.driver, 10).until(
-            EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Select all')]"))
-        )
-        select_all_button.click()
+            # Select all files
+            select_all_button = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Select all')]"))
+            )
+            select_all_button.click()
 
-        # Click download button
-        download_button = WebDriverWait(self.driver, 10).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, "svg.icon-download"))
-        )
-        download_button.click()
+            # Click download button
+            download_button = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "svg.icon-download"))
+            )
+            download_button.click()
 
-        # Wait for the file save dialog to appear
-        time.sleep(2)
+            # Wait for the file save dialog to appear
+            time.sleep(2)
 
-        # Handle file save dialog using PyAutoGUI
-        save_path = os.path.join(self.save_location, f"{account_number}.zip")
-        save_path = os.path.normpath(save_path)
-        pyautogui.write(save_path)
-        time.sleep(2)
-        pyautogui.press('enter')
+            # Handle file save dialog using PyAutoGUI
+            save_path = os.path.join(self.save_location, f"{account_number}.zip")
+            save_path = os.path.normpath(save_path)
+            pyautogui.write(save_path)
+            time.sleep(2)
+            pyautogui.press('enter')
 
-        # Wait for the download to complete (you may need to adjust this wait time)
-        time.sleep(10)
+            # Wait for the download to complete (you may need to adjust this wait time)
+            time.sleep(2)
 
-        self.status.emit(f"Files for account {account_number} downloaded successfully as {save_path}")
+            self.status.emit(f"Files for account {account_number} downloaded successfully as {save_path}")
 
+            # Close any open dialogs (press Escape key)
+            pyautogui.press('esc')
+
+        except Exception as e:
+            self.error.emit(f"Error processing account {account_number}: {str(e)}")
 def main():
     # This function allows you to test the CRGAutomationWorker independently
     excel_path = r"data\raw\capital_ventures\Closing Worksheet SBO-CP-216.xlsm"
     browser = "chrome"
     username = "Kcunningham"
     password = "Capital1234!"
-    save_location = r"data\sorted\crg"
+    save_location = r"D:\repositorys\KC_appp\data\sorted\crg"
 
     worker = CRGAutomationWorker(excel_path, browser, username, password, save_location)
 
@@ -191,4 +200,7 @@ def main():
     worker.run()
 
 if __name__ == "__main__":
+    from excel_processor import ExcelProcessor
     main()
+else:
+    from .excel_processor import ExcelProcessor
