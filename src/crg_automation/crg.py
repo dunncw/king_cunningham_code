@@ -151,29 +151,29 @@ class CRGAutomationWorker(QObject):
             time.sleep(2)
 
             # Handle file save dialog using PyAutoGUI
-            save_path = os.path.join(self.save_location, f"{account_number}.zip")
+            save_path = os.path.join(self.save_location, f"{account_number}")
             save_path = os.path.normpath(save_path)
+            time.sleep(2)
             pyautogui.write(save_path)
             time.sleep(2)
             pyautogui.press('enter')
 
             # Wait for the download to complete (you may need to adjust this wait time)
-            time.sleep(2)
+            time.sleep(5)
 
             self.status.emit(f"Files for account {account_number} downloaded successfully as {save_path}")
 
-            # Close any open dialogs (press Escape key)
-            pyautogui.press('esc')
-
         except Exception as e:
             self.error.emit(f"Error processing account {account_number}: {str(e)}")
+
+
 def main():
     # This function allows you to test the CRGAutomationWorker independently
-    excel_path = r"data\raw\capital_ventures\Closing Worksheet SBO-CP-216.xlsm"
+    excel_path = r"D:\repositorys\KC_appp\task\crg\data\in\Closing Worksheet SBO-CP-219.xlsm"
     browser = "chrome"
     username = "Kcunningham"
     password = "Capital1234!"
-    save_location = r"D:\repositorys\KC_appp\data\sorted\crg"
+    save_location = r"D:\repositorys\KC_appp\task\crg\data\out"
 
     worker = CRGAutomationWorker(excel_path, browser, username, password, save_location)
 
