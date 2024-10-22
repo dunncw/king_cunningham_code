@@ -10,6 +10,7 @@ from .document_processor_ui import DocumentProcessorUI
 from .web_automation_ui import WebAutomationUI
 from web_automation.automation import run_web_automation_thread
 from document_processor.processor import OCRWorker
+from .scra_automation_ui import SCRAAutomationUI
 
 class MainWindow(QMainWindow):
     check_for_updates = pyqtSignal()
@@ -84,6 +85,9 @@ class MainWindow(QMainWindow):
         crg_auto_button = create_button("CRG Automation", "path/to/crg_icon.png", self.show_crg_automation)
         buttons_layout.addWidget(crg_auto_button)
 
+        scra_auto_button = create_button("SCRA Automation", "path/to/scra_icon.png", self.show_scra_automation)
+        buttons_layout.addWidget(scra_auto_button)
+
         buttons_widget.setLayout(buttons_layout)
         main_layout.addWidget(buttons_widget)
 
@@ -110,13 +114,24 @@ class MainWindow(QMainWindow):
         back_button.clicked.connect(self.show_main_menu)
         self.crg_automation.layout().addWidget(back_button)
 
+        # SCRA Automation
+        self.scra_automation = SCRAAutomationUI()
+        back_button = QPushButton("Back to Main Menu")
+        back_button.clicked.connect(self.show_main_menu)
+        self.scra_automation.layout().addWidget(back_button)
+
         # Add widgets to stacked widget
         self.central_widget.addWidget(self.main_menu)
         self.central_widget.addWidget(self.doc_processor)
         self.central_widget.addWidget(self.web_automation)
         self.central_widget.addWidget(self.crg_automation)
+        self.central_widget.addWidget(self.scra_automation)
 
         self.show_main_menu()
+
+    def show_scra_automation(self):
+        self.central_widget.setCurrentWidget(self.scra_automation)
+        self.resize(800, 600)  # Set fixed size for SCRA automation
 
     def show_crg_automation(self):
         self.central_widget.setCurrentWidget(self.crg_automation)
