@@ -11,6 +11,7 @@ from .web_automation_ui import WebAutomationUI
 from web_automation.automation import run_web_automation_thread
 from document_processor.processor import OCRWorker
 from .scra_automation_ui import SCRAAutomationUI
+from .pacer_automation_ui import PACERAutomationUI
 
 class MainWindow(QMainWindow):
     check_for_updates = pyqtSignal()
@@ -88,6 +89,9 @@ class MainWindow(QMainWindow):
         scra_auto_button = create_button("SCRA Automation", "path/to/scra_icon.png", self.show_scra_automation)
         buttons_layout.addWidget(scra_auto_button)
 
+        pacer_auto_button = create_button("PACER Automation", "path/to/pacer_icon.png", self.show_pacer_automation)
+        buttons_layout.addWidget(pacer_auto_button)
+
         buttons_widget.setLayout(buttons_layout)
         main_layout.addWidget(buttons_widget)
 
@@ -120,14 +124,25 @@ class MainWindow(QMainWindow):
         back_button.clicked.connect(self.show_main_menu)
         self.scra_automation.layout().addWidget(back_button)
 
+        # PACER Automation
+        self.pacer_automation = PACERAutomationUI()
+        back_button = QPushButton("Back to Main Menu")
+        back_button.clicked.connect(self.show_main_menu)
+        self.pacer_automation.layout().addWidget(back_button)
+
         # Add widgets to stacked widget
         self.central_widget.addWidget(self.main_menu)
         self.central_widget.addWidget(self.doc_processor)
         self.central_widget.addWidget(self.web_automation)
         self.central_widget.addWidget(self.crg_automation)
         self.central_widget.addWidget(self.scra_automation)
+        self.central_widget.addWidget(self.pacer_automation)
 
         self.show_main_menu()
+
+    def show_pacer_automation(self):
+        self.central_widget.setCurrentWidget(self.pacer_automation)
+        self.resize(800, 600)  # Set fixed size for PACER automation
 
     def show_scra_automation(self):
         self.central_widget.setCurrentWidget(self.scra_automation)

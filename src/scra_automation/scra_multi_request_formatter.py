@@ -30,14 +30,14 @@ class SCRAMultiRequestFormatter:
         """Validate name according to SCRA requirements."""
         if pd.isna(name):
             return False
-            
+
         # Convert to string
         name_str = str(name).strip()
-        
+
         # Check if empty after stripping
         if not name_str:
             return False
-            
+
         # Check if name contains only allowed characters (letters, spaces, dashes, apostrophes)
         allowed_pattern = r'^[A-Za-z\s\-\']+$'
         return bool(re.match(allowed_pattern, name_str))
@@ -96,13 +96,13 @@ def main():
     # Test the processor with hardcoded paths
     input_file = r"D:\repositorys\KC_appp\task\pacer_scra\data\in\z SSN Example.xlsx"
     output_file = r"D:\repositorys\KC_appp\task\pacer_scra\data\out\output.txt"
-    
+
     print(f"Processing Excel file: {input_file}")
     print(f"Output will be saved to: {output_file}")
-    
+
     processor = SCRAMultiRequestFormatter(input_file, output_file)
     success, message = processor.process_excel()
-    
+
     if success:
         print("Success:", message)
         print(f"Output file created at: {output_file}")
