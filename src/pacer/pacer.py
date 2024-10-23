@@ -10,6 +10,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
 import time
 
+# TODO: in the case that we find a open banrucpy we need to take a screen shot of the page and save it with a good file name.
+
 # Handle different import paths for direct execution vs module import
 if __name__ == "__main__":
     from excel_processor import PACERExcelProcessor
@@ -58,18 +60,33 @@ class PACERAutomationWorker(QObject):
             if not self.login_to_pacer():
                 raise Exception("Failed to login to PACER")
             
-            if not self.navigate_to_bankruptcy_search():
-                raise Exception("Failed to navigate to bankruptcy search")
+            # Process all people from the data
+            for row in data:
+                for person in row['people']:
+                    print(person['last_name'])
+                    # Navigate to bankruptcy search page
+                    if not self.navigate_to_bankruptcy_search():
+                        raise Exception("Failed to navigate to bankruptcy search")
+                    
+                    self.status.emit(f"Searching SSN for {person['last_name']}...")
+                    print(f"DEBUG: Searching person - Account: {row['account_number']}, Name: {person['last_name']}, SSN: {person['ssn']}")
+                    
+                    success, message = self.handle_search_attempt(person)
+                    if not success:
+                        raise Exception(message)
+                    
+                    self.status.emit(message)
+                    print(f"DEBUG: Search result - {message}")
+                    
+                    # Wait 5 seconds before next search
+                    time.sleep(5)
+                    
+                    # Navigate back to search page
+                    self.driver.get("https://pcl.uscourts.gov/pcl/pages/search/findBankruptcy.jsf")
             
-            # Process the first person from the data
-            if data and data[0]['people']:
-                first_person = data[0]['people'][0]
-                self.status.emit(f"Searching SSN for {first_person['last_name']}...")
-                if not self.search_ssn(first_person['ssn']):
-                    raise Exception("Failed to perform SSN search")
-            else:
-                raise Exception("No valid person data found")
-            
+            self.status.emit("All searches completed successfully")
+            self.finished.emit()
+                
         except Exception as e:
             self.error.emit(str(e))
         finally:
@@ -137,6 +154,12 @@ class PACERAutomationWorker(QObject):
     def navigate_to_bankruptcy_search(self):
         """Navigate to the bankruptcy search page"""
         try:
+            current_url = self.driver.current_url
+            
+            # If not on welcome page, navigate directly to bankruptcy search
+            if "welcome.jsf" not in current_url:
+                self.driver.get("https://pcl.uscourts.gov/pcl/pages/welcome.jsf")
+            
             # Wait for welcome page to load
             self.status.emit("Waiting for welcome page...")
             self.wait.until(EC.url_to_be("https://pcl.uscourts.gov/pcl/pages/welcome.jsf"))
@@ -292,11 +315,11 @@ def main():
         print(f"Error processing Excel file: {data}")
         return
     
-    print("\nProcessed Excel data:")
-    for row in data:
-        print(f"\nAccount #: {row['account_number']}")
-        for person in row['people']:
-            print(f"Person: {person['last_name']}, SSN: {person['ssn']}")
+    # print("\nProcessed Excel data:")
+    # for row in data:
+    #     print(f"\nAccount #: {row['account_number']}")
+    #     for person in row['people']:
+    #         print(f"Person: {person['last_name']}, SSN: {person['ssn']}")
     
     # Run the automation
     try:

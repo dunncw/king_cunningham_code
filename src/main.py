@@ -12,6 +12,10 @@ from utils.updater import UpdateChecker
 
 __version__ = "0.0.5"
 
+# TODO: refactor entier code base
+# TODO: try to build a cli for adding a new page to the application
+# TODO: build out a framework for downloading files with requests instead of broswer dialogue 'https://www.reddit.com/r/learnpython/comments/18drzsn/chrome_save_as_dialog_box_interactions/'
+
 def get_resource_path(relative_path):
     try:
         base_path = sys._MEIPASS
