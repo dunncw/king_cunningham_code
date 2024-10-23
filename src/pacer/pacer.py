@@ -4,8 +4,13 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.edge.options import Options as EdgeOptions
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, WebDriverException
 import time
 
+# Handle different import paths for direct execution vs module import
 if __name__ == "__main__":
     from excel_processor import PACERExcelProcessor
 else:
@@ -25,6 +30,7 @@ class PACERAutomationWorker(QObject):
         self.password = password
         self.save_location = save_location
         self.driver = None
+        self.wait = None
         
     def process_data(self):
         """Process the Excel file and return the data"""
@@ -47,10 +53,23 @@ class PACERAutomationWorker(QObject):
             self.status.emit("Navigating to PACER...")
             self.driver.get("https://pacer.login.uscourts.gov/csologin/login.jsf?pscCourtId=PCL")
             
-            # Wait for page to load
-            time.sleep(2)  # Add proper wait conditions later
+            # Login to PACER
+            self.status.emit("Logging into PACER...")
+            if not self.login_to_pacer():
+                raise Exception("Failed to login to PACER")
             
-            self.finished.emit()
+            if not self.navigate_to_bankruptcy_search():
+                raise Exception("Failed to navigate to bankruptcy search")
+            
+            # Process the first person from the data
+            if data and data[0]['people']:
+                first_person = data[0]['people'][0]
+                self.status.emit(f"Searching SSN for {first_person['last_name']}...")
+                if not self.search_ssn(first_person['ssn']):
+                    raise Exception("Failed to perform SSN search")
+            else:
+                raise Exception("No valid person data found")
+            
         except Exception as e:
             self.error.emit(str(e))
         finally:
@@ -71,14 +90,193 @@ class PACERAutomationWorker(QObject):
             raise ValueError(f"Unsupported browser: {self.browser}")
         
         self.driver.maximize_window()
+        # Initialize WebDriverWait with 10 second timeout
+        self.wait = WebDriverWait(self.driver, 10)
+
+    def login_to_pacer(self):
+        """Handle the PACER login process"""
+        try:
+            # Wait for and find username field
+            username_field = self.wait.until(
+                EC.presence_of_element_located((By.ID, "loginForm:loginName"))
+            )
+            username_field.clear()
+            username_field.send_keys(self.username)
+            
+            # Find password field
+            password_field = self.driver.find_element(By.ID, "loginForm:password")
+            password_field.clear()
+            password_field.send_keys(self.password)
+            
+            # Find and click login button
+            login_button = self.wait.until(
+                EC.element_to_be_clickable((By.XPATH, "//span[contains(@class, 'ui-button-text') and text()='Login']"))
+            )
+            login_button.click()
+            
+            # Wait for login to complete (you might need to adjust this based on PACER's behavior)
+            # For example, wait for a specific element that appears after successful login
+            time.sleep(2)  # Temporary wait - replace with proper wait condition
+            
+            # TODO: Add verification of successful login
+            # For example, check for elements that only appear when logged in
+            # or check for error messages
+            
+            return True
+            
+        except TimeoutException:
+            self.error.emit("Timeout waiting for login elements to load")
+            return False
+        except WebDriverException as e:
+            self.error.emit(f"Browser error during login: {str(e)}")
+            return False
+        except Exception as e:
+            self.error.emit(f"Unexpected error during login: {str(e)}")
+            return False
+    
+    def navigate_to_bankruptcy_search(self):
+        """Navigate to the bankruptcy search page"""
+        try:
+            # Wait for welcome page to load
+            self.status.emit("Waiting for welcome page...")
+            self.wait.until(EC.url_to_be("https://pcl.uscourts.gov/pcl/pages/welcome.jsf"))
+            
+            # Find and click bankruptcy search link
+            bankruptcy_link = self.wait.until(
+                EC.element_to_be_clickable((By.ID, "frmSearch:findBankruptcy"))
+            )
+            bankruptcy_link.click()
+            
+            # Wait for search page to load
+            self.status.emit("Waiting for bankruptcy search page...")
+            self.wait.until(EC.url_to_be("https://pcl.uscourts.gov/pcl/pages/search/findBankruptcy.jsf"))
+            return True
+            
+        except TimeoutException:
+            self.error.emit("Timeout waiting for bankruptcy search page")
+            return False
+        except Exception as e:
+            self.error.emit(f"Error navigating to bankruptcy search: {str(e)}")
+            return False
+
+    # Add this new method to handle SSN search
+    def search_ssn(self, ssn):
+        """Enter SSN and perform search"""
+        try:
+            # Wait for SSN input field
+            ssn_input = self.wait.until(
+                EC.presence_of_element_located((By.ID, "frmSearch:txtSSN"))
+            )
+            ssn_input.clear()
+            ssn_input.send_keys(ssn)
+            
+            # Find and click search button
+            search_button = self.wait.until(
+                EC.element_to_be_clickable((By.XPATH, "//span[contains(@class, 'ui-button-text') and text()='Search']"))
+            )
+            search_button.click()
+            
+            # Wait for search to complete
+            time.sleep(2)  # Replace with proper wait condition based on page behavior
+            return True
+            
+        except TimeoutException:
+            self.error.emit(f"Timeout during SSN search for {ssn}")
+            return False
+        except Exception as e:
+            self.error.emit(f"Error during SSN search: {str(e)}")
+            return False
+
+    def check_search_results(self):
+        """Handle and verify search results"""
+        try:
+            # Wait a moment for any possible modal or redirect
+            time.sleep(2)
+            
+            # Check for "No Results Found" modal
+            try:
+                no_results_title = self.driver.find_element(By.ID, "frmSearch:dlgNoResultsFound_title")
+                if no_results_title.is_displayed():
+                    return "no_results"
+            except:
+                pass
+            
+            # Check if redirected to welcome page
+            if self.driver.current_url == "https://pcl.uscourts.gov/pcl/pages/welcome.jsf":
+                return "welcome_redirect"
+                
+            # Check if we're on a results page
+            if "results/parties.jsf" in self.driver.current_url:
+                # Verify "Search Results" link is present
+                try:
+                    self.wait.until(
+                        EC.presence_of_element_located((By.XPATH, "//a[contains(text(), 'Search Results')]"))
+                    )
+                    
+                    # Find all date closed values
+                    date_cells = self.driver.find_elements(
+                        By.XPATH, 
+                        "//span[contains(@class, 'pcl-search-results-column pcl-search-results-column-size-6')]"
+                    )
+                    
+                    if not date_cells:
+                        raise Exception("Could not find date closed columns")
+                    
+                    # Check if any dates are empty
+                    empty_dates = any(cell.text.strip() == "" for cell in date_cells)
+                    
+                    return "results_empty_dates" if empty_dates else "results_with_dates"
+                    
+                except Exception as e:
+                    self.error.emit(f"Error processing results page: {str(e)}")
+                    return "error"
+                    
+            return "unknown"
+            
+        except Exception as e:
+            self.error.emit(f"Error checking search results: {str(e)}")
+            return "error"
+
+    def handle_search_attempt(self, person_data, attempt=1):
+        """Handle a single search attempt with retry logic"""
+        try:
+            if not self.search_ssn(person_data['ssn']):
+                return False, "Failed to perform search"
+                
+            result_type = self.check_search_results()
+            
+            if result_type == "no_results":
+                return True, f"No bankruptcy records found for {person_data['last_name']} (SSN: {person_data['ssn']})"
+                
+            elif result_type == "welcome_redirect":
+                if attempt < 2:  # Try once more
+                    self.status.emit("Search redirected, attempting retry...")
+                    return self.handle_search_attempt(person_data, attempt + 1)
+                else:
+                    return False, f"Search failed after retry for {person_data['last_name']} (SSN: {person_data['ssn']})"
+                    
+            elif result_type == "results_with_dates":
+                return True, f"Bankruptcy records found for {person_data['last_name']} (SSN: {person_data['ssn']}) - All cases closed"
+                
+            elif result_type == "results_empty_dates":
+                return True, f"Bankruptcy records found for {person_data['last_name']} (SSN: {person_data['ssn']}) - Some cases still open"
+                
+            else:
+                return False, f"Unexpected result type ({result_type}) for {person_data['last_name']}"
+                
+        except Exception as e:
+            return False, f"Error during search: {str(e)}"
+
 
 def main():
     # Test parameters
     excel_path = r"D:\repositorys\KC_appp\task\pacer_scra\data\in\z SSN Example.xlsx"
     browser = "Chrome"
-    username = "test_user"
-    password = "test_pass"
+    username = "KingC123"
+    password = "Froglegs12#$"
     save_location = r"D:\repositorys\KC_appp\task\pacer_scra\data\out_pacer"
+    # exmple of 'date closed' - 260042387
+    # example of 'no close date' - 402082344
     
     print(f"Starting PACER automation test")
     print(f"Excel file: {excel_path}")
