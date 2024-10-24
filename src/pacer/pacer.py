@@ -44,6 +44,7 @@ class PACERAutomationWorker(QObject):
             # Process Excel file
             self.status.emit("Processing Excel file...")
             success, data = self.process_data()
+
             if not success:
                 raise Exception(f"Excel processing failed: {data}")
             
@@ -64,13 +65,16 @@ class PACERAutomationWorker(QObject):
             for row in data:
                 for person in row['people']:
                     print(person['last_name'])
+
+                    time.sleep(.1)
                     # Navigate to bankruptcy search page
                     if not self.navigate_to_bankruptcy_search():
                         raise Exception("Failed to navigate to bankruptcy search")
                     
-                    self.status.emit(f"Searching SSN for {person['last_name']}...")
+                    # self.status.emit(f"Searching SSN for {person['last_name']}...")
                     print(f"DEBUG: Searching person - Account: {row['account_number']}, Name: {person['last_name']}, SSN: {person['ssn']}")
                     
+                    time.sleep(.1)
                     success, message = self.handle_search_attempt(person)
                     if not success:
                         raise Exception(message)
@@ -80,9 +84,6 @@ class PACERAutomationWorker(QObject):
                     
                     # Wait 5 seconds before next search
                     time.sleep(5)
-                    
-                    # Navigate back to search page
-                    self.driver.get("https://pcl.uscourts.gov/pcl/pages/search/findBankruptcy.jsf")
             
             self.status.emit("All searches completed successfully")
             self.finished.emit()
@@ -161,7 +162,7 @@ class PACERAutomationWorker(QObject):
                 self.driver.get("https://pcl.uscourts.gov/pcl/pages/welcome.jsf")
             
             # Wait for welcome page to load
-            self.status.emit("Waiting for welcome page...")
+            # self.status.emit("Waiting for welcome page...")
             self.wait.until(EC.url_to_be("https://pcl.uscourts.gov/pcl/pages/welcome.jsf"))
             
             # Find and click bankruptcy search link
@@ -169,9 +170,10 @@ class PACERAutomationWorker(QObject):
                 EC.element_to_be_clickable((By.ID, "frmSearch:findBankruptcy"))
             )
             bankruptcy_link.click()
+            time.sleep(.5)
             
             # Wait for search page to load
-            self.status.emit("Waiting for bankruptcy search page...")
+            # self.status.emit("Waiting for bankruptcy search page...")
             self.wait.until(EC.url_to_be("https://pcl.uscourts.gov/pcl/pages/search/findBankruptcy.jsf"))
             return True
             
@@ -186,21 +188,21 @@ class PACERAutomationWorker(QObject):
     def search_ssn(self, ssn):
         """Enter SSN and perform search"""
         try:
+            time.sleep(.1)
             # Wait for SSN input field
             ssn_input = self.wait.until(
                 EC.presence_of_element_located((By.ID, "frmSearch:txtSSN"))
             )
             ssn_input.clear()
             ssn_input.send_keys(ssn)
+
+            time.sleep(.1)
             
             # Find and click search button
             search_button = self.wait.until(
                 EC.element_to_be_clickable((By.XPATH, "//span[contains(@class, 'ui-button-text') and text()='Search']"))
             )
             search_button.click()
-            
-            # Wait for search to complete
-            time.sleep(2)  # Replace with proper wait condition based on page behavior
             return True
             
         except TimeoutException:
@@ -213,8 +215,12 @@ class PACERAutomationWorker(QObject):
     def check_search_results(self):
         """Handle and verify search results"""
         try:
-            # Wait a moment for any possible modal or redirect
-            time.sleep(2)
+            try:
+                spinner = WebDriverWait(self.driver, 120).until(
+                    EC.invisibility_of_element_located((By.XPATH, "//img[@alt='wait spinner']"))
+                )
+            except TimeoutException:
+                return "timeout"
             
             # Check for "No Results Found" modal
             try:
@@ -265,28 +271,36 @@ class PACERAutomationWorker(QObject):
         try:
             if not self.search_ssn(person_data['ssn']):
                 return False, "Failed to perform search"
-                
+                    
             result_type = self.check_search_results()
             
             if result_type == "no_results":
                 return True, f"No bankruptcy records found for {person_data['last_name']} (SSN: {person_data['ssn']})"
-                
-            elif result_type == "welcome_redirect":
+                        
+            elif result_type == "timeout" or result_type == "welcome_redirect":
                 if attempt < 2:  # Try once more
-                    self.status.emit("Search redirected, attempting retry...")
+                    retry_reason = "timeout" if result_type == "timeout" else "redirect"
+                    self.status.emit(f"Search failed due to {retry_reason}, attempting retry...")
+                    
+                    # # If we got redirected to welcome page, we need to navigate back to search
+                    # if result_type == "welcome_redirect":
+                    if not self.navigate_to_bankruptcy_search():
+                        return False, f"Failed to navigate back to search page after redirect for {person_data['last_name']}"
+                    
                     return self.handle_search_attempt(person_data, attempt + 1)
                 else:
-                    return False, f"Search failed after retry for {person_data['last_name']} (SSN: {person_data['ssn']})"
-                    
+                    failure_reason = "timeout" if result_type == "timeout" else "redirect"
+                    return False, f"Search failed after retry ({failure_reason}) for {person_data['last_name']} (SSN: {person_data['ssn']})"
+                        
             elif result_type == "results_with_dates":
                 return True, f"Bankruptcy records found for {person_data['last_name']} (SSN: {person_data['ssn']}) - All cases closed"
-                
+                    
             elif result_type == "results_empty_dates":
                 return True, f"Bankruptcy records found for {person_data['last_name']} (SSN: {person_data['ssn']}) - Some cases still open"
-                
+                    
             else:
                 return False, f"Unexpected result type ({result_type}) for {person_data['last_name']}"
-                
+                    
         except Exception as e:
             return False, f"Error during search: {str(e)}"
 

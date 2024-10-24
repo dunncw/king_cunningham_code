@@ -6,7 +6,7 @@ import os
 class SCRAResultsInterpreter:
     def __init__(self, results_file):
         self.results_file = results_file
-        
+
         # Define field positions based on the fixed-width format
         self.fields = {
             'ssn': (0, 9),
@@ -28,7 +28,7 @@ class SCRAResultsInterpreter:
             'service_component': (136, 138),
             'eid_service_component': (138, 140),
             'middle_name': (140, 160),
-            'certificate_id': (160, 180)
+            'certificate_id': (160, 185)
         }
         
         # Define interpretation mappings
@@ -100,16 +100,34 @@ class SCRAResultsInterpreter:
         return 'N/A'
 
     def extract_field(self, line, field):
-        """Extract a field from the fixed-width line."""
+        """Extract a field from the fixed-width line with raw debug output."""
         start, end = self.fields[field]
-        return line[start:end].strip()
+        value = line[start:end]  # Removed .strip() to show raw output
+        print(f"Field: {field:<25} | Position: {start:>3}-{end:<3} | Raw Value: '{value}'")
+        return value.strip()  # Still return stripped value for processing
 
     def interpret_record(self, line):
         """Interpret a single record from the results file."""
+        print("\n" + "="*80)
+        print(f"Processing line of length: {len(line)}")
+        print(f"Raw line: '{line}'")  # Added to see the complete raw line
+        print("="*80)
+        
         # Extract basic information
         ssn = self.extract_field(line, 'ssn')
         customer_id = self.extract_field(line, 'customer_record_id')
         last_name = self.extract_field(line, 'last_name')
+        first_name = self.extract_field(line, 'first_name')
+        middle_name = self.extract_field(line, 'middle_name')
+        
+        # Extract dates
+        dob = self.extract_field(line, 'dob')
+        active_duty_status_date = self.extract_field(line, 'active_duty_status_date')
+        active_duty_end_date = self.extract_field(line, 'active_duty_end_date')
+        active_duty_begin_date = self.extract_field(line, 'active_duty_begin_date')
+        date_of_match = self.extract_field(line, 'date_of_match')
+        eid_begin_date = self.extract_field(line, 'eid_begin_date')
+        eid_end_date = self.extract_field(line, 'eid_end_date')
         
         # Extract status codes
         active_duty = self.extract_field(line, 'on_active_duty')
@@ -119,11 +137,10 @@ class SCRAResultsInterpreter:
         
         # Get service information
         service_comp = self.extract_field(line, 'service_component')
+        eid_service_comp = self.extract_field(line, 'eid_service_component')
+        certificate_id = self.extract_field(line, 'certificate_id')
         
-        # Format dates
-        active_duty_end = self.format_date(self.extract_field(line, 'active_duty_end_date'))
-        active_duty_begin = self.format_date(self.extract_field(line, 'active_duty_begin_date'))
-        match_date = self.format_date(self.extract_field(line, 'date_of_match'))
+        print("="*80)
 
         # Create interpretation summary
         summary = {
@@ -135,10 +152,28 @@ class SCRAResultsInterpreter:
             'Future Call-up': self.future_call_up_status.get(future_call, 'Unknown'),
             'Error Status': self.error_codes.get(error_code, 'Unknown Error'),
             'Service Component': self.service_components.get(service_comp, 'Unknown'),
-            'Active Duty Begin': active_duty_begin,
-            'Active Duty End': active_duty_end,
-            'Match Date': match_date,
-            'Raw Status Code': active_duty  # Added to help with matching logic
+            'Active Duty Begin': self.format_date(active_duty_begin_date),
+            'Active Duty End': self.format_date(active_duty_end_date),
+            'Match Date': self.format_date(date_of_match),
+            'Raw Status Code': active_duty
+        }
+        
+        return summary
+
+        # Create interpretation summary
+        summary = {
+            'SSN': ssn,
+            'Customer ID': customer_id,
+            'Last Name': last_name,
+            'Status': self.active_duty_status.get(active_duty, 'Unknown'),
+            'Left Active Duty Status': self.left_active_duty_status.get(left_active, 'Unknown'),
+            'Future Call-up': self.future_call_up_status.get(future_call, 'Unknown'),
+            'Error Status': self.error_codes.get(error_code, 'Unknown Error'),
+            'Service Component': self.service_components.get(service_comp, 'Unknown'),
+            'Active Duty Begin': self.format_date(active_duty_begin_date),
+            'Active Duty End': self.format_date(active_duty_end_date),
+            'Match Date': self.format_date(date_of_match),
+            'Raw Status Code': active_duty
         }
         
         return summary
@@ -192,7 +227,7 @@ class SCRAResultsInterpreter:
 
 def main():
     # Test the interpreter with a hardcoded path
-    results_file = r"D:\repositorys\KC_appp\task\pacer_scra\data\in\srca_results.txt"
+    results_file = r"D:\repositorys\KC_appp\task\pacer_scra\data\in\srca_batch_results.txt"
     
     print(f"Processing SCRA results file: {results_file}")
     

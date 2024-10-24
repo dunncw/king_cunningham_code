@@ -10,21 +10,28 @@ class SCRAMultiRequestFormatter:
         self.output_file = output_file
         
     def validate_ssn(self, ssn):
-        """Validate SSN format."""
+        """Validate SSN format and length"""
         if pd.isna(ssn):
             return False
-        
-        # Convert to string and remove any non-numeric characters
-        ssn_str = re.sub(r'\D', '', str(ssn))
-        
+
+        # Convert to string and remove decimal point and trailing zeros
+        ssn_str = str(ssn).split('.')[0]
+
+        # Remove any non-digit characters
+        ssn_clean = re.sub(r'\D', '', ssn_str)
+
         # Check if it's exactly 9 digits
-        return len(ssn_str) == 9
+        return len(ssn_clean) == 9
 
     def format_ssn(self, ssn):
-        """Format SSN to required format."""
-        # Remove any non-numeric characters and ensure 9 digits
-        ssn_str = re.sub(r'\D', '', str(ssn))
-        return ssn_str.zfill(9)
+        """Format SSN to standard format"""
+        # Convert to string and remove decimal point and trailing zeros
+        ssn_str = str(ssn).split('.')[0]
+        
+        # Remove any non-digit characters
+        ssn_clean = re.sub(r'\D', '', ssn_str)
+        
+        return ssn_clean.zfill(9)
 
     def validate_name(self, name):
         """Validate name according to SCRA requirements."""
@@ -48,6 +55,20 @@ class SCRAMultiRequestFormatter:
         # Left justify and pad with spaces
         return name_str.ljust(field_length)
 
+    def format_account_number(self, account_number, suffix):
+        """Format account number to exactly 20 characters including suffix"""
+        # Convert account number to string and remove any whitespace
+        acct_str = str(account_number).strip()
+        
+        # Remove any non-alphanumeric characters except hyphen
+        acct_clean = re.sub(r'[^A-Za-z0-9\-]', '', acct_str)
+        
+        # Add the suffix (1 or 2)
+        acct_with_suffix = f"{acct_clean}{suffix}"
+        
+        # Pad with spaces to exactly 20 characters
+        return acct_with_suffix.ljust(28)
+
     def process_excel(self):
         """Process the Excel file and create formatted text file."""
         try:
@@ -68,7 +89,7 @@ class SCRAMultiRequestFormatter:
                             f"{''.ljust(8)}"                          # Date of Birth (8) - blank
                             f"{self.format_name(row['Last Name 1'], 26)}"  # Last Name (26)
                             f"{''.ljust(20)}"                         # First Name (20) - blank
-                            f"{str(row['Account #']) + '1'.ljust(19)}"  # Customer Record ID (20)
+                            f"{self.format_account_number(row['Account #'], '1')}"  # Customer Record ID (20)
                             f"{current_date}"                         # Active Duty Status Date (8)
                             f"{''.ljust(20)}\n"                      # Middle Name (20) - blank
                         )
@@ -81,7 +102,7 @@ class SCRAMultiRequestFormatter:
                             f"{''.ljust(8)}"                          # Date of Birth (8) - blank
                             f"{self.format_name(row['Last Name 2'], 26)}"  # Last Name (26)
                             f"{''.ljust(20)}"                         # First Name (20) - blank
-                            f"{str(row['Account #']) + '2'.ljust(19)}"  # Customer Record ID (20)
+                            f"{self.format_account_number(row['Account #'], '2')}"  # Customer Record ID (20)
                             f"{current_date}"                         # Active Duty Status Date (8)
                             f"{''.ljust(20)}\n"                      # Middle Name (20) - blank
                         )
@@ -94,7 +115,7 @@ class SCRAMultiRequestFormatter:
 
 def main():
     # Test the processor with hardcoded paths
-    input_file = r"D:\repositorys\KC_appp\task\pacer_scra\data\in\z SSN Example.xlsx"
+    input_file = r"D:\repositorys\KC_appp\task\pacer_scra\data\in\zSSN_long.xlsx"
     output_file = r"D:\repositorys\KC_appp\task\pacer_scra\data\out\output.txt"
 
     print(f"Processing Excel file: {input_file}")

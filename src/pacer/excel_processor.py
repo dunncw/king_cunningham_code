@@ -10,16 +10,24 @@ class PACERExcelProcessor:
         """Validate SSN format and length"""
         if pd.isna(ssn):
             return False
-        
+
+        # Convert to string and remove decimal point and trailing zeros
+        ssn_str = str(ssn).split('.')[0]
+
         # Remove any non-digit characters
-        ssn_clean = re.sub(r'\D', '', str(ssn))
-        
+        ssn_clean = re.sub(r'\D', '', ssn_str)
+
         # Check if it's exactly 9 digits
         return len(ssn_clean) == 9
 
     def format_ssn(self, ssn):
         """Format SSN to standard format"""
-        ssn_clean = re.sub(r'\D', '', str(ssn))
+        # Convert to string and remove decimal point and trailing zeros
+        ssn_str = str(ssn).split('.')[0]
+        
+        # Remove any non-digit characters
+        ssn_clean = re.sub(r'\D', '', ssn_str)
+        
         return f"{ssn_clean[:3]}-{ssn_clean[3:5]}-{ssn_clean[5:]}"
 
     def process_excel(self):
