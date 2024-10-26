@@ -9,6 +9,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
 import time
+import os
 
 # TODO: in the case that we find a open banrucpy we need to take a screen shot of the page and save it with a good file name.
 
@@ -75,12 +76,15 @@ class PACERAutomationWorker(QObject):
                     print(f"DEBUG: Searching person - Account: {row['account_number']}, Name: {person['last_name']}, SSN: {person['ssn']}")
                     
                     time.sleep(.1)
-                    success, message = self.handle_search_attempt(person)
+                    success, message = self.handle_search_attempt(person, row['account_number'])
                     if not success:
                         raise Exception(message)
                     
                     self.status.emit(message)
-                    print(f"DEBUG: Search result - {message}")
+                    if "Some cases still open" in message:
+                        print(f"\033[93mDEBUG: Search result - {message}\033[0m")  # Yellow highlight
+                    else:
+                        print(f"DEBUG: Search result - {message}")
                     
                     # Wait 5 seconds before next search
                     time.sleep(5)
@@ -107,7 +111,6 @@ class PACERAutomationWorker(QObject):
         else:
             raise ValueError(f"Unsupported browser: {self.browser}")
         
-        self.driver.maximize_window()
         # Initialize WebDriverWait with 10 second timeout
         self.wait = WebDriverWait(self.driver, 10)
 
@@ -266,7 +269,7 @@ class PACERAutomationWorker(QObject):
             self.error.emit(f"Error checking search results: {str(e)}")
             return "error"
 
-    def handle_search_attempt(self, person_data, attempt=1):
+    def handle_search_attempt(self, person_data, account_number, attempt=1):
         """Handle a single search attempt with retry logic"""
         try:
             if not self.search_ssn(person_data['ssn']):
@@ -282,10 +285,10 @@ class PACERAutomationWorker(QObject):
                     retry_reason = "timeout" if result_type == "timeout" else "redirect"
                     self.status.emit(f"Search failed due to {retry_reason}, attempting retry...")
                     
-                    # # If we got redirected to welcome page, we need to navigate back to search
-                    # if result_type == "welcome_redirect":
-                    if not self.navigate_to_bankruptcy_search():
-                        return False, f"Failed to navigate back to search page after redirect for {person_data['last_name']}"
+                    # If we got redirected to welcome page, we need to navigate back to search
+                    if result_type == "welcome_redirect":
+                        if not self.navigate_to_bankruptcy_search():
+                            return False, f"Failed to navigate back to search page after redirect for {person_data['last_name']}"
                     
                     return self.handle_search_attempt(person_data, attempt + 1)
                 else:
@@ -296,7 +299,19 @@ class PACERAutomationWorker(QObject):
                 return True, f"Bankruptcy records found for {person_data['last_name']} (SSN: {person_data['ssn']}) - All cases closed"
                     
             elif result_type == "results_empty_dates":
-                return True, f"Bankruptcy records found for {person_data['last_name']} (SSN: {person_data['ssn']}) - Some cases still open"
+                # Take screenshot for open cases
+                try:
+                    screenshot_path = os.path.join(self.save_location, f"{account_number}_{person_data['ssn'][-4:]}.png")
+                    screenshot_path = os.path.normpath(screenshot_path)
+                    print(screenshot_path)
+                    self.driver.save_screenshot(screenshot_path)
+                    self.status.emit(f"Screenshot saved to {screenshot_path}")
+                    print(f"Screenshot saved to {screenshot_path}")
+                except Exception as e:
+                    self.status.emit(f"Failed to save screenshot: {str(e)}")
+                    print(e)
+                
+                return True, f"🚨 ⚠️ 🚨 ⚠️ Bankruptcy records found for {person_data['last_name']} (SSN: {person_data['ssn']}) - Some cases still open 🚨 ⚠️ 🚨 ⚠️"
                     
             else:
                 return False, f"Unexpected result type ({result_type}) for {person_data['last_name']}"
@@ -307,7 +322,7 @@ class PACERAutomationWorker(QObject):
 
 def main():
     # Test parameters
-    excel_path = r"D:\repositorys\KC_appp\task\pacer_scra\data\in\z SSN Example.xlsx"
+    excel_path = r"D:\repositorys\KC_appp\task\pacer_scra\data\in\z SSN Example copy.xlsx"
     browser = "Chrome"
     username = "KingC123"
     password = "Froglegs12#$"
