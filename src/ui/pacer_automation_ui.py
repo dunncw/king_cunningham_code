@@ -1,13 +1,21 @@
 # File: ui/pacer_automation_ui.py
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QFileDialog, QProgressBar, QTextEdit, QComboBox, QFrame
+    QFileDialog, QProgressBar, QTextEdit, QFrame, QToolTip, QMessageBox
 )
-from PyQt6.QtCore import pyqtSignal, QThread
+from PyQt6.QtCore import pyqtSignal, QThread, Qt
+from PyQt6.QtGui import QIcon
 from pacer.pacer import PACERAutomationWorker
 
+class InfoLabel(QLabel):
+    """Custom label with info icon and tooltip"""
+    def __init__(self, text: str, tooltip: str, parent=None):
+        super().__init__(text, parent)
+        self.setToolTip(tooltip)
+        self.setCursor(Qt.CursorShape.WhatsThisCursor)
+
 class PACERAutomationUI(QWidget):
-    start_automation = pyqtSignal(str, str, str, str, str)
+    start_automation = pyqtSignal(str, str, str, str)
 
     def __init__(self):
         super().__init__()
@@ -25,54 +33,89 @@ class PACERAutomationUI(QWidget):
 
         # Excel file selection
         excel_layout = QHBoxLayout()
+        excel_label = InfoLabel(
+            "Excel File:", 
+            "Select an Excel file (.xlsx) with the following required columns:\n"
+            "- Account #\n"
+            "- Last Name 1\n"
+            "- SSN 1\n"
+            "- Last Name 2 (optional)\n"
+            "- SSN 2 (optional)\n"
+            "\nThe automation will process all rows that have valid SSNs "
+            "and haven't been processed yet."
+        )
         self.excel_edit = QLineEdit()
         excel_button = QPushButton("Select Excel File")
         excel_button.clicked.connect(self.select_excel_file)
-        excel_layout.addWidget(QLabel("Excel File:"))
+        excel_layout.addWidget(excel_label)
         excel_layout.addWidget(self.excel_edit)
         excel_layout.addWidget(excel_button)
         layout.addLayout(excel_layout)
 
-        # Browser selection
-        browser_layout = QHBoxLayout()
-        self.browser_combo = QComboBox()
-        self.browser_combo.addItems(["Chrome", "Firefox", "Edge"])
-        browser_layout.addWidget(QLabel("Select Browser:"))
-        browser_layout.addWidget(self.browser_combo)
-        layout.addLayout(browser_layout)
-
         # PACER credentials
-        credentials_layout = QVBoxLayout()
+        credentials_frame = QFrame()
+        credentials_layout = QVBoxLayout(credentials_frame)
         
         # Username input
         username_layout = QHBoxLayout()
+        username_label = InfoLabel(
+            "PACER Username:",
+            "Enter your PACER account username.\n"
+            "This account will be billed for the searches.\n"
+            "Each search costs $0.10."
+        )
         self.username_edit = QLineEdit()
-        username_layout.addWidget(QLabel("PACER Username:"))
+        username_layout.addWidget(username_label)
         username_layout.addWidget(self.username_edit)
         credentials_layout.addLayout(username_layout)
 
         # Password input
         password_layout = QHBoxLayout()
+        password_label = InfoLabel(
+            "PACER Password:",
+            "Enter your PACER account password"
+        )
         self.password_edit = QLineEdit()
         self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        password_layout.addWidget(QLabel("PACER Password:"))
+        password_layout.addWidget(password_label)
         password_layout.addWidget(self.password_edit)
         credentials_layout.addLayout(password_layout)
 
-        layout.addLayout(credentials_layout)
+        layout.addWidget(credentials_frame)
 
         # Save location input
         save_location_layout = QHBoxLayout()
+        save_location_label = InfoLabel(
+            "Save Location:",
+            "Select a folder where the API response data will be saved.\n"
+            "A single JSON file containing all search results will be created\n"
+            "with a timestamp in the filename."
+        )
         self.save_location_edit = QLineEdit()
         save_location_button = QPushButton("Select Save Location")
         save_location_button.clicked.connect(self.select_save_location)
-        save_location_layout.addWidget(QLabel("Save Location:"))
+        save_location_layout.addWidget(save_location_label)
         save_location_layout.addWidget(self.save_location_edit)
         save_location_layout.addWidget(save_location_button)
         layout.addLayout(save_location_layout)
 
         # Start button
         self.start_button = QPushButton("Start PACER Automation")
+        self.start_button.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                padding: 8px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:disabled {
+                background-color: #cccccc;
+            }
+        """)
         self.start_button.clicked.connect(self.on_start_clicked)
         layout.addWidget(self.start_button)
 
@@ -102,19 +145,15 @@ class PACERAutomationUI(QWidget):
 
         # Warning message
         self.warning_frame = QFrame()
-        self.warning_frame.setStyleSheet("background-color: #FFF3CD; border: 1px solid #FFEEBA; border-radius: 4px;")
         warning_layout = QVBoxLayout(self.warning_frame)
-        warning_label = QLabel("WARNING: PACER automation in progress. Please do not interfere with the browser.")
+        warning_label = QLabel(
+            "NOTICE: PACER automation in progress. Each SSN search will incur "
+            "a $0.10 charge to your PACER account."
+        )
         warning_label.setWordWrap(True)
-        warning_label.setStyleSheet("color: #856404; font-weight: bold;")
         warning_layout.addWidget(warning_label)
         self.warning_frame.hide()
         layout.addWidget(self.warning_frame)
-
-        # Save Output button
-        self.save_button = QPushButton("Save Output")
-        self.save_button.clicked.connect(self.save_output)
-        layout.addWidget(self.save_button)
 
         self.setLayout(layout)
 
@@ -132,20 +171,42 @@ class PACERAutomationUI(QWidget):
 
     def on_start_clicked(self):
         excel_path = self.excel_edit.text()
-        browser = self.browser_combo.currentText()
         username = self.username_edit.text()
         password = self.password_edit.text()
         save_location = self.save_location_edit.text()
         
         if excel_path and username and password and save_location:
+            # Check if there's existing output and warn user
+            if self.output_text.toPlainText():
+                reply = QMessageBox.warning(
+                    self,
+                    "Confirm Restart",
+                    "Starting a new automation will:\n\n"
+                    "1. Overwrite existing results in the Excel file\n"
+                    "2. Create a new API response file in the save location\n"
+                    "3. Incur new PACER charges ($0.10 per SSN search)\n\n"
+                    "Do you want to continue?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No
+                )
+                
+                if reply == QMessageBox.StandardButton.No:
+                    return
+            
             self.start_button.setEnabled(False)
             self.status_label.setText("PACER Automation in progress...")
             self.spinner.show()
             self.warning_frame.show()
+            self.output_text.clear()  # Clear previous output
             
             # Create worker and thread
             self.thread = QThread()
-            self.worker = PACERAutomationWorker(excel_path, browser, username, password, save_location)
+            self.worker = PACERAutomationWorker(
+                excel_path=excel_path,
+                username=username,
+                password=password,
+                save_location=save_location
+            )
             self.worker.moveToThread(self.thread)
             
             # Connect signals
@@ -167,7 +228,13 @@ class PACERAutomationUI(QWidget):
         self.progress_bar.setValue(value)
 
     def update_output(self, text):
-        self.output_text.append(text)
+        """Update output with color highlighting for open bankruptcies"""
+        if "OPEN Bankruptcy Found" in text:
+            # Create HTML formatted text with red background and white text
+            formatted_text = f'<div style="background-color: #ff0000; color: white; padding: 2px;">{text}</div>'
+            self.output_text.append(formatted_text)
+        else:
+            self.output_text.append(text)
 
     def automation_finished(self):
         self.start_button.setEnabled(True)
@@ -180,12 +247,3 @@ class PACERAutomationUI(QWidget):
         self.spinner.hide()
         self.start_button.setEnabled(True)
         self.warning_frame.hide()
-
-    def save_output(self):
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "Save Output", "", "Text Files (*.txt)"
-        )
-        if file_path:
-            with open(file_path, 'w') as f:
-                f.write(self.output_text.toPlainText())
-            self.status_label.setText(f"Output saved to {file_path}")
