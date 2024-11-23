@@ -104,28 +104,53 @@ class PACERAutomationWorker(QObject):
             self.error.emit(f"API request failed: {str(e)}")
             return None
 
+    # File: pacer/pacer.py
+
     def interpret_bankruptcy_status(self, response: Dict[str, Any]) -> str:
-        """Interpret the bankruptcy status from API response"""
-        if not response or "content" not in response:
-            return "FAILED: Invalid API Response"
+        """
+        Interpret the bankruptcy status from API response
+        
+        Returns one of:
+        - "No Bankruptcy"
+        - "Closed Bankruptcy"
+        - "OPEN Bankruptcy Found"
+        - "FAILED: Invalid API Response"
+        """
+        try:
+            # Check for valid response structure
+            if not response or "content" not in response or "pageInfo" not in response:
+                print("DEBUG: Invalid response structure")
+                return "FAILED: Invalid API Response"
 
-        if not response["content"]:
-            return "No Bankruptcy"
+            # Check for No Bankruptcy
+            if (not response["content"] and 
+                response["pageInfo"]["totalElements"] == 0):
+                print("DEBUG: No bankruptcy cases found")
+                return "No Bankruptcy"
 
-        # Check if any case is open
-        for case in response["content"]:
-            court_case = case.get("courtCase", {})
-            # ERROR WAS HERE - We were checking the wrong fields
-            # We should check case level fields, not the nested courtCase
-            effective_date_closed = court_case.get("effectiveDateClosed", "")
-            disposition = case.get("disposition", "")  # This was nested too deeply
+            print(f"DEBUG: Found {len(response['content'])} case(s)")
             
-            # If either field is missing or empty, consider it an open case
-            if not effective_date_closed or not disposition:
-                return "OPEN Bankruptcy Found"
+            # Check each case for open status
+            for case_idx, case in enumerate(response["content"]):
+                court_case = case.get("courtCase", {})
+                case_number = court_case.get("caseNumberFull", "Unknown")
+                effective_date_closed = court_case.get("effectiveDateClosed")
+                
+                print(f"\nDEBUG: Analyzing case {case_number}")
+                print(f"  - Filed: {court_case.get('dateFiled')}")
+                print(f"  - Effective Date Closed: {effective_date_closed}")
+                
+                # If any case lacks an effectiveDateClosed, it's open
+                if not effective_date_closed:
+                    print(f"DEBUG: Case {case_number} is OPEN - no effective close date")
+                    return "OPEN Bankruptcy Found"
 
-        # If we get here, all cases have closed dates and dispositions
-        return "Closed Bankruptcy"
+            print("\nDEBUG: All cases have effective close dates - marking as Closed")
+            return "Closed Bankruptcy"
+
+        except Exception as e:
+            print(f"DEBUG: Error interpreting bankruptcy status: {str(e)}")
+            return "FAILED: Invalid API Response"
 
     def process_single_person(self, person: Dict, account_number: str, row_index: int) -> bool:
         """Process a single person's bankruptcy search"""
@@ -155,8 +180,7 @@ class PACERAutomationWorker(QObject):
             update_success, _ = self.excel_processor.update_results(
                 row_index,
                 person['person_number'],
-                result_status,
-                is_open_bankruptcy=(result_status == "OPEN Bankruptcy Found")
+                result_status
             )
             
             if not update_success:
@@ -231,6 +255,9 @@ class PACERAutomationWorker(QObject):
                     completed_searches += 1
                     progress_percentage = int((completed_searches / total_searches) * 100)
                     self.progress.emit(progress_percentage)
+
+            # Apply highlighting to all marked cells at once
+            self.excel_processor.apply_highlighting()
 
             # Save API responses
             self.save_api_responses()
