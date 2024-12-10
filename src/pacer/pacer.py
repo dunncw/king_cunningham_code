@@ -64,10 +64,57 @@ class PACERAutomationWorker(QObject):
             self.error.emit(f"Authentication request failed: {str(e)}")
             return False
 
-    def search_bankruptcy_by_ssn(self, ssn: str) -> Optional[Dict[str, Any]]:
-        """Search for bankruptcy cases by SSN"""
+    def sanitize_last_name(self, last_name: str) -> str:
+        """
+        Sanitize last name for PACER API requirements.
+        Handles suffixes, prefixes, hyphenated names, and special characters.
+        """
+        if not last_name or not isinstance(last_name, str):
+            return ""
+            
+        # Convert to uppercase and trim whitespace
+        name = last_name.strip().upper()
+        
+        # List of suffixes to remove
+        suffixes = [
+            "JR", "JR.", "SR", "SR.", "II", "III", "IV", 
+            "V", "VI", "VII", "VIII", "IX", "X"
+        ]
+        
+        # Remove suffixes
+        for suffix in suffixes:
+            if name.endswith(f" {suffix}"):
+                name = name[:-(len(suffix) + 1)].strip()
+        
+        # Handle hyphenated names - take the last part
+        if "-" in name:
+            name = name.split("-")[-1].strip()
+        
+        # Replace commas and periods with spaces
+        for char in ",.":
+            name = name.replace(char, " ")
+        
+        # Remove all other special characters
+        special_chars = r"'`\"&@#$%*()[]{}\/|:;?!+=<>"
+        for char in special_chars:
+            name = name.replace(char, "")
+        
+        # Collapse multiple spaces into single space
+        name = " ".join(name.split())
+        
+        return name
+
+    def search_bankruptcy_by_ssn(self, ssn: str, last_name: str) -> Optional[Dict[str, Any]]:
+        """Search for bankruptcy cases by SSN and last name"""
         if not self.auth_token:
             self.error.emit("Not authenticated. Authentication required.")
+            return None
+            
+        # Sanitize the last name before making the API call
+        sanitized_last_name = self.sanitize_last_name(last_name)
+        
+        if not sanitized_last_name:
+            self.error.emit("Invalid last name after sanitization")
             return None
             
         url = f"{self.base_urls[self.environment]['api']}/parties/find"
@@ -79,6 +126,7 @@ class PACERAutomationWorker(QObject):
         }
         
         search_data = {
+            "lastName": sanitized_last_name,
             "ssn": ssn,
             "jurisdictionType": "bk"
         }
@@ -88,9 +136,11 @@ class PACERAutomationWorker(QObject):
             
             if response.status_code == 200:
                 result = response.json()
-                # Store the API response
+                # Store the API response with both original and sanitized names
                 self.api_responses.append({
                     "ssn": ssn,
+                    "originalLastName": last_name,
+                    "sanitizedLastName": sanitized_last_name,
                     "timestamp": datetime.now().isoformat(),
                     "response": result
                 })
@@ -103,8 +153,6 @@ class PACERAutomationWorker(QObject):
         except requests.exceptions.RequestException as e:
             self.error.emit(f"API request failed: {str(e)}")
             return None
-
-    # File: pacer/pacer.py
 
     def interpret_bankruptcy_status(self, response: Dict[str, Any]) -> str:
         """
@@ -155,12 +203,17 @@ class PACERAutomationWorker(QObject):
     def process_single_person(self, person: Dict, account_number: str, row_index: int) -> bool:
         """Process a single person's bankruptcy search"""
         try:
-            # Start the search status but don't emit yet
-            status_msg = f"Searching for {person['last_name']} (SSN: {person['ssn']})..."
+            original_last_name = person['last_name']
+            sanitized_last_name = self.sanitize_last_name(original_last_name)
             
-            response = self.search_bankruptcy_by_ssn(person['ssn'])
+            # Modified status message to focus on sanitized name
+            status_msg = f"Searching for {sanitized_last_name} (SSN: {person['ssn']})..."
+            if sanitized_last_name != original_last_name:
+                status_msg = f"Searching for {sanitized_last_name} (original: {original_last_name}) (SSN: {person['ssn']})..."
+            
+            response = self.search_bankruptcy_by_ssn(person['ssn'], person['last_name'])
             if response is None:
-                error_msg = f"Failed to get API response for {person['last_name']}"
+                error_msg = f"Failed to get API response for {sanitized_last_name}"
                 self.failed_searches.append((person, error_msg))
                 self.update_excel_with_failure(row_index, person, "FAILED: API Error")
                 self.status.emit(f"{status_msg} FAILED: API Error")
@@ -184,12 +237,12 @@ class PACERAutomationWorker(QObject):
             )
             
             if not update_success:
-                self.status.emit(f"Warning: Failed to update Excel for {person['last_name']}")
+                self.status.emit(f"Warning: Failed to update Excel for {sanitized_last_name}")
             
             return True
 
         except Exception as e:
-            error_msg = f"Error processing {person['last_name']}: {str(e)}"
+            error_msg = f"Error processing {sanitized_last_name}: {str(e)}"
             self.failed_searches.append((person, error_msg))
             self.update_excel_with_failure(row_index, person, error_msg)
             self.status.emit(f"{status_msg} FAILED: {str(e)}")
