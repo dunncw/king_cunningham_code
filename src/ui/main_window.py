@@ -13,10 +13,14 @@ from document_processor.processor import OCRWorker
 from .scra_automation_ui import SCRAAutomationUI
 from .pacer_automation_ui import PACERAutomationUI
 
+from .simplifile_ui import SimplifileUI
+from simplifile.api import run_simplifile_api_thread
+
 class MainWindow(QMainWindow):
     check_for_updates = pyqtSignal()
     start_web_automation = pyqtSignal(str, str, str)
     start_crg_automation = pyqtSignal()
+    start_simplifile_upload = pyqtSignal(str, str, str, str, dict)
 
     def __init__(self, version):
         super().__init__()
@@ -92,6 +96,9 @@ class MainWindow(QMainWindow):
         pacer_auto_button = create_button("PACER Automation", "path/to/pacer_icon.png", self.show_pacer_automation)
         buttons_layout.addWidget(pacer_auto_button)
 
+        simplifile_button = create_button("Simplifile", "path/to/simplifile_icon.png", self.show_simplifile)
+        buttons_layout.addWidget(simplifile_button)
+
         buttons_widget.setLayout(buttons_layout)
         main_layout.addWidget(buttons_widget)
 
@@ -130,6 +137,13 @@ class MainWindow(QMainWindow):
         back_button.clicked.connect(self.show_main_menu)
         self.pacer_automation.layout().addWidget(back_button)
 
+        # Simplifile UI
+        self.simplifile_ui = SimplifileUI()
+        self.simplifile_ui.start_simplifile_upload.connect(self.start_simplifile_upload_process)
+        back_button = QPushButton("Back to Main Menu")
+        back_button.clicked.connect(self.show_main_menu)
+        self.simplifile_ui.layout().addWidget(back_button)
+
         # Add widgets to stacked widget
         self.central_widget.addWidget(self.main_menu)
         self.central_widget.addWidget(self.doc_processor)
@@ -137,8 +151,39 @@ class MainWindow(QMainWindow):
         self.central_widget.addWidget(self.crg_automation)
         self.central_widget.addWidget(self.scra_automation)
         self.central_widget.addWidget(self.pacer_automation)
+        self.central_widget.addWidget(self.simplifile_ui)
 
         self.show_main_menu()
+    
+    def show_simplifile(self):
+        """Show the Simplifile UI"""
+        self.central_widget.setCurrentWidget(self.simplifile_ui)
+        self.resize(900, 800)  # Set appropriate size for Simplifile UI
+    
+    def start_simplifile_upload_process(self, api_token, submitter_id, recipient_id, document_path, package_data):
+        """Start the Simplifile API upload process in a separate thread"""
+        self.simplifile_thread, self.simplifile_worker = run_simplifile_api_thread(
+            api_token, submitter_id, recipient_id, document_path, package_data
+        )
+        
+        # Connect signals and slots
+        self.simplifile_worker.status.connect(self.simplifile_ui.update_status)
+        self.simplifile_worker.progress.connect(self.simplifile_ui.update_progress)
+        self.simplifile_worker.error.connect(self.show_simplifile_error)
+        self.simplifile_worker.finished.connect(self.simplifile_upload_finished)
+        
+        # Start the thread
+        self.simplifile_thread.start()
+    
+    def show_simplifile_error(self, error_message):
+        """Show error message from Simplifile process"""
+        self.simplifile_ui.update_output(f"Error: {error_message}")
+        QMessageBox.critical(self, "Simplifile Error", error_message)
+    
+    def simplifile_upload_finished(self):
+        """Called when Simplifile upload process finishes"""
+        self.simplifile_ui.update_output("Simplifile upload process completed.")
+        self.simplifile_ui.progress_bar.setValue(100)
 
     def show_pacer_automation(self):
         self.central_widget.setCurrentWidget(self.pacer_automation)
