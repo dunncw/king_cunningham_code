@@ -5,6 +5,8 @@ import tempfile
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 from datetime import datetime
 import json
+import requests
+import base64
 from io import StringIO
 
 class SimplifileBatchPreview(QObject):
@@ -277,15 +279,18 @@ class SimplifileBatchProcessor(QObject):
         self.submitter_id = submitter_id
         self.recipient_id = recipient_id
         self.temp_dir = tempfile.mkdtemp()
+        self.preview_mode = True  # Default to preview mode
         
-    def process_batch(self, excel_path, deeds_path, mortgage_path):
+    def process_batch(self, excel_path, deeds_path, mortgage_path, preview_mode=True):
         """Process batch upload"""
         try:
+            self.preview_mode = preview_mode
             self.status.emit("Starting batch process...")
             self.progress.emit(5)
             
             # Load Excel data
-            if not self.load_excel_data(excel_path):
+            excel_data = self.load_excel_data(excel_path)
+            if excel_data is None:
                 return False
             
             # Process PDF files
@@ -309,21 +314,35 @@ class SimplifileBatchProcessor(QObject):
             # Match Excel data with PDF files and prepare upload packages
             self.status.emit("Preparing packages...")
             
-            packages = self.prepare_packages(deed_files, mortgage_files)
+            packages = self.prepare_packages(excel_data, deed_files, mortgage_files)
             if not packages:
                 self.error.emit("Failed to prepare packages")
                 return False
             
-            # Output the prepared packages for review (without uploading)
-            package_info = {
-                "resultCode": "SUCCESS",
-                "message": "Batch processing preview completed",
-                "packages": packages
-            }
+            # In preview mode, just return the packages without uploading
+            if self.preview_mode:
+                package_info = {
+                    "resultCode": "SUCCESS",
+                    "message": "Batch processing preview completed",
+                    "packages": packages
+                }
+                    
+                self.status.emit("Batch processing preview completed successfully")
+                self.progress.emit(100)
+                self.finished.emit(package_info)
+            else:
+                # In actual upload mode, send packages to API
+                if not self.api_token or not self.submitter_id or not self.recipient_id:
+                    self.error.emit("Missing API credentials. Cannot proceed with upload.")
+                    return False
                 
-            self.status.emit("Batch processing preview completed successfully")
-            self.progress.emit(100)
-            self.finished.emit(package_info)
+                self.status.emit("Starting actual API upload process...")
+                upload_results = self.upload_packages_to_api(packages)
+                
+                # Report results
+                self.status.emit("API upload process completed")
+                self.progress.emit(100)
+                self.finished.emit(upload_results)
             
             # Cleanup temporary files
             self.cleanup_temp_files()
@@ -338,28 +357,28 @@ class SimplifileBatchProcessor(QObject):
         """Load and validate Excel data"""
         try:
             self.status.emit(f"Loading Excel data from {os.path.basename(excel_path)}...")
-            self.excel_data = pd.read_excel(excel_path)
+            excel_data = pd.read_excel(excel_path)
             
             # Check if Excel has required columns
             required_columns = ['Account']
             recommended_columns = ['Last Name #1', 'First Name #1']
             
-            missing_required = [col for col in required_columns if col not in self.excel_data.columns]
-            missing_recommended = [col for col in recommended_columns if col not in self.excel_data.columns]
+            missing_required = [col for col in required_columns if col not in excel_data.columns]
+            missing_recommended = [col for col in recommended_columns if col not in excel_data.columns]
             
             if missing_required:
                 self.error.emit(f"Missing required columns in Excel: {', '.join(missing_required)}")
-                return False
+                return None
             
             if missing_recommended:
                 self.status.emit(f"Warning: Some recommended columns are missing: {', '.join(missing_recommended)}")
             
-            self.status.emit(f"Excel data loaded: {len(self.excel_data)} records")
-            return True
+            self.status.emit(f"Excel data loaded: {len(excel_data)} records")
+            return excel_data
             
         except Exception as e:
             self.error.emit(f"Error loading Excel file: {str(e)}")
-            return False
+            return None
     
     def split_deeds_pdf(self, pdf_path):
         """Split deed document PDF into individual files (every 4 pages)"""
@@ -443,10 +462,10 @@ class SimplifileBatchProcessor(QObject):
             self.error.emit(f"Error splitting mortgage PDF: {str(e)}")
             return []
     
-    def prepare_packages(self, deed_files, mortgage_files):
+    def prepare_packages(self, excel_data, deed_files, mortgage_files):
         """Prepare packages for upload (without actually uploading)"""
         try:
-            total_rows = len(self.excel_data)
+            total_rows = len(excel_data)
             total_packages = max(len(deed_files), len(mortgage_files))
             
             if total_packages == 0:
@@ -460,7 +479,7 @@ class SimplifileBatchProcessor(QObject):
             
             # Process each row from Excel with corresponding PDFs
             for i in range(min(total_rows, total_packages)):
-                row = self.excel_data.iloc[i]
+                row = excel_data.iloc[i]
                 
                 # Get account number and last name from Excel
                 account_number = str(row.get('Account', ''))
@@ -594,6 +613,192 @@ class SimplifileBatchProcessor(QObject):
             self.error.emit(f"Error preparing packages: {str(e)}")
             return []
     
+    def encode_file(self, file_path):
+        """Convert a file to base64 encoding"""
+        try:
+            with open(file_path, "rb") as file:
+                encoded_data = base64.b64encode(file.read()).decode('utf-8')
+                return encoded_data
+        except Exception as e:
+            self.error.emit(f"Error encoding file {os.path.basename(file_path)}: {str(e)}")
+            return None
+    
+    def upload_packages_to_api(self, packages):
+        """Upload packages to Simplifile API"""
+        try:
+            self.status.emit("Starting API upload process...")
+            
+            # Prepare results structure
+            results = {
+                "resultCode": "SUCCESS",
+                "message": "Packages uploaded to Simplifile API",
+                "packages": [],
+                "summary": {
+                    "total": len(packages),
+                    "successful": 0,
+                    "failed": 0
+                }
+            }
+            
+            # Process each package
+            for i, package in enumerate(packages):
+                package_name = package["package_name"]
+                package_id = package["package_id"]
+                documents = package["documents"]
+                
+                self.status.emit(f"Uploading package {i+1}/{len(packages)}: {package_name}")
+                self.progress.emit(70 + (i * 30 // len(packages)))
+                
+                # Create API payload for this package
+                payload = self.create_api_payload(package)
+                
+                # If we're in preview mode, don't actually hit the API
+                if self.preview_mode:
+                    results["packages"].append({
+                        "package_id": package_id,
+                        "status": "preview_success",
+                        "message": "Package prepared (preview mode)",
+                        "package_name": package_name,
+                        "document_count": len(documents)
+                    })
+                    results["summary"]["successful"] += 1
+                    continue
+                
+                # Make the actual API request
+                try:
+                    # Build API URL
+                    base_url = f"https://api.simplifile.com/sf/rest/api/erecord/submitters/{self.submitter_id}/packages/create"
+                    
+                    headers = {
+                        "Content-Type": "application/json",
+                        "api_token": self.api_token
+                    }
+                    
+                    # Post to API
+                    response = requests.post(
+                        base_url,
+                        headers=headers,
+                        data=json.dumps(payload),
+                        timeout=300  # 5 minute timeout for large packages
+                    )
+                    
+                    # Process response
+                    if response.status_code == 200:
+                        response_data = response.json()
+                        if response_data.get("resultCode") == "SUCCESS":
+                            results["packages"].append({
+                                "package_id": package_id,
+                                "status": "success",
+                                "message": "Package uploaded successfully",
+                                "package_name": package_name,
+                                "document_count": len(documents),
+                                "api_response": response_data
+                            })
+                            results["summary"]["successful"] += 1
+                        else:
+                            error_msg = response_data.get("message", "Unknown API error")
+                            results["packages"].append({
+                                "package_id": package_id,
+                                "status": "api_error",
+                                "message": error_msg,
+                                "package_name": package_name,
+                                "document_count": len(documents),
+                                "api_response": response_data
+                            })
+                            results["summary"]["failed"] += 1
+                    else:
+                        results["packages"].append({
+                            "package_id": package_id,
+                            "status": "http_error",
+                            "message": f"HTTP error {response.status_code}",
+                            "package_name": package_name,
+                            "document_count": len(documents)
+                        })
+                        results["summary"]["failed"] += 1
+                
+                except Exception as e:
+                    results["packages"].append({
+                        "package_id": package_id,
+                        "status": "exception",
+                        "message": str(e),
+                        "package_name": package_name,
+                        "document_count": len(documents)
+                    })
+                    results["summary"]["failed"] += 1
+            
+            # Update final status
+            if results["summary"]["failed"] > 0:
+                if results["summary"]["successful"] > 0:
+                    results["resultCode"] = "PARTIAL_SUCCESS"
+                    results["message"] = f"Completed with {results['summary']['successful']} successful and {results['summary']['failed']} failed packages"
+                else:
+                    results["resultCode"] = "FAILED"
+                    results["message"] = "All packages failed to upload"
+            
+            return results
+            
+        except Exception as e:
+            self.error.emit(f"Error in API upload process: {str(e)}")
+            return {
+                "resultCode": "ERROR",
+                "message": f"Error in upload process: {str(e)}",
+                "packages": []
+            }
+    
+    def create_api_payload(self, package):
+        """Create API payload for a single package"""
+        package_id = package["package_id"]
+        package_name = package["package_name"]
+        documents = package["documents"]
+        
+        # Create payload structure
+        payload = {
+            "documents": [],
+            "recipient": self.recipient_id,
+            "submitterPackageID": package_id,
+            "name": package_name,
+            "operations": {
+                "draftOnErrors": True,
+                "submitImmediately": False,
+                "verifyPageMargins": True
+            }
+        }
+        
+        # Process each document
+        for doc in documents:
+            # Encode document file
+            encoded_file = self.encode_file(doc["file_path"])
+            if not encoded_file:
+                continue
+            
+            # Prepare document entry
+            document = {
+                "submitterDocumentID": doc["document_id"],
+                "name": doc["name"].upper(),
+                "kindOfInstrument": [doc["type"]],
+                "indexingData": {
+                    "consideration": doc.get("consideration", "0.00"),
+                    "executionDate": doc.get("execution_date", datetime.now().strftime('%m/%d/%Y')),
+                    "grantors": doc.get("grantors", []),
+                    "grantees": doc.get("grantees", []),
+                    "legalDescriptions": [
+                        {
+                            "description": doc.get("legal_description", "").upper(),
+                            "parcelId": doc.get("parcel_id", "").upper()
+                        }
+                    ]
+                },
+                "fileBytes": [encoded_file]
+            }
+            
+            # Add reference information if available
+            if "reference_info" in doc and doc["reference_info"]:
+                document["indexingData"]["referenceInfo"] = doc["reference_info"]
+            
+            payload["documents"].append(document)
+        
+        return payload
+    
     def cleanup_temp_files(self):
         """Clean up temporary files"""
         try:
@@ -620,21 +825,20 @@ def run_simplifile_batch_preview(excel_path, deeds_path, mortgage_path):
     return thread, worker
 
 
-def run_simplifile_batch_process(excel_path, deeds_path, mortgage_path):
+def run_simplifile_batch_process(excel_path, deeds_path, mortgage_path, api_token=None, submitter_id=None, recipient_id=None, preview_mode=True):
     """Create and run a thread for Simplifile batch processing"""
     thread = QThread()
-    worker = SimplifileBatchProcessor()
+    worker = SimplifileBatchProcessor(api_token, submitter_id, recipient_id)
     worker.moveToThread(thread)
     
     # Connect signals
-    thread.started.connect(lambda: worker.process_batch(excel_path, deeds_path, mortgage_path))
+    thread.started.connect(lambda: worker.process_batch(excel_path, deeds_path, mortgage_path, preview_mode))
     worker.finished.connect(thread.quit)
     worker.error.connect(lambda e: thread.quit())
     worker.finished.connect(worker.deleteLater)
     thread.finished.connect(thread.deleteLater)
     
     return thread, worker
-
 
 def run_simplifile_batch_thread(api_token, submitter_id, recipient_id, excel_path, deeds_path, mortgage_path):
     """Create and run a thread for Simplifile batch operations"""

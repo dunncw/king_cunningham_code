@@ -378,8 +378,9 @@ class SimplifileUI(QWidget):
         except Exception as e:
             self.show_error(f"Error displaying preview: {str(e)}")
     
+    # Update the process_batch_upload method in SimplifileUI class
     def process_batch_upload(self):
-        """Process and start the batch upload (test mode only - no actual upload)"""
+        """Process and start the batch upload with actual API calls"""
         # Validate API configuration
         api_token = self.api_token.text()
         submitter_id = self.submitter_id.text()
@@ -387,7 +388,7 @@ class SimplifileUI(QWidget):
         
         if not api_token or not submitter_id or not recipient_id:
             QMessageBox.warning(self, "Missing API Configuration", 
-                               "Please enter your API token, submitter ID, and select a county.")
+                            "Please enter your API token, submitter ID, and select a county.")
             return
         
         # Validate file selection
@@ -397,7 +398,7 @@ class SimplifileUI(QWidget):
             
         if not self.deeds_file_path.text() and not self.mortgage_file_path.text():
             QMessageBox.warning(self, "Missing PDF Files", 
-                               "Please select at least one PDF file (Deeds or Mortgage Satisfactions).")
+                            "Please select at least one PDF file (Deeds or Mortgage Satisfactions).")
             return
         
         # Confirm batch upload
@@ -408,24 +409,38 @@ class SimplifileUI(QWidget):
             message += f"- Deed Documents: {os.path.basename(self.deeds_file_path.text())}\n"
         if self.mortgage_file_path.text():
             message += f"- Mortgage Satisfactions: {os.path.basename(self.mortgage_file_path.text())}\n"
-        message += f"- Excel Data: {os.path.basename(self.excel_file_path.text())}\n"
-        message += "\nThis is in preview mode and will NOT actually upload files."
+        message += f"- Excel Data: {os.path.basename(self.excel_file_path.text())}\n\n"
+        
+        # Ask if this should be an actual upload or preview
+        message += "Do you want to perform an actual API upload?\n"
+        message += "- Click 'Yes' to upload to Simplifile\n"
+        message += "- Click 'No' to run in preview mode (no API calls)\n"
+        message += "- Click 'Cancel' to abort"
         
         reply = QMessageBox.question(self, "Confirm Batch Processing", message,
-                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                                QMessageBox.StandardButton.Yes | 
+                                QMessageBox.StandardButton.No | 
+                                QMessageBox.StandardButton.Cancel)
         
-        if reply != QMessageBox.StandardButton.Yes:
+        if reply == QMessageBox.StandardButton.Cancel:
             return
+            
+        # Determine if this is preview mode or actual upload
+        preview_mode = (reply == QMessageBox.StandardButton.No)
         
         # Run the batch process
-        self.update_output("Starting batch processing...")
+        self.update_output(f"Starting batch processing in {'preview' if preview_mode else 'API upload'} mode...")
         self.progress_bar.setValue(5)
         self.batch_upload_btn.setEnabled(False)
         
         self.batch_thread, self.batch_worker = run_simplifile_batch_process(
             self.excel_file_path.text(),
             self.deeds_file_path.text(),
-            self.mortgage_file_path.text()
+            self.mortgage_file_path.text(),
+            api_token,
+            submitter_id,
+            recipient_id,
+            preview_mode
         )
         
         # Connect signals
@@ -436,7 +451,8 @@ class SimplifileUI(QWidget):
         
         # Start thread
         self.batch_thread.start()
-    
+
+    # Update the batch_process_finished method in SimplifileUI class
     def batch_process_finished(self, result_data):
         """Handle completion of batch processing"""
         self.batch_upload_btn.setEnabled(True)
@@ -444,20 +460,56 @@ class SimplifileUI(QWidget):
         if result_data.get("resultCode") == "SUCCESS":
             self.update_output("Batch processing completed successfully.")
             packages = result_data.get("packages", [])
-            self.update_output(f"Prepared {len(packages)} packages.")
+            self.update_output(f"Processed {len(packages)} packages.")
             
-            # Show success message
-            QMessageBox.information(self, "Processing Complete", 
-                                 f"Batch processing completed successfully. {len(packages)} packages prepared.")
+            # Show details of each package
+            for package in packages:
+                status = package.get("status", "unknown")
+                msg = package.get("message", "")
+                package_id = package.get("package_id", "")
+                package_name = package.get("package_name", "")
+                
+                if status == "success":
+                    self.update_output(f"✓ {package_id}: {package_name} - Uploaded successfully")
+                elif status == "preview_success":
+                    self.update_output(f"✓ {package_id}: {package_name} - Prepared successfully (preview mode)")
+                else:
+                    self.update_output(f"✗ {package_id}: {package_name} - Failed: {msg}")
+            
+            # Show success message with appropriate text based on result
+            if "summary" in result_data:
+                summary = result_data["summary"]
+                total = summary.get("total", len(packages))
+                successful = summary.get("successful", 0)
+                failed = summary.get("failed", 0)
+                
+                if failed > 0:
+                    QMessageBox.warning(self, "Processing Completed with Issues", 
+                                    f"Batch processing completed with {successful} successful and {failed} failed packages.")
+                else:
+                    QMessageBox.information(self, "Processing Complete", 
+                                        f"Batch processing completed successfully. {successful} packages processed.")
+        elif result_data.get("resultCode") == "PARTIAL_SUCCESS":
+            # Handle partial success
+            self.update_output(f"Batch processing completed with partial success: {result_data.get('message', '')}")
+            
+            # Show warning with details
+            QMessageBox.warning(self, "Processing Completed with Issues", 
+                            result_data.get('message', 'Some packages failed to upload.'))
         else:
+            # Handle failure
             error_msg = result_data.get("message", "Unknown error")
             self.update_output(f"Batch processing failed: {error_msg}")
-    
+            
+            # Show error message
+            QMessageBox.critical(self, "Processing Failed", 
+                            f"Batch processing failed: {error_msg}")
+        
     def clear_batch(self):
         """Clear batch upload form"""
         reply = QMessageBox.question(self, "Confirm Clear", 
-                                   "Clear all batch upload information?",
-                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                                "Clear all batch upload information?",
+                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         
         if reply != QMessageBox.StandardButton.Yes:
             return
