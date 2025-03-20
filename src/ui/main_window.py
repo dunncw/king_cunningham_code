@@ -193,10 +193,25 @@ class MainWindow(QMainWindow):
         # Start thread
         self.preview_thread.start()
 
+    # Update the start_simplifile_batch_process method in MainWindow class
     def start_simplifile_batch_process(self, excel_path, deeds_path, mortgage_path):
-        """Start Simplifile batch processing"""
+        """Start Simplifile batch processing with API support"""
+        # Get API credentials
+        api_token = self.simplifile_ui.api_token.text()
+        submitter_id = self.simplifile_ui.submitter_id.text()
+        recipient_id = self.simplifile_ui.recipient_combo.currentData()
+        
+        # Determine if this is preview mode (default to True for safety)
+        preview_mode = True  # This could be passed from the UI if we had a checkbox
+        
         self.batch_thread, self.batch_worker = run_simplifile_batch_process(
-            excel_path, deeds_path, mortgage_path
+            excel_path, 
+            deeds_path, 
+            mortgage_path,
+            api_token,
+            submitter_id,
+            recipient_id,
+            preview_mode
         )
         
         # Connect signals
