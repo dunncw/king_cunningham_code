@@ -3,646 +3,1087 @@ import json
 from datetime import datetime
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
-    QPushButton, QComboBox, QTabWidget, QFormLayout, 
-    QScrollArea, QFileDialog, QMessageBox, QGroupBox,
-    QTableWidget, QTableWidgetItem, QCheckBox, QDateEdit,
-    QSpinBox, QTextEdit, QProgressBar
+    QPushButton, QComboBox, QFormLayout, QFileDialog, QMessageBox, 
+    QGroupBox, QTableWidget, QTableWidgetItem, QDateEdit, 
+    QTextEdit, QProgressBar, QDialog, QFrame, QTabWidget,
+    QSplitter
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QDate
-from simplifile.models import Party, HelperDocument, SimplifilePackage
-from simplifile.utils import (
-    validate_package_data, get_document_types, 
-    get_helper_document_types, format_date,
-    save_config, load_config
-)
+from PyQt6.QtGui import QFont, QColor
+from simplifile.batch_processor import run_simplifile_batch_preview, run_simplifile_batch_process
+from .batch_preview_dialog import BatchPreviewDialog
+import json
+
+# County recipient mapping
+RECIPIENT_COUNTIES = [
+    {"id": "SCCE6P", "name": "Williamsburg County, SC"},
+    {"id": "GAC3TH", "name": "Fulton County, GA"},
+    {"id": "NCCHLB", "name": "Forsyth County, NC"},
+    {"id": "SCCY4G", "name": "Beaufort County, SC"},
+    {"id": "SCCP49", "name": "Horry County, SC"}
+]
+
+# Document types
+DOCUMENT_TYPES = ["Deed - Timeshare", "Mortgage Satisfaction"]
+
+# Default parties that are always added
+DEFAULT_GRANTORS = [
+    {"nameUnparsed": "KING CUNNINGHAM LLC TR", "type": "ORGANIZATION"},
+    {"nameUnparsed": "OCEAN CLUB VACATIONS LLC", "type": "ORGANIZATION"}
+]
+
+DEFAULT_GRANTEES = [
+    {"nameUnparsed": "OCEAN CLUB VACATIONS LLC", "type": "ORGANIZATION"}
+]
 
 class SimplifileUI(QWidget):
-    start_simplifile_upload = pyqtSignal(str, str, str, str, dict)
+    start_simplifile_upload = pyqtSignal(str, str, str, dict, list)
+    start_simplifile_batch_upload = pyqtSignal(str, str, str, str, str, str)
     
     def __init__(self):
         super().__init__()
+        self.documents = []
         self.config_file = os.path.join(os.path.expanduser("~"), ".simplifile_config.json")
-        self.config = load_config(self.config_file)
-        self.package = SimplifileUI.create_empty_package()
-        self.grantors = []
-        self.grantees = []
-        self.helper_documents = []
+        self.load_config()
         self.init_ui()
     
-    @staticmethod
-    def create_empty_package():
-        """Create an empty package structure"""
-        package = SimplifilePackage()
-        return package
+    def load_config(self):
+        """Load config from file"""
+        try:
+            if os.path.exists(self.config_file):
+                with open(self.config_file, 'r') as f:
+                    self.config = json.load(f)
+            else:
+                self.config = {
+                    "api_token": "",
+                    "submitter_id": "",
+                    "recipient_id": ""
+                }
+        except:
+            self.config = {
+                "api_token": "",
+                "submitter_id": "",
+                "recipient_id": ""
+            }
+    
+    def save_config(self):
+        """Save config to file"""
+        try:
+            with open(self.config_file, 'w') as f:
+                json.dump(self.config, f, indent=2)
+            return True
+        except:
+            return False
     
     def init_ui(self):
         main_layout = QVBoxLayout()
         
-        # Progress bar and status
+        # API Configuration Section
+        api_group = self.create_api_config_group()
+        main_layout.addWidget(api_group)
+        
+        # Create tab widget for Single and Batch uploads
+        self.tab_widget = QTabWidget()
+        
+        # Single Upload Tab (existing functionality)
+        self.single_upload_tab = QWidget()
+        self.setup_single_upload_tab()
+        self.tab_widget.addTab(self.single_upload_tab, "Single Upload")
+        
+        # Batch Upload Tab (new functionality)
+        self.batch_upload_tab = QWidget()
+        self.setup_batch_upload_tab()
+        self.tab_widget.addTab(self.batch_upload_tab, "Batch Upload")
+        
+        main_layout.addWidget(self.tab_widget)
+        
+        # Progress and output section (shared between tabs)
+        progress_layout = QHBoxLayout()
+        
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
+        
         self.status_label = QLabel("Ready")
         
-        progress_layout = QHBoxLayout()
         progress_layout.addWidget(QLabel("Status:"))
         progress_layout.addWidget(self.status_label, 1)
         progress_layout.addWidget(self.progress_bar)
         
         main_layout.addLayout(progress_layout)
         
-        # Tabs for different sections
-        tabs = QTabWidget()
-        
-        # API Configuration tab
-        api_tab = QWidget()
-        api_layout = QFormLayout()
-        
-        self.api_token_input = QLineEdit(self.config.get("api_token", ""))
-        self.api_token_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_token_input.setPlaceholderText("Enter your Simplifile API token")
-        api_layout.addRow("API Token:", self.api_token_input)
-        
-        self.submitter_id_input = QLineEdit(self.config.get("submitter_id", ""))
-        self.submitter_id_input.setPlaceholderText("Your Simplifile submitter ID (e.g., SCTP3G)")
-        api_layout.addRow("Submitter ID:", self.submitter_id_input)
-        
-        self.recipient_id_input = QLineEdit(self.config.get("recipient_id", ""))
-        self.recipient_id_input.setPlaceholderText("Recipient ID (e.g., GAC3TH)")
-        api_layout.addRow("Recipient ID:", self.recipient_id_input)
-        
-        save_api_btn = QPushButton("Save API Configuration")
-        save_api_btn.clicked.connect(self.save_api_config)
-        api_layout.addRow("", save_api_btn)
-        
-        api_tab.setLayout(api_layout)
-        
-        # Document tab
-        doc_tab = QWidget()
-        doc_layout = QFormLayout()
-        
-        document_group = QGroupBox("Main Document")
-        document_form = QFormLayout()
-        
-        self.doc_path_input = QLineEdit(self.config.get("last_document_path", ""))
-        self.doc_path_input.setReadOnly(True)
-        doc_browse_btn = QPushButton("Browse...")
-        doc_browse_btn.clicked.connect(self.browse_document)
-        
-        doc_path_layout = QHBoxLayout()
-        doc_path_layout.addWidget(self.doc_path_input)
-        doc_path_layout.addWidget(doc_browse_btn)
-        document_form.addRow("Document:", doc_path_layout)
-        
-        self.ref_number_input = QLineEdit(self.package.reference_number)
-        self.ref_number_input.setPlaceholderText("Contract or reference number")
-        document_form.addRow("Reference Number:", self.ref_number_input)
-        
-        self.package_name_input = QLineEdit(self.package.package_name)
-        self.package_name_input.setPlaceholderText("Package name (e.g., SMITH 12345)")
-        document_form.addRow("Package Name:", self.package_name_input)
-        
-        self.doc_type_combo = QComboBox()
-        self.doc_type_combo.addItems(get_document_types())
-        if self.package.document_type in get_document_types():
-            self.doc_type_combo.setCurrentText(self.package.document_type)
-        document_form.addRow("Document Type:", self.doc_type_combo)
-        
-        self.consideration_input = QLineEdit(self.package.consideration)
-        self.consideration_input.setPlaceholderText("Value of transaction (e.g., 250000.00)")
-        document_form.addRow("Consideration:", self.consideration_input)
-        
-        self.execution_date = QDateEdit()
-        self.execution_date.setDisplayFormat("MM/dd/yyyy")
-        self.execution_date.setDate(QDate.currentDate())
-        document_form.addRow("Execution Date:", self.execution_date)
-        
-        self.legal_desc_input = QTextEdit(self.package.legal_description)
-        self.legal_desc_input.setPlaceholderText("Legal description of property")
-        self.legal_desc_input.setMaximumHeight(100)
-        document_form.addRow("Legal Description:", self.legal_desc_input)
-        
-        self.parcel_id_input = QLineEdit(self.package.parcel_id)
-        self.parcel_id_input.setPlaceholderText("Parcel ID (e.g., 14-0078-0007-096-9)")
-        document_form.addRow("Parcel ID:", self.parcel_id_input)
-        
-        self.book_input = QLineEdit(self.package.book)
-        self.book_input.setPlaceholderText("Book number")
-        self.page_input = QLineEdit(self.package.page)
-        self.page_input.setPlaceholderText("Page number")
-        
-        book_page_layout = QHBoxLayout()
-        book_page_layout.addWidget(QLabel("Book:"))
-        book_page_layout.addWidget(self.book_input)
-        book_page_layout.addWidget(QLabel("Page:"))
-        book_page_layout.addWidget(self.page_input)
-        
-        document_form.addRow("Reference Info:", book_page_layout)
-        
-        document_group.setLayout(document_form)
-        doc_layout.addRow(document_group)
-        
-        # Helper documents
-        helper_group = QGroupBox("Helper Documents (Optional)")
-        helper_layout = QVBoxLayout()
-        
-        self.helper_table = QTableWidget(0, 3)
-        self.helper_table.setHorizontalHeaderLabels(["Path", "Type", "Actions"])
-        self.helper_table.horizontalHeader().setStretchLastSection(True)
-        self.helper_table.setMinimumHeight(100)
-        
-        add_helper_btn = QPushButton("Add Helper Document")
-        add_helper_btn.clicked.connect(self.add_helper_document)
-        
-        helper_layout.addWidget(self.helper_table)
-        helper_layout.addWidget(add_helper_btn)
-        
-        helper_group.setLayout(helper_layout)
-        doc_layout.addRow(helper_group)
-        
-        doc_tab.setLayout(doc_layout)
-        
-        # Parties tab
-        parties_tab = QWidget()
-        parties_layout = QVBoxLayout()
-        
-        # Grantors
-        grantor_group = QGroupBox("Grantors (Sellers/Transferors)")
-        grantor_layout = QVBoxLayout()
-        
-        self.grantor_table = QTableWidget(0, 5)
-        self.grantor_table.setHorizontalHeaderLabels(["Type", "Name/First Name", "Middle", "Last Name", "Actions"])
-        self.grantor_table.horizontalHeader().setStretchLastSection(True)
-        
-        add_grantor_btn = QPushButton("Add Grantor")
-        add_grantor_btn.clicked.connect(lambda: self.add_party("grantor"))
-        
-        grantor_layout.addWidget(self.grantor_table)
-        grantor_layout.addWidget(add_grantor_btn)
-        
-        grantor_group.setLayout(grantor_layout)
-        parties_layout.addWidget(grantor_group)
-        
-        # Grantees
-        grantee_group = QGroupBox("Grantees (Buyers/Recipients)")
-        grantee_layout = QVBoxLayout()
-        
-        self.grantee_table = QTableWidget(0, 5)
-        self.grantee_table.setHorizontalHeaderLabels(["Type", "Name/First Name", "Middle", "Last Name", "Actions"])
-        self.grantee_table.horizontalHeader().setStretchLastSection(True)
-        
-        add_grantee_btn = QPushButton("Add Grantee")
-        add_grantee_btn.clicked.connect(lambda: self.add_party("grantee"))
-        
-        grantee_layout.addWidget(self.grantee_table)
-        grantee_layout.addWidget(add_grantee_btn)
-        
-        grantee_group.setLayout(grantee_layout)
-        parties_layout.addWidget(grantee_group)
-        
-        parties_tab.setLayout(parties_layout)
-        
-        # Add tabs to tab widget
-        tabs.addTab(api_tab, "API Configuration")
-        tabs.addTab(doc_tab, "Document")
-        tabs.addTab(parties_tab, "Parties")
-        
-        main_layout.addWidget(tabs)
-        
-        # Action buttons
-        button_layout = QHBoxLayout()
-        
-        validate_btn = QPushButton("Validate")
-        validate_btn.clicked.connect(self.validate_package)
-        
-        upload_btn = QPushButton("Upload to Simplifile")
-        upload_btn.clicked.connect(self.upload_to_simplifile)
-        upload_btn.setStyleSheet("background-color: #4CAF50; color: white;")
-        
-        clear_btn = QPushButton("Clear Form")
-        clear_btn.clicked.connect(self.clear_form)
-        
-        button_layout.addWidget(clear_btn)
-        button_layout.addWidget(validate_btn)
-        button_layout.addWidget(upload_btn)
-        
-        main_layout.addLayout(button_layout)
-        
-        # Output area
+        # Output area (shared between tabs)
         self.output_text = QTextEdit()
         self.output_text.setReadOnly(True)
-        self.output_text.setMinimumHeight(100)
+        self.output_text.setMinimumHeight(150)
         main_layout.addWidget(self.output_text)
         
         self.setLayout(main_layout)
-        
-        # Load config data if available
-        self.load_last_package_data()
     
-    def save_api_config(self):
-        """Save the API configuration"""
-        self.config["api_token"] = self.api_token_input.text()
-        self.config["submitter_id"] = self.submitter_id_input.text()
-        self.config["recipient_id"] = self.recipient_id_input.text()
+    def create_api_config_group(self):
+        """Create API configuration group box"""
+        api_group = QGroupBox("API Configuration")
+        api_layout = QFormLayout()
         
-        if save_config(self.config, self.config_file):
+        self.api_token = QLineEdit(self.config.get("api_token", ""))
+        self.api_token.setEchoMode(QLineEdit.EchoMode.Password)
+        self.api_token.setPlaceholderText("Your Simplifile API token")
+        api_layout.addRow("API Token:", self.api_token)
+        
+        self.submitter_id = QLineEdit(self.config.get("submitter_id", ""))
+        self.submitter_id.setPlaceholderText("e.g., SCTP3G")
+        api_layout.addRow("Submitter ID:", self.submitter_id)
+        
+        # County dropdown (recipient)
+        self.recipient_combo = QComboBox()
+        for county in RECIPIENT_COUNTIES:
+            self.recipient_combo.addItem(county["name"], county["id"])
+        
+        # Set default from config if exists
+        if self.config.get("recipient_id"):
+            for i, county in enumerate(RECIPIENT_COUNTIES):
+                if county["id"] == self.config["recipient_id"]:
+                    self.recipient_combo.setCurrentIndex(i)
+                    break
+        
+        api_layout.addRow("County:", self.recipient_combo)
+        
+        save_api_btn = QPushButton("Save API Configuration")
+        save_api_btn.clicked.connect(self.save_api_settings)
+        api_layout.addRow("", save_api_btn)
+        
+        api_group.setLayout(api_layout)
+        return api_group
+    
+    def setup_single_upload_tab(self):
+        """Setup the single upload tab (existing functionality)"""
+        single_layout = QVBoxLayout()
+        
+        # Package Configuration
+        package_group = QGroupBox("Package Information")
+        package_layout = QFormLayout()
+        
+        self.package_id = QLineEdit()
+        self.package_id.setPlaceholderText(f"P-{datetime.now().strftime('%Y%m%d%H%M%S')}")
+        package_layout.addRow("Package ID:", self.package_id)
+        
+        self.package_name = QLineEdit()
+        self.package_name.setPlaceholderText(f"Package {datetime.now().strftime('%Y%m%d%H%M%S')}")
+        package_layout.addRow("Package Name:", self.package_name)
+        
+        package_group.setLayout(package_layout)
+        single_layout.addWidget(package_group)
+        
+        # Documents Section
+        doc_group = QGroupBox("Documents")
+        doc_layout = QVBoxLayout()
+        
+        self.doc_table = QTableWidget(0, 4)
+        self.doc_table.setHorizontalHeaderLabels(["Document Name", "Type", "Additional Persons", "Actions"])
+        self.doc_table.horizontalHeader().setStretchLastSection(True)
+        self.doc_table.setMinimumHeight(200)
+        
+        doc_buttons_layout = QHBoxLayout()
+        
+        add_doc_btn = QPushButton("Add Document")
+        add_doc_btn.clicked.connect(self.add_document)
+        
+        doc_buttons_layout.addWidget(add_doc_btn)
+        
+        doc_layout.addWidget(self.doc_table)
+        doc_layout.addLayout(doc_buttons_layout)
+        
+        doc_group.setLayout(doc_layout)
+        single_layout.addWidget(doc_group)
+        
+        # Action buttons for single upload
+        actions_layout = QHBoxLayout()
+        
+        self.upload_btn = QPushButton("Upload to Simplifile")
+        self.upload_btn.clicked.connect(self.upload_to_simplifile)
+        self.upload_btn.setStyleSheet("background-color: #4CAF50; color: white;")
+        
+        clear_btn = QPushButton("Clear All")
+        clear_btn.clicked.connect(self.clear_all)
+        
+        actions_layout.addWidget(clear_btn)
+        actions_layout.addWidget(self.upload_btn)
+        
+        single_layout.addLayout(actions_layout)
+        
+        self.single_upload_tab.setLayout(single_layout)
+    
+    def setup_batch_upload_tab(self):
+        """Setup the batch upload tab (new functionality)"""
+        batch_layout = QVBoxLayout()
+        
+        # File Selection Section
+        files_group = QGroupBox("Batch Files")
+        files_layout = QFormLayout()
+        
+        # Excel File Selection
+        excel_layout = QHBoxLayout()
+        self.excel_file_path = QLineEdit()
+        self.excel_file_path.setReadOnly(True)
+        excel_browse_btn = QPushButton("Browse...")
+        excel_browse_btn.clicked.connect(self.browse_excel_file)
+        excel_layout.addWidget(self.excel_file_path)
+        excel_layout.addWidget(excel_browse_btn)
+        files_layout.addRow("Excel File:", excel_layout)
+        
+        # Deed Documents PDF Selection
+        deeds_layout = QHBoxLayout()
+        self.deeds_file_path = QLineEdit()
+        self.deeds_file_path.setReadOnly(True)
+        deeds_browse_btn = QPushButton("Browse...")
+        deeds_browse_btn.clicked.connect(self.browse_deeds_file)
+        deeds_layout.addWidget(self.deeds_file_path)
+        deeds_layout.addWidget(deeds_browse_btn)
+        files_layout.addRow("Deed Documents (PDF):", deeds_layout)
+        
+        # Mortgage Satisfaction PDF Selection
+        mortgage_layout = QHBoxLayout()
+        self.mortgage_file_path = QLineEdit()
+        self.mortgage_file_path.setReadOnly(True)
+        mortgage_browse_btn = QPushButton("Browse...")
+        mortgage_browse_btn.clicked.connect(self.browse_mortgage_file)
+        mortgage_layout.addWidget(self.mortgage_file_path)
+        mortgage_layout.addWidget(mortgage_browse_btn)
+        files_layout.addRow("Mortgage Satisfactions (PDF):", mortgage_layout)
+        
+        # Batch Settings
+        config_layout = QFormLayout()
+        
+        # Document naming pattern
+        self.naming_pattern = QLineEdit("{account_number} {last_name} {doc_type}")
+        self.naming_pattern.setToolTip("Use {account_number}, {last_name}, and {doc_type} as placeholders")
+        config_layout.addRow("Naming Pattern:", self.naming_pattern)
+        
+        # Informational labels
+        deed_info = QLabel("• Deeds will be split every 4 pages as separate documents")
+        deed_info.setStyleSheet("color: #666;")
+        mortgage_info = QLabel("• Mortgage satisfactions will be processed as 1 page per document")
+        mortgage_info.setStyleSheet("color: #666;")
+        
+        # Add to layout
+        files_layout.addRow("", deed_info)
+        files_layout.addRow("", mortgage_info)
+        files_layout.addRow("Batch Configuration:", config_layout)
+        
+        files_group.setLayout(files_layout)
+        batch_layout.addWidget(files_group)
+        
+        # Batch preview (Could be implemented in future versions)
+        preview_group = QGroupBox("Batch Preview")
+        preview_layout = QVBoxLayout()
+        
+        preview_info = QLabel("Excel data and document files will be matched in order (Row 1 → Doc 1)")
+        preview_layout.addWidget(preview_info)
+        
+        self.preview_btn = QPushButton("Generate Preview")
+        self.preview_btn.clicked.connect(self.generate_batch_preview)
+        preview_layout.addWidget(self.preview_btn)
+        
+        preview_group.setLayout(preview_layout)
+        batch_layout.addWidget(preview_group)
+        
+        # Action buttons for batch upload
+        actions_layout = QHBoxLayout()
+        
+        self.batch_upload_btn = QPushButton("Process Batch Upload")
+        self.batch_upload_btn.clicked.connect(self.process_batch_upload)
+        self.batch_upload_btn.setStyleSheet("background-color: #4CAF50; color: white;")
+        
+        batch_clear_btn = QPushButton("Clear Batch")
+        batch_clear_btn.clicked.connect(self.clear_batch)
+        
+        actions_layout.addWidget(batch_clear_btn)
+        actions_layout.addWidget(self.batch_upload_btn)
+        
+        batch_layout.addLayout(actions_layout)
+        
+        self.batch_upload_tab.setLayout(batch_layout)
+    
+    def browse_excel_file(self):
+        """Browse for Excel file for batch processing"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select Excel File", "", "Excel Files (*.xlsx *.xls);;All Files (*)"
+        )
+        if file_path:
+            self.excel_file_path.setText(file_path)
+            self.update_output(f"Selected Excel file: {os.path.basename(file_path)}")
+    
+    def browse_deeds_file(self):
+        """Browse for Deed documents PDF file"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select Deed Documents PDF", "", "PDF Files (*.pdf);;All Files (*)"
+        )
+        if file_path:
+            self.deeds_file_path.setText(file_path)
+            self.update_output(f"Selected Deed documents file: {os.path.basename(file_path)}")
+    
+    def browse_mortgage_file(self):
+        """Browse for Mortgage Satisfaction PDF file"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select Mortgage Satisfaction PDF", "", "PDF Files (*.pdf);;All Files (*)"
+        )
+        if file_path:
+            self.mortgage_file_path.setText(file_path)
+            self.update_output(f"Selected Mortgage Satisfaction file: {os.path.basename(file_path)}")
+    
+    def generate_batch_preview(self):
+        """Generate preview of batch processing"""
+        # Check if all required files are selected
+        if not self.excel_file_path.text():
+            QMessageBox.warning(self, "Missing File", "Please select an Excel file.")
+            return
+            
+        if not self.deeds_file_path.text() and not self.mortgage_file_path.text():
+            QMessageBox.warning(self, "Missing Files", 
+                               "Please select at least one PDF file (Deeds or Mortgage Satisfactions).")
+            return
+        
+        # Run the preview generation
+        self.update_output("Generating batch preview...")
+        self.progress_bar.setValue(5)
+        self.preview_btn.setEnabled(False)
+        
+        self.preview_thread, self.preview_worker = run_simplifile_batch_preview(
+            self.excel_file_path.text(),
+            self.deeds_file_path.text(),
+            self.mortgage_file_path.text()
+        )
+        
+        # Connect signals
+        self.preview_worker.status.connect(self.update_status)
+        self.preview_worker.progress.connect(self.update_progress)
+        self.preview_worker.error.connect(self.show_error)
+        self.preview_worker.preview_ready.connect(self.show_preview_dialog)
+        
+        # Connect cleanup handlers
+        self.preview_thread.finished.connect(lambda: self.preview_btn.setEnabled(True))
+        
+        # Start thread
+        self.preview_thread.start()
+    
+    def show_preview_dialog(self, preview_json):
+        """Show the preview dialog with the generated data"""
+        try:
+            preview_data = json.loads(preview_json)
+            
+            # Open the preview dialog
+            dialog = BatchPreviewDialog(preview_data, self)
+            dialog.exec()
+            
+        except Exception as e:
+            self.show_error(f"Error displaying preview: {str(e)}")
+    
+    def process_batch_upload(self):
+        """Process and start the batch upload (test mode only - no actual upload)"""
+        # Validate API configuration
+        api_token = self.api_token.text()
+        submitter_id = self.submitter_id.text()
+        recipient_id = self.recipient_combo.currentData()
+        
+        if not api_token or not submitter_id or not recipient_id:
+            QMessageBox.warning(self, "Missing API Configuration", 
+                               "Please enter your API token, submitter ID, and select a county.")
+            return
+        
+        # Validate file selection
+        if not self.excel_file_path.text():
+            QMessageBox.warning(self, "Missing Excel File", "Please select an Excel file.")
+            return
+            
+        if not self.deeds_file_path.text() and not self.mortgage_file_path.text():
+            QMessageBox.warning(self, "Missing PDF Files", 
+                               "Please select at least one PDF file (Deeds or Mortgage Satisfactions).")
+            return
+        
+        # Confirm batch upload
+        recipient_name = self.recipient_combo.currentText()
+        message = f"Process batch upload to {recipient_name}?\n\n"
+        
+        if self.deeds_file_path.text():
+            message += f"- Deed Documents: {os.path.basename(self.deeds_file_path.text())}\n"
+        if self.mortgage_file_path.text():
+            message += f"- Mortgage Satisfactions: {os.path.basename(self.mortgage_file_path.text())}\n"
+        message += f"- Excel Data: {os.path.basename(self.excel_file_path.text())}\n"
+        message += "\nThis is in preview mode and will NOT actually upload files."
+        
+        reply = QMessageBox.question(self, "Confirm Batch Processing", message,
+                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        # Run the batch process
+        self.update_output("Starting batch processing...")
+        self.progress_bar.setValue(5)
+        self.batch_upload_btn.setEnabled(False)
+        
+        self.batch_thread, self.batch_worker = run_simplifile_batch_process(
+            self.excel_file_path.text(),
+            self.deeds_file_path.text(),
+            self.mortgage_file_path.text()
+        )
+        
+        # Connect signals
+        self.batch_worker.status.connect(self.update_status)
+        self.batch_worker.progress.connect(self.update_progress)
+        self.batch_worker.error.connect(self.show_error)
+        self.batch_worker.finished.connect(self.batch_process_finished)
+        
+        # Start thread
+        self.batch_thread.start()
+    
+    def batch_process_finished(self, result_data):
+        """Handle completion of batch processing"""
+        self.batch_upload_btn.setEnabled(True)
+        
+        if result_data.get("resultCode") == "SUCCESS":
+            self.update_output("Batch processing completed successfully.")
+            packages = result_data.get("packages", [])
+            self.update_output(f"Prepared {len(packages)} packages.")
+            
+            # Show success message
+            QMessageBox.information(self, "Processing Complete", 
+                                 f"Batch processing completed successfully. {len(packages)} packages prepared.")
+        else:
+            error_msg = result_data.get("message", "Unknown error")
+            self.update_output(f"Batch processing failed: {error_msg}")
+    
+    def clear_batch(self):
+        """Clear batch upload form"""
+        reply = QMessageBox.question(self, "Confirm Clear", 
+                                   "Clear all batch upload information?",
+                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        self.excel_file_path.clear()
+        self.deeds_file_path.clear()
+        self.mortgage_file_path.clear()
+        self.naming_pattern.setText("{account_number} {last_name} {doc_type}")
+        
+        self.update_output("Batch upload information cleared")
+    
+    # Existing methods from SimplifileUI class
+    def add_document(self, doc_data=None):
+        """Add a new document to the package"""
+        dialog = DocumentDialog(self, doc_data)
+        
+        if dialog.exec():
+            doc_data = dialog.get_document_data()
+            if doc_data:
+                # Add or update in documents list
+                if doc_data in self.documents:
+                    idx = self.documents.index(doc_data)
+                    self.documents[idx] = doc_data
+                else:
+                    self.documents.append(doc_data)
+                
+                self.update_document_table()
+                self.update_output(f"Added document: {doc_data['name']}")
+    
+    def edit_document(self, row):
+        """Edit an existing document"""
+        if 0 <= row < len(self.documents):
+            doc_data = self.documents[row]
+            self.add_document(doc_data)
+    
+    def remove_document(self, row):
+        """Remove a document from the package"""
+        if 0 <= row < len(self.documents):
+            doc_name = self.documents[row]["name"]
+            self.documents.pop(row)
+            self.update_document_table()
+            self.update_output(f"Removed document: {doc_name}")
+    
+    def update_document_table(self):
+        """Update the document table display"""
+        self.doc_table.setRowCount(0)
+        
+        for i, doc in enumerate(self.documents):
+            self.doc_table.insertRow(i)
+            
+            # Document name
+            self.doc_table.setItem(i, 0, QTableWidgetItem(doc.get("name", "")))
+            
+            # Document type
+            self.doc_table.setItem(i, 1, QTableWidgetItem(doc.get("type", "")))
+            
+            # Additional persons summary
+            person_count = len(doc.get("person_grantors", []))
+            persons_text = f"{person_count} additional person(s)"
+            self.doc_table.setItem(i, 2, QTableWidgetItem(persons_text))
+            
+            # Actions
+            actions_widget = QWidget()
+            actions_layout = QHBoxLayout()
+            actions_layout.setContentsMargins(2, 2, 2, 2)
+            
+            edit_btn = QPushButton("Edit")
+            edit_btn.clicked.connect(lambda checked, row=i: self.edit_document(row))
+            
+            remove_btn = QPushButton("Remove")
+            remove_btn.clicked.connect(lambda checked, row=i: self.remove_document(row))
+            
+            actions_layout.addWidget(edit_btn)
+            actions_layout.addWidget(remove_btn)
+            
+            actions_widget.setLayout(actions_layout)
+            self.doc_table.setCellWidget(i, 3, actions_widget)
+    
+    def save_api_settings(self):
+        """Save API settings to config"""
+        self.config["api_token"] = self.api_token.text()
+        self.config["submitter_id"] = self.submitter_id.text()
+        self.config["recipient_id"] = self.recipient_combo.currentData()
+        
+        if self.save_config():
             self.update_output("API configuration saved successfully")
         else:
             self.update_output("Error saving API configuration")
     
-    def browse_document(self):
-        """Open file dialog to select main document"""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select Document", "", "PDF Files (*.pdf);;All Files (*)"
-        )
-        
-        if file_path:
-            self.doc_path_input.setText(file_path)
-            self.config["last_document_path"] = file_path
-            save_config(self.config, self.config_file)
-            
-            # Extract file name as default package name if empty
-            if not self.package_name_input.text():
-                base_name = os.path.basename(file_path)
-                name_without_ext = os.path.splitext(base_name)[0]
-                self.package_name_input.setText(name_without_ext.upper())
-    
-    def add_helper_document(self):
-        """Add a helper document to the package"""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select Helper Document", "", "PDF Files (*.pdf);;All Files (*)"
-        )
-        
-        if not file_path:
-            return
-        
-        # Add to table
-        row_position = self.helper_table.rowCount()
-        self.helper_table.insertRow(row_position)
-        
-        # File path
-        self.helper_table.setItem(row_position, 0, QTableWidgetItem(file_path))
-        
-        # Document type dropdown
-        type_combo = QComboBox()
-        type_combo.addItems(get_helper_document_types())
-        self.helper_table.setCellWidget(row_position, 1, type_combo)
-        
-        # Remove button
-        remove_btn = QPushButton("Remove")
-        remove_btn.clicked.connect(lambda: self.remove_helper_document(row_position))
-        self.helper_table.setCellWidget(row_position, 2, remove_btn)
-        
-        # Add to helper_documents list
-        helper_doc = HelperDocument(file_path)
-        self.helper_documents.append(helper_doc)
-        
-        self.update_output(f"Added helper document: {os.path.basename(file_path)}")
-    
-    def remove_helper_document(self, row):
-        """Remove a helper document from the package"""
-        if 0 <= row < len(self.helper_documents):
-            file_path = self.helper_table.item(row, 0).text()
-            self.helper_documents.pop(row)
-            self.helper_table.removeRow(row)
-            self.update_output(f"Removed helper document: {os.path.basename(file_path)}")
-            
-            # Update row indices for remaining remove buttons
-            for i in range(row, self.helper_table.rowCount()):
-                remove_btn = QPushButton("Remove")
-                remove_btn.clicked.connect(lambda checked, row=i: self.remove_helper_document(row))
-                self.helper_table.setCellWidget(i, 2, remove_btn)
-    
-    def add_party(self, party_type):
-        """Add a grantor or grantee to the package"""
-        row_position = 0
-        table_widget = None
-        
-        if party_type == "grantor":
-            row_position = self.grantor_table.rowCount()
-            table_widget = self.grantor_table
-        else:  # grantee
-            row_position = self.grantee_table.rowCount()
-            table_widget = self.grantee_table
-        
-        table_widget.insertRow(row_position)
-        
-        # Party type dropdown
-        type_combo = QComboBox()
-        type_combo.addItems(["PERSON", "ORGANIZATION"])
-        type_combo.currentTextChanged.connect(
-            lambda text, row=row_position, table=table_widget: 
-            self.update_party_type(text, row, table)
-        )
-        table_widget.setCellWidget(row_position, 0, type_combo)
-        
-        # Default to PERSON: First Name, Middle Name, Last Name
-        for col in range(1, 4):
-            table_widget.setItem(row_position, col, QTableWidgetItem(""))
-        
-        # Remove button
-        remove_btn = QPushButton("Remove")
-        if party_type == "grantor":
-            remove_btn.clicked.connect(lambda: self.remove_party("grantor", row_position))
-        else:
-            remove_btn.clicked.connect(lambda: self.remove_party("grantee", row_position))
-        table_widget.setCellWidget(row_position, 4, remove_btn)
-        
-        # Create and add party object
-        party = Party()
-        if party_type == "grantor":
-            self.grantors.append(party)
-        else:
-            self.grantees.append(party)
-        
-        self.update_output(f"Added {party_type}")
-    
-    def update_party_type(self, party_type, row, table_widget):
-        """Update the party type and relevant fields"""
-        # Clear existing values
-        for col in range(1, 4):
-            if table_widget.item(row, col):
-                table_widget.item(row, col).setText("")
-        
-        # Update headers based on party type
-        if party_type == "ORGANIZATION":
-            table_widget.setItem(row, 1, QTableWidgetItem(""))
-            # Disable unused cells
-            for col in range(2, 4):
-                item = QTableWidgetItem("")
-                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
-                table_widget.setItem(row, col, item)
-        else:
-            # Enable all cells for PERSON
-            for col in range(1, 4):
-                if table_widget.item(row, col):
-                    flags = table_widget.item(row, col).flags()
-                    flags |= Qt.ItemFlag.ItemIsEnabled
-                    table_widget.item(row, col).setFlags(flags)
-                else:
-                    table_widget.setItem(row, col, QTableWidgetItem(""))
-    
-    def remove_party(self, party_type, row):
-        """Remove a party from the package"""
-        if party_type == "grantor":
-            if 0 <= row < len(self.grantors):
-                self.grantors.pop(row)
-                self.grantor_table.removeRow(row)
-                for i in range(row, self.grantor_table.rowCount()):
-                    remove_btn = QPushButton("Remove")
-                    remove_btn.clicked.connect(lambda checked, row=i: self.remove_party("grantor", row))
-                    self.grantor_table.setCellWidget(i, 4, remove_btn)
-        else:  # grantee
-            if 0 <= row < len(self.grantees):
-                self.grantees.pop(row)
-                self.grantee_table.removeRow(row)
-                for i in range(row, self.grantee_table.rowCount()):
-                    remove_btn = QPushButton("Remove")
-                    remove_btn.clicked.connect(lambda checked, row=i: self.remove_party("grantee", row))
-                    self.grantee_table.setCellWidget(i, 4, remove_btn)
-        
-        self.update_output(f"Removed {party_type}")
-    
-    def gather_package_data(self):
-        """Collect all package data from the form"""
-        package_data = {
-            "reference_number": self.ref_number_input.text(),
-            "package_name": self.package_name_input.text(),
-            "document_type": self.doc_type_combo.currentText(),
-            "consideration": self.consideration_input.text(),
-            "execution_date": self.execution_date.date().toString("MM/dd/yyyy"),
-            "legal_description": self.legal_desc_input.toPlainText(),
-            "parcel_id": self.parcel_id_input.text(),
-            "book": self.book_input.text(),
-            "page": self.page_input.text(),
-            "grantors": [],
-            "grantees": [],
-            "helper_documents": []
-        }
-        
-        # Gather grantors
-        for row in range(self.grantor_table.rowCount()):
-            party_type = self.grantor_table.cellWidget(row, 0).currentText()
-            
-            if party_type == "ORGANIZATION":
-                name = self.grantor_table.item(row, 1).text() if self.grantor_table.item(row, 1) else ""
-                party = {
-                    "type": party_type,
-                    "name": name
-                }
-            else:  # PERSON
-                first_name = self.grantor_table.item(row, 1).text() if self.grantor_table.item(row, 1) else ""
-                middle_name = self.grantor_table.item(row, 2).text() if self.grantor_table.item(row, 2) else ""
-                last_name = self.grantor_table.item(row, 3).text() if self.grantor_table.item(row, 3) else ""
-                party = {
-                    "type": party_type,
-                    "first_name": first_name,
-                    "middle_name": middle_name,
-                    "last_name": last_name
-                }
-            
-            package_data["grantors"].append(party)
-        
-        # Gather grantees
-        for row in range(self.grantee_table.rowCount()):
-            party_type = self.grantee_table.cellWidget(row, 0).currentText()
-            
-            if party_type == "ORGANIZATION":
-                name = self.grantee_table.item(row, 1).text() if self.grantee_table.item(row, 1) else ""
-                party = {
-                    "type": party_type,
-                    "name": name
-                }
-            else:  # PERSON
-                first_name = self.grantee_table.item(row, 1).text() if self.grantee_table.item(row, 1) else ""
-                middle_name = self.grantee_table.item(row, 2).text() if self.grantee_table.item(row, 2) else ""
-                last_name = self.grantee_table.item(row, 3).text() if self.grantee_table.item(row, 3) else ""
-                party = {
-                    "type": party_type,
-                    "first_name": first_name,
-                    "middle_name": middle_name,
-                    "last_name": last_name
-                }
-            
-            package_data["grantees"].append(party)
-        
-        # Gather helper documents
-        for row in range(self.helper_table.rowCount()):
-            file_path = self.helper_table.item(row, 0).text()
-            doc_type = self.helper_table.cellWidget(row, 1).currentText()
-            
-            helper_doc = {
-                "path": file_path,
-                "type": doc_type,
-                "is_electronic": False
-            }
-            
-            package_data["helper_documents"].append(helper_doc)
-        
-        return package_data
-    
-    def validate_package(self):
-        """Validate the package data"""
-        # Gather data from form
-        package_data = self.gather_package_data()
-        
-        # Validate document path
-        if not self.doc_path_input.text() or not os.path.exists(self.doc_path_input.text()):
-            self.update_output("Error: Please select a valid document file")
-            return False
-        
-        # Validate required fields and party data
-        valid, message = validate_package_data(package_data)
-        if not valid:
-            self.update_output(f"Validation error: {message}")
-            return False
-        
-        self.update_output("Package validation successful! Ready to upload.")
-        return True
-    
     def upload_to_simplifile(self):
-        """Upload the package to Simplifile"""
-        if not self.validate_package():
-            return
-        
-        # Get API configuration
-        api_token = self.api_token_input.text()
-        submitter_id = self.submitter_id_input.text()
-        recipient_id = self.recipient_id_input.text()
+        """Validate and upload package to Simplifile"""
+        # Check API configuration
+        api_token = self.api_token.text()
+        submitter_id = self.submitter_id.text()
+        recipient_id = self.recipient_combo.currentData()
         
         if not api_token or not submitter_id or not recipient_id:
-            self.update_output("Error: Please provide API token, submitter ID, and recipient ID")
+            QMessageBox.warning(self, "Missing API Configuration", 
+                               "Please enter your API token, submitter ID, and select a county.")
             return
         
-        # Gather package data
-        package_data = self.gather_package_data()
+        # Check documents
+        if not self.documents:
+            QMessageBox.warning(self, "No Documents", 
+                               "Please add at least one document to the package.")
+            return
         
-        # Save current package data for future reference
-        self.config["last_package_data"] = package_data
-        save_config(self.config, self.config_file)
+        # Prepare package data
+        package_data = {
+            "package_id": self.package_id.text() or f"P-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            "package_name": self.package_name.text() or f"Package {datetime.now().strftime('%Y%m%d%H%M%S')}"
+        }
         
-        # Emit signal to trigger upload process
+        # Validate documents
+        for doc in self.documents:
+            if not os.path.exists(doc["file_path"]):
+                QMessageBox.warning(self, "Invalid Document", 
+                                  f"Document file not found: {doc['file_path']}")
+                return
+        
+        # Confirm upload
+        recipient_name = self.recipient_combo.currentText()
+        reply = QMessageBox.question(self, "Confirm Upload", 
+                                   f"Upload package '{package_data['package_name']}' with {len(self.documents)} document(s) to {recipient_name}?",
+                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        # Emit signal to start upload
         self.start_simplifile_upload.emit(
             api_token,
             submitter_id,
             recipient_id,
-            self.doc_path_input.text(),
-            package_data
+            package_data,
+            self.documents
         )
         
-        self.update_output("Starting upload to Simplifile...")
+        self.upload_btn.setEnabled(False)
+        self.update_output(f"Starting upload of package '{package_data['package_name']}' to {recipient_name}...")
         self.progress_bar.setValue(5)
     
     def update_progress(self, value):
         """Update the progress bar"""
         self.progress_bar.setValue(value)
     
+    def update_status(self, status):
+        """Update the status label"""
+        self.status_label.setText(status)
+        self.update_output(status)
+    
     def update_output(self, message):
         """Add a message to the output text area"""
         timestamp = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
         self.output_text.append(f"{timestamp} {message}")
-        # Scroll to bottom
         self.output_text.verticalScrollBar().setValue(
             self.output_text.verticalScrollBar().maximum()
         )
-        self.status_label.setText(message)
     
-    def update_status(self, status):
-        """Update the status label and log the message"""
-        self.status_label.setText(status)
-        self.update_output(status)
-    
-    def clear_form(self):
-        """Clear all form fields"""
-        # Clear document inputs
-        self.ref_number_input.clear()
-        self.package_name_input.clear()
-        self.doc_type_combo.setCurrentIndex(0)
-        self.consideration_input.setText("0.00")
-        self.execution_date.setDate(QDate.currentDate())
-        self.legal_desc_input.clear()
-        self.parcel_id_input.clear()
-        self.book_input.clear()
-        self.page_input.clear()
+    def upload_finished(self, response_data):
+        """Handle completion of upload"""
+        self.upload_btn.setEnabled(True)
+        self.batch_upload_btn.setEnabled(True)
         
-        # Clear helper documents
-        for _ in range(self.helper_table.rowCount()):
-            self.helper_table.removeRow(0)
-        self.helper_documents.clear()
-        
-        # Clear grantors
-        for _ in range(self.grantor_table.rowCount()):
-            self.grantor_table.removeRow(0)
-        self.grantors.clear()
-        
-        # Clear grantees
-        for _ in range(self.grantee_table.rowCount()):
-            self.grantee_table.removeRow(0)
-        self.grantees.clear()
-        
-        self.update_output("Form cleared")
-    
-    def load_last_package_data(self):
-        """Load the last saved package data if available"""
-        last_package = self.config.get("last_package_data", {})
-        if not last_package:
+        if "error" in response_data:
+            self.update_output(f"Upload failed: {response_data.get('error', 'Unknown error')}")
             return
         
-        # Load basic fields
-        self.ref_number_input.setText(last_package.get("reference_number", ""))
-        self.package_name_input.setText(last_package.get("package_name", ""))
+        if response_data.get("resultCode") == "SUCCESS":
+            self.update_output("Upload completed successfully!")
+            
+            # Display package details
+            if "packageStatus" in response_data:
+                pkg_status = response_data["packageStatus"]
+                self.update_output(f"Package ID: {pkg_status.get('id', 'Unknown')}")
+                self.update_output(f"Status: {pkg_status.get('status', 'Unknown')}")
+                self.update_output(f"View URL: {pkg_status.get('viewPackageUrl', 'N/A')}")
+                
+                # Show success message
+                QMessageBox.information(self, "Upload Successful", 
+                                     f"Package '{pkg_status.get('name', 'Unknown')}' was uploaded successfully.")
+        else:
+            self.update_output(f"Upload completed with errors. Result code: {response_data.get('resultCode', 'Unknown')}")
+    
+    def show_error(self, error_message):
+        """Display error message"""
+        self.update_output(f"Error: {error_message}")
+        QMessageBox.critical(self, "Upload Error", error_message)
+        self.upload_btn.setEnabled(True)
+        self.batch_upload_btn.setEnabled(True)
+    
+    def clear_all(self):
+        """Clear all input fields and documents"""
+        reply = QMessageBox.question(self, "Confirm Clear", 
+                                   "Clear all documents and package information?",
+                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         
-        doc_type = last_package.get("document_type", "")
-        if doc_type in get_document_types():
-            self.doc_type_combo.setCurrentText(doc_type)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
         
-        self.consideration_input.setText(last_package.get("consideration", "0.00"))
+        # Clear package info
+        self.package_id.clear()
+        self.package_name.clear()
         
-        # Try to parse execution date
-        exec_date = last_package.get("execution_date", "")
-        if exec_date:
+        # Clear documents
+        self.documents.clear()
+        self.update_document_table()
+        
+        # Reset progress
+        self.progress_bar.setValue(0)
+        self.status_label.setText("Ready")
+        
+        self.update_output("All data cleared")
+
+class PersonDialog(QDialog):
+    """Dialog for adding person grantors or grantees"""
+    
+    def __init__(self, parent=None, person_data=None, title="Add Person"):
+        super().__init__(parent)
+        self.person_data = person_data or {}
+        self.setWindowTitle(title)
+        self.init_ui()
+    
+    def init_ui(self):
+        layout = QFormLayout()
+        
+        self.first_name = QLineEdit(self.person_data.get("first_name", ""))
+        self.first_name.setPlaceholderText("First Name")
+        layout.addRow("First Name:", self.first_name)
+        
+        self.middle_name = QLineEdit(self.person_data.get("middle_name", ""))
+        self.middle_name.setPlaceholderText("Middle Name (Optional)")
+        layout.addRow("Middle Name:", self.middle_name)
+        
+        self.last_name = QLineEdit(self.person_data.get("last_name", ""))
+        self.last_name.setPlaceholderText("Last Name")
+        layout.addRow("Last Name:", self.last_name)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        
+        save_btn = QPushButton("Save")
+        save_btn.clicked.connect(self.accept)
+        save_btn.setDefault(True)
+        
+        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(save_btn)
+        
+        layout.addRow("", button_layout)
+        self.setLayout(layout)
+    
+    def get_person_data(self):
+        """Get the person data from the form"""
+        if not self.first_name.text() or not self.last_name.text():
+            QMessageBox.warning(self, "Missing Information", 
+                               "First name and last name are required.")
+            return None
+        
+        return {
+            "first_name": self.first_name.text(),
+            "middle_name": self.middle_name.text(),
+            "last_name": self.last_name.text()
+        }
+
+class OrganizationDialog(QDialog):
+    """Dialog for adding organization grantors or grantees"""
+    
+    def __init__(self, parent=None, org_data=None, title="Add Organization"):
+        super().__init__(parent)
+        self.org_data = org_data or {}
+        self.setWindowTitle(title)
+        self.init_ui()
+    
+    def init_ui(self):
+        layout = QFormLayout()
+        
+        self.name = QLineEdit(self.org_data.get("name", ""))
+        self.name.setPlaceholderText("Organization Name (will be converted to uppercase)")
+        layout.addRow("Organization Name:", self.name)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        
+        save_btn = QPushButton("Save")
+        save_btn.clicked.connect(self.accept)
+        save_btn.setDefault(True)
+        
+        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(save_btn)
+        
+        layout.addRow("", button_layout)
+        self.setLayout(layout)
+    
+    def get_org_data(self):
+        """Get the organization data from the form"""
+        if not self.name.text():
+            QMessageBox.warning(self, "Missing Information", 
+                               "Organization name is required.")
+            return None
+        
+        return {
+            "name": self.name.text().upper()
+        }
+
+class DocumentDialog(QDialog):
+    """Dialog for adding or editing a document in the package"""
+    
+    def __init__(self, parent=None, doc_data=None):
+        super().__init__(parent)
+        self.doc_data = doc_data or {}
+        self.person_grantors = self.doc_data.get("person_grantors", [])
+        self.person_grantees = self.doc_data.get("person_grantees", [])
+        self.org_grantors = self.doc_data.get("org_grantors", [])
+        self.org_grantees = self.doc_data.get("org_grantees", [])
+        self.setWindowTitle("Document Details")
+        self.setMinimumWidth(700)
+        self.init_ui()
+    
+    def init_ui(self):
+        layout = QVBoxLayout()
+        
+        # Main document form
+        form_layout = QFormLayout()
+        
+        # File path selection
+        file_path_layout = QHBoxLayout()
+        self.file_path = QLineEdit(self.doc_data.get("file_path", ""))
+        self.file_path.setReadOnly(True)
+        browse_btn = QPushButton("Browse...")
+        browse_btn.clicked.connect(self.browse_file)
+        file_path_layout.addWidget(self.file_path)
+        file_path_layout.addWidget(browse_btn)
+        form_layout.addRow("Document File:", file_path_layout)
+        
+        # Document ID and Name
+        self.doc_id = QLineEdit(self.doc_data.get("document_id", ""))
+        self.doc_id.setPlaceholderText("e.g., D-12345")
+        form_layout.addRow("Document ID:", self.doc_id)
+        
+        self.doc_name = QLineEdit(self.doc_data.get("name", ""))
+        self.doc_name.setPlaceholderText("e.g., SMITH 12345")
+        self.doc_name.setToolTip("Will be converted to uppercase automatically")
+        form_layout.addRow("Document Name:", self.doc_name)
+        
+        # Document type
+        self.doc_type = QComboBox()
+        self.doc_type.addItems(DOCUMENT_TYPES)
+        current_type = self.doc_data.get("type", DOCUMENT_TYPES[0])
+        if current_type in DOCUMENT_TYPES:
+            self.doc_type.setCurrentText(current_type)
+        form_layout.addRow("Document Type:", self.doc_type)
+        
+        # Consideration
+        self.consideration = QLineEdit(self.doc_data.get("consideration", "0.00"))
+        form_layout.addRow("Consideration:", self.consideration)
+        
+        # Execution date
+        self.execution_date = QDateEdit()
+        self.execution_date.setDisplayFormat("MM/dd/yyyy")
+        current_date = QDate.currentDate()
+        if "execution_date" in self.doc_data:
             try:
-                date = QDate.fromString(exec_date, "MM/dd/yyyy")
-                if date.isValid():
-                    self.execution_date.setDate(date)
+                date_parts = self.doc_data["execution_date"].split("/")
+                if len(date_parts) == 3:
+                    current_date = QDate(int(date_parts[2]), int(date_parts[0]), int(date_parts[1]))
             except:
                 pass
+        self.execution_date.setDate(current_date)
+        form_layout.addRow("Execution Date:", self.execution_date)
         
-        self.legal_desc_input.setPlainText(last_package.get("legal_description", ""))
-        self.parcel_id_input.setText(last_package.get("parcel_id", ""))
-        self.book_input.setText(last_package.get("book", ""))
-        self.page_input.setText(last_package.get("page", ""))
+        # Legal description
+        self.legal_description = QTextEdit(self.doc_data.get("legal_description", ""))
+        self.legal_description.setMaximumHeight(100)
+        self.legal_description.setToolTip("Will be converted to uppercase automatically")
+        form_layout.addRow("Legal Description:", self.legal_description)
         
-        # Load grantors
-        for grantor in last_package.get("grantors", []):
-            self.add_party("grantor")
-            row = self.grantor_table.rowCount() - 1
-            
-            # Set type
-            type_combo = self.grantor_table.cellWidget(row, 0)
-            type_combo.setCurrentText(grantor.get("type", "PERSON"))
-            
-            # Set other fields based on type
-            if grantor.get("type") == "ORGANIZATION":
-                self.grantor_table.item(row, 1).setText(grantor.get("name", ""))
-            else:
-                self.grantor_table.item(row, 1).setText(grantor.get("first_name", ""))
-                self.grantor_table.item(row, 2).setText(grantor.get("middle_name", ""))
-                self.grantor_table.item(row, 3).setText(grantor.get("last_name", ""))
+        # Parcel ID
+        self.parcel_id = QLineEdit(self.doc_data.get("parcel_id", ""))
+        self.parcel_id.setToolTip("Will be converted to uppercase automatically")
+        form_layout.addRow("Parcel ID:", self.parcel_id)
         
-        # Load grantees
-        for grantee in last_package.get("grantees", []):
-            self.add_party("grantee")
-            row = self.grantee_table.rowCount() - 1
+        # Default Parties Section - Show the automatically included parties
+        default_group = QGroupBox("Default Parties (Always Included)")
+        default_layout = QVBoxLayout()
+        
+        # Default Grantors
+        default_layout.addWidget(QLabel("<b>Default Grantors:</b>"))
+        for grantor in DEFAULT_GRANTORS:
+            label = QLabel(f"• {grantor['nameUnparsed']} (Organization)")
+            default_layout.addWidget(label)
+        
+        # Default Grantees
+        default_layout.addWidget(QLabel("<b>Default Grantees:</b>"))
+        for grantee in DEFAULT_GRANTEES:
+            label = QLabel(f"• {grantee['nameUnparsed']} (Organization)")
+            default_layout.addWidget(label)
+        
+        default_group.setLayout(default_layout)
+        
+        # Additional Parties Section
+        parties_group = QGroupBox("Additional Parties")
+        parties_layout = QVBoxLayout()
+        
+        # Additional Grantors Section
+        grantor_layout = QVBoxLayout()
+        grantor_layout.addWidget(QLabel("<b>Additional Grantors:</b>"))
+        
+        # Person Grantors Table
+        self.person_grantor_table = QTableWidget(0, 4)
+        self.person_grantor_table.setHorizontalHeaderLabels(["First Name", "Middle Name", "Last Name", "Actions"])
+        self.person_grantor_table.horizontalHeader().setStretchLastSection(True)
+        self.person_grantor_table.setMinimumHeight(100)
+        grantor_layout.addWidget(self.person_grantor_table)
+        
+        # Org Grantors Table
+        self.org_grantor_table = QTableWidget(0, 2)
+        self.org_grantor_table.setHorizontalHeaderLabels(["Organization Name", "Actions"])
+        self.org_grantor_table.horizontalHeader().setStretchLastSection(True)
+        self.org_grantor_table.setMinimumHeight(50)
+        grantor_layout.addWidget(self.org_grantor_table)
+        
+        # Grantor Buttons
+        grantor_buttons = QHBoxLayout()
+        add_person_grantor_btn = QPushButton("Add Person Grantor")
+        add_person_grantor_btn.clicked.connect(lambda: self.add_person("grantor"))
+        
+        add_org_grantor_btn = QPushButton("Add Organization Grantor")
+        add_org_grantor_btn.clicked.connect(lambda: self.add_organization("grantor"))
+        
+        grantor_buttons.addWidget(add_person_grantor_btn)
+        grantor_buttons.addWidget(add_org_grantor_btn)
+        grantor_layout.addLayout(grantor_buttons)
+        
+        # Separator line
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        
+        # Additional Grantees Section
+        grantee_layout = QVBoxLayout()
+        grantee_layout.addWidget(QLabel("<b>Additional Grantees:</b>"))
+        
+        # Person Grantees Table
+        self.person_grantee_table = QTableWidget(0, 4)
+        self.person_grantee_table.setHorizontalHeaderLabels(["First Name", "Middle Name", "Last Name", "Actions"])
+        self.person_grantee_table.horizontalHeader().setStretchLastSection(True)
+        self.person_grantee_table.setMinimumHeight(100)
+        grantee_layout.addWidget(self.person_grantee_table)
+        
+        # Org Grantees Table
+        self.org_grantee_table = QTableWidget(0, 2)
+        self.org_grantee_table.setHorizontalHeaderLabels(["Organization Name", "Actions"])
+        self.org_grantee_table.horizontalHeader().setStretchLastSection(True)
+        self.org_grantee_table.setMinimumHeight(50)
+        grantee_layout.addWidget(self.org_grantee_table)
+        
+        # Grantee Buttons
+        grantee_buttons = QHBoxLayout()
+        add_person_grantee_btn = QPushButton("Add Person Grantee")
+        add_person_grantee_btn.clicked.connect(lambda: self.add_person("grantee"))
+        
+        add_org_grantee_btn = QPushButton("Add Organization Grantee")
+        add_org_grantee_btn.clicked.connect(lambda: self.add_organization("grantee"))
+        
+        grantee_buttons.addWidget(add_person_grantee_btn)
+        grantee_buttons.addWidget(add_org_grantee_btn)
+        grantee_layout.addLayout(grantee_buttons)
+        
+        # Assemble the parties layout
+        parties_layout.addLayout(grantor_layout)
+        parties_layout.addWidget(separator)
+        parties_layout.addLayout(grantee_layout)
+        parties_group.setLayout(parties_layout)
+        
+        # Load existing parties
+        for person in self.person_grantors:
+            self.add_person_to_table("grantor", person)
+        
+        for person in self.person_grantees:
+            self.add_person_to_table("grantee", person)
             
-            # Set type
-            type_combo = self.grantee_table.cellWidget(row, 0)
-            type_combo.setCurrentText(grantee.get("type", "PERSON"))
+        for org in self.org_grantors:
+            self.add_org_to_table("grantor", org)
             
-            # Set other fields based on type
-            if grantee.get("type") == "ORGANIZATION":
-                self.grantee_table.item(row, 1).setText(grantee.get("name", ""))
-            else:
-                self.grantee_table.item(row, 1).setText(grantee.get("first_name", ""))
-                self.grantee_table.item(row, 2).setText(grantee.get("middle_name", ""))
-                self.grantee_table.item(row, 3).setText(grantee.get("last_name", ""))
+        for org in self.org_grantees:
+            self.add_org_to_table("grantee", org)
+        
+        # Add layouts to main layout
+        layout.addLayout(form_layout)
+        layout.addWidget(default_group)
+        layout.addWidget(parties_group)
+        
+        # Button box
+        button_layout = QHBoxLayout()
+        
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        
+        save_btn = QPushButton("Save")
+        save_btn.clicked.connect(self.accept)
+        save_btn.setDefault(True)
+        
+        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(save_btn)
+        layout.addLayout(button_layout)
+        
+        self.setLayout(layout)
+    
+    def browse_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select Document", "", "PDF Files (*.pdf);;All Files (*)"
+        )
+        if file_path:
+            self.file_path.setText(file_path)
+            # Set default document name from filename if empty
+            if not self.doc_name.text():
+                base_name = os.path.basename(file_path)
+                name_without_ext = os.path.splitext(base_name)[0]
+                self.doc_name.setText(name_without_ext.upper())
+    
+    def add_person(self, party_type):
+        """Add a person to grantors or grantees"""
+        title = f"Add Person {party_type.capitalize()}"
+        dialog = PersonDialog(self, title=title)
+        if dialog.exec():
+            person_data = dialog.get_person_data()
+            if person_data:
+                if party_type == "grantor":
+                    self.person_grantors.append(person_data)
+                else:
+                    self.person_grantees.append(person_data)
+                self.add_person_to_table(party_type, person_data)
+    
+    def add_organization(self, party_type):
+        """Add an organization to grantors or grantees"""
+        title = f"Add Organization {party_type.capitalize()}"
+        dialog = OrganizationDialog(self, title=title)
+        if dialog.exec():
+            org_data = dialog.get_org_data()
+            if org_data:
+                if party_type == "grantor":
+                    self.org_grantors.append(org_data)
+                else:
+                    self.org_grantees.append(org_data)
+                self.add_org_to_table(party_type, org_data)
+    
+    def add_person_to_table(self, party_type, person_data):
+        """Add a person to the appropriate table"""
+        table = self.person_grantor_table if party_type == "grantor" else self.person_grantee_table
+        row = table.rowCount()
+        table.insertRow(row)
+        
+        table.setItem(row, 0, QTableWidgetItem(person_data.get("first_name", "")))
+        table.setItem(row, 1, QTableWidgetItem(person_data.get("middle_name", "")))
+        table.setItem(row, 2, QTableWidgetItem(person_data.get("last_name", "")))
+        
+        # Remove button
+        remove_btn = QPushButton("Remove")
+        remove_btn.clicked.connect(lambda: self.remove_person(party_type, row))
+        table.setCellWidget(row, 3, remove_btn)
+    
+    def add_org_to_table(self, party_type, org_data):
+        """Add an organization to the appropriate table"""
+        table = self.org_grantor_table if party_type == "grantor" else self.org_grantee_table
+        row = table.rowCount()
+        table.insertRow(row)
+        
+        table.setItem(row, 0, QTableWidgetItem(org_data.get("name", "")))
+        
+        # Remove button
+        remove_btn = QPushButton("Remove")
+        remove_btn.clicked.connect(lambda: self.remove_org(party_type, row))
+        table.setCellWidget(row, 1, remove_btn)
+    
+    def remove_person(self, party_type, row):
+        """Remove a person from grantors or grantees"""
+        if party_type == "grantor":
+            table = self.person_grantor_table
+            if 0 <= row < len(self.person_grantors):
+                self.person_grantors.pop(row)
+                table.removeRow(row)
+        else:
+            table = self.person_grantee_table
+            if 0 <= row < len(self.person_grantees):
+                self.person_grantees.pop(row)
+                table.removeRow(row)
+    
+    def remove_org(self, party_type, row):
+        """Remove an organization from grantors or grantees"""
+        if party_type == "grantor":
+            table = self.org_grantor_table
+            if 0 <= row < len(self.org_grantors):
+                self.org_grantors.pop(row)
+                table.removeRow(row)
+        else:
+            table = self.org_grantee_table
+            if 0 <= row < len(self.org_grantees):
+                self.org_grantees.pop(row)
+                table.removeRow(row)
+    
+    def get_document_data(self):
+        """Get all document data from the form"""
+        if not self.file_path.text():
+            QMessageBox.warning(self, "Missing File", "Please select a document file.")
+            return None
+        
+        # Basic document info
+        doc_data = {
+            "file_path": self.file_path.text(),
+            "document_id": self.doc_id.text(),
+            "name": self.doc_name.text().upper(),
+            "type": self.doc_type.currentText(),
+            "consideration": self.consideration.text(),
+            "execution_date": self.execution_date.date().toString("MM/dd/yyyy"),
+            "legal_description": self.legal_description.toPlainText().upper(),
+            "parcel_id": self.parcel_id.text().upper(),
+            "person_grantors": self.person_grantors,
+            "person_grantees": self.person_grantees,
+            "org_grantors": self.org_grantors,
+            "org_grantees": self.org_grantees
+        }
+        
+        return doc_data
