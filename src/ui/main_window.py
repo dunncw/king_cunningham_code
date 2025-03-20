@@ -14,13 +14,14 @@ from .scra_automation_ui import SCRAAutomationUI
 from .pacer_automation_ui import PACERAutomationUI
 
 from .simplifile_ui import SimplifileUI
-from simplifile.api import run_simplifile_api_thread
+from simplifile.api import run_simplifile_thread
+from simplifile.batch_processor import run_simplifile_batch_thread
 
 class MainWindow(QMainWindow):
     check_for_updates = pyqtSignal()
     start_web_automation = pyqtSignal(str, str, str)
     start_crg_automation = pyqtSignal()
-    start_simplifile_upload = pyqtSignal(str, str, str, str, dict)
+    start_simplifile_batch_upload = pyqtSignal(str, str, str, str, str, str)
 
     def __init__(self, version):
         super().__init__()
@@ -139,10 +140,12 @@ class MainWindow(QMainWindow):
 
         # Simplifile UI
         self.simplifile_ui = SimplifileUI()
-        self.simplifile_ui.start_simplifile_upload.connect(self.start_simplifile_upload_process)
+        self.simplifile_ui.start_simplifile_upload.connect(self.start_simplifile_upload)
+        self.simplifile_ui.start_simplifile_batch_upload.connect(self.start_simplifile_batch_process)
         back_button = QPushButton("Back to Main Menu")
         back_button.clicked.connect(self.show_main_menu)
         self.simplifile_ui.layout().addWidget(back_button)
+
 
         # Add widgets to stacked widget
         self.central_widget.addWidget(self.main_menu)
@@ -160,20 +163,50 @@ class MainWindow(QMainWindow):
         self.central_widget.setCurrentWidget(self.simplifile_ui)
         self.resize(900, 800)  # Set appropriate size for Simplifile UI
     
-    def start_simplifile_upload_process(self, api_token, submitter_id, recipient_id, document_path, package_data):
-        """Start the Simplifile API upload process in a separate thread"""
-        self.simplifile_thread, self.simplifile_worker = run_simplifile_api_thread(
-            api_token, submitter_id, recipient_id, document_path, package_data
+    def start_simplifile_upload(self, api_token, submitter_id, recipient_id, package_data, document_files):
+        """Start Simplifile upload process"""
+        self.simplifile_thread, self.simplifile_worker = run_simplifile_thread(
+            api_token, submitter_id, recipient_id, package_data, document_files
         )
         
-        # Connect signals and slots
+        # Connect signals
         self.simplifile_worker.status.connect(self.simplifile_ui.update_status)
         self.simplifile_worker.progress.connect(self.simplifile_ui.update_progress)
-        self.simplifile_worker.error.connect(self.show_simplifile_error)
-        self.simplifile_worker.finished.connect(self.simplifile_upload_finished)
+        self.simplifile_worker.error.connect(self.simplifile_ui.show_error)
+        self.simplifile_worker.finished.connect(self.simplifile_ui.upload_finished)
         
-        # Start the thread
+        # Start thread
         self.simplifile_thread.start()
+    
+    def start_simplifile_batch_preview(self, excel_path, deeds_path, mortgage_path):
+        """Start Simplifile batch preview"""
+        self.preview_thread, self.preview_worker = run_simplifile_batch_preview(
+            excel_path, deeds_path, mortgage_path
+        )
+        
+        # Connect signals
+        self.preview_worker.status.connect(self.simplifile_ui.update_status)
+        self.preview_worker.progress.connect(self.simplifile_ui.update_progress)
+        self.preview_worker.error.connect(self.simplifile_ui.show_error)
+        self.preview_worker.preview_ready.connect(self.simplifile_ui.show_preview_dialog)
+        
+        # Start thread
+        self.preview_thread.start()
+
+    def start_simplifile_batch_process(self, excel_path, deeds_path, mortgage_path):
+        """Start Simplifile batch processing"""
+        self.batch_thread, self.batch_worker = run_simplifile_batch_process(
+            excel_path, deeds_path, mortgage_path
+        )
+        
+        # Connect signals
+        self.batch_worker.status.connect(self.simplifile_ui.update_status)
+        self.batch_worker.progress.connect(self.simplifile_ui.update_progress)
+        self.batch_worker.error.connect(self.simplifile_ui.show_error)
+        self.batch_worker.finished.connect(self.simplifile_ui.batch_process_finished)
+        
+        # Start thread
+        self.batch_thread.start()
     
     def show_simplifile_error(self, error_message):
         """Show error message from Simplifile process"""

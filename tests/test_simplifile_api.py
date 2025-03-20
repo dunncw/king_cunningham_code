@@ -9,7 +9,7 @@ api_url = "https://api.simplifile.com/sf/rest/api/erecord/submitters/SCTP3G/pack
 api_token = "4FFHQQNYENLNVUNL3XPDZIGG3<*>wWmUac/DY3vcJKvrfmUlzPivb3HBpoA7PzfHf4kUfLk="  # Replace with your actual token
 
 # Document Data
-contract_number = "TEST123"
+contract_number = "CWDTEST123"
 document_number = "001"
 package_name = f"Test Package - {datetime.now().strftime('%Y%m%d%H%M%S')}"
 
@@ -20,7 +20,7 @@ def get_base64_encoded_file(file_path):
         return encoded_string.decode('utf-8')
 
 # Replace with path to your test PDF
-pdf_file_path = r"D:\repositorys\KC_appp\tests\93-21 TD.pdf"
+pdf_file_path = r"D:\repositorys\KC_appp\task\simplifile\93-7 RECORDED SAT.pdf"
 encoded_document = get_base64_encoded_file(pdf_file_path)
 
 # Prepare the request payload
@@ -63,6 +63,13 @@ payload = {
             },
             "fileBytes": [
                 encoded_document
+            ],
+            "referenceInformation": [
+                {
+                    "documentType": "Agreement Deed Book",
+                    "book": "1234",
+                    "page": "567"
+                }
             ]
         }
     ],

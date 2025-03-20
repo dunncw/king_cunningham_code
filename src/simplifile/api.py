@@ -3,210 +3,189 @@ import base64
 import json
 import os
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
+from datetime import datetime
 
-class SimplifileAPIWorker(QObject):
-    """Worker class for interacting with the Simplifile API"""
+# Default parties that are always added
+DEFAULT_GRANTORS = [
+    {"nameUnparsed": "KING CUNNINGHAM LLC TR", "type": "ORGANIZATION"},
+    {"nameUnparsed": "OCEAN CLUB VACATIONS LLC", "type": "ORGANIZATION"}
+]
+
+DEFAULT_GRANTEES = [
+    {"nameUnparsed": "OCEAN CLUB VACATIONS LLC", "type": "ORGANIZATION"}
+]
+
+class SimplifileAPI(QObject):
+    """Class for interacting with the Simplifile API"""
     progress = pyqtSignal(int)
     status = pyqtSignal(str)
     error = pyqtSignal(str)
-    finished = pyqtSignal()
+    finished = pyqtSignal(dict)
     
-    def __init__(self, 
-                 api_token, 
-                 submitter_id, 
-                 recipient_id,
-                 document_path, 
-                 package_data):
+    def __init__(self, api_token, submitter_id, recipient_id):
         super().__init__()
         self.api_token = api_token
         self.submitter_id = submitter_id
         self.recipient_id = recipient_id
-        self.document_path = document_path
-        self.package_data = package_data
-        self.base_url = f"https://api.simplifile.com/sf/rest/api/erecord/submitters/{submitter_id}"
+        self.base_url = f"https://api.simplifile.com/sf/rest/api/erecord/submitters/{submitter_id}/packages/create"
     
-    def encode_document(self, file_path):
-        """Convert document to base64 encoding"""
-        self.status.emit(f"Encoding document: {os.path.basename(file_path)}")
+    def encode_file(self, file_path):
+        """Convert a file to base64 encoding"""
         try:
-            with open(file_path, "rb") as doc_file:
-                return base64.b64encode(doc_file.read()).decode('utf-8')
+            with open(file_path, "rb") as file:
+                encoded_data = base64.b64encode(file.read()).decode('utf-8')
+                return encoded_data
         except Exception as e:
-            self.error.emit(f"Error encoding document: {str(e)}")
+            self.error.emit(f"Error encoding file {os.path.basename(file_path)}: {str(e)}")
             return None
     
-    def create_request_payload(self):
-        """Create the JSON payload for the API request"""
-        self.status.emit("Creating API request payload")
+    def upload_package(self, package_data, document_files):
+        """Upload a package with documents to Simplifile"""
+        self.status.emit("Starting upload process...")
+        self.progress.emit(10)
         
-        # Extract data from package_data
-        reference_number = self.package_data.get("reference_number", "")
-        package_name = self.package_data.get("package_name", "")
-        document_type = self.package_data.get("document_type", "Deed")
-        consideration = self.package_data.get("consideration", "0.00")
-        execution_date = self.package_data.get("execution_date", "")
-        
-        # Grantors processing
-        grantors = []
-        for grantor in self.package_data.get("grantors", []):
-            if grantor.get("type") == "ORGANIZATION":
-                grantors.append({
-                    "nameUnparsed": grantor.get("name", ""),
-                    "type": "ORGANIZATION"
-                })
-            else:
-                grantors.append({
-                    "firstName": grantor.get("first_name", ""),
-                    "middleName": grantor.get("middle_name", ""),
-                    "lastName": grantor.get("last_name", ""),
-                    "type": "PERSON"
-                })
-        
-        # Grantees processing
-        grantees = []
-        for grantee in self.package_data.get("grantees", []):
-            if grantee.get("type") == "ORGANIZATION":
-                grantees.append({
-                    "nameUnparsed": grantee.get("name", ""),
-                    "type": "ORGANIZATION"
-                })
-            else:
-                grantees.append({
-                    "firstName": grantee.get("first_name", ""),
-                    "middleName": grantee.get("middle_name", ""),
-                    "lastName": grantee.get("last_name", ""),
-                    "type": "PERSON"
-                })
-        
-        # Encode the main document
-        document_bytes = self.encode_document(self.document_path)
-        if not document_bytes:
-            return None
-        
-        # Process helper documents if any
-        helper_docs = []
-        for helper in self.package_data.get("helper_documents", []):
-            if os.path.exists(helper["path"]):
-                helper_bytes = self.encode_document(helper["path"])
-                if helper_bytes:
-                    helper_docs.append({
-                        "fileBytes": [helper_bytes],
-                        "helperKindOfInstrument": helper.get("type", "PT-61"),
-                        "isElectronicallyOriginated": False
-                    })
-        
-        # Create the final payload
-        payload = {
-            "documents": [
-                {
-                    "submitterDocumentID": f"D-{reference_number}",
-                    "name": package_name,
-                    "kindOfInstrument": [document_type],
+        try:
+            # Create payload structure
+            payload = {
+                "documents": [],
+                "recipient": self.recipient_id,
+                "submitterPackageID": package_data.get("package_id", f"P-{datetime.now().strftime('%Y%m%d%H%M%S')}"),
+                "name": package_data.get("package_name", f"Package {datetime.now().strftime('%Y%m%d%H%M%S')}"),
+                "operations": {
+                    "draftOnErrors": True,
+                    "submitImmediately": False,
+                    "verifyPageMargins": True
+                }
+            }
+            
+            # Process each document
+            total_docs = len(document_files)
+            for i, doc_data in enumerate(document_files):
+                self.status.emit(f"Processing document {i+1} of {total_docs}: {os.path.basename(doc_data['file_path'])}")
+                self.progress.emit(10 + (i * 70 // total_docs))
+                
+                # Encode document
+                encoded_file = self.encode_file(doc_data["file_path"])
+                if not encoded_file:
+                    continue
+                
+                # Start with default grantors and grantees
+                grantors = DEFAULT_GRANTORS.copy()
+                grantees = DEFAULT_GRANTEES.copy()
+                
+                # Add additional person grantors if provided
+                if "person_grantors" in doc_data and doc_data["person_grantors"]:
+                    for person in doc_data["person_grantors"]:
+                        grantors.append({
+                            "firstName": person.get("first_name", "").upper(),
+                            "middleName": person.get("middle_name", "").upper(),
+                            "lastName": person.get("last_name", "").upper(),
+                            "type": "PERSON"
+                        })
+                
+                # Add additional organization grantors if provided
+                if "org_grantors" in doc_data and doc_data["org_grantors"]:
+                    for org in doc_data["org_grantors"]:
+                        grantors.append({
+                            "nameUnparsed": org.get("name", "").upper(),
+                            "type": "ORGANIZATION"
+                        })
+                
+                # Add additional person grantees if provided
+                if "person_grantees" in doc_data and doc_data["person_grantees"]:
+                    for person in doc_data["person_grantees"]:
+                        grantees.append({
+                            "firstName": person.get("first_name", "").upper(),
+                            "middleName": person.get("middle_name", "").upper(),
+                            "lastName": person.get("last_name", "").upper(),
+                            "type": "PERSON"
+                        })
+                
+                # Add additional organization grantees if provided
+                if "org_grantees" in doc_data and doc_data["org_grantees"]:
+                    for org in doc_data["org_grantees"]:
+                        grantees.append({
+                            "nameUnparsed": org.get("name", "").upper(),
+                            "type": "ORGANIZATION"
+                        })
+                
+                # Create document entry with all grantors/grantees
+                document = {
+                    "submitterDocumentID": doc_data.get("document_id", f"D-{i+1}"),
+                    "name": doc_data.get("name", os.path.basename(doc_data["file_path"])).upper(),
+                    "kindOfInstrument": [doc_data.get("type", "Deed - Timeshare")],
                     "indexingData": {
-                        "consideration": consideration,
-                        "executionDate": execution_date,
+                        "consideration": doc_data.get("consideration", "0.00"),
+                        "executionDate": doc_data.get("execution_date", datetime.now().strftime('%m/%d/%Y')),
                         "grantors": grantors,
                         "grantees": grantees,
                         "legalDescriptions": [
                             {
-                                "description": self.package_data.get("legal_description", ""),
-                                "parcelId": self.package_data.get("parcel_id", "")
+                                "description": doc_data.get("legal_description", "").upper(),
+                                "parcelId": doc_data.get("parcel_id", "").upper()
                             }
                         ]
                     },
-                    "fileBytes": [document_bytes],
+                    "fileBytes": [encoded_file]
                 }
-            ],
-            "recipient": self.recipient_id,
-            "submitterPackageID": f"P-{reference_number}",
-            "name": package_name,
-            "operations": {
-                "draftOnErrors": True,
-                "submitImmediately": False,
-                "verifyPageMargins": True
-            }
-        }
-        
-        # Add helper documents if available
-        if helper_docs:
-            payload["documents"][0]["helperDocuments"] = helper_docs
+                
+                payload["documents"].append(document)
             
-        # Add reference info if available
-        book = self.package_data.get("book", "")
-        page = self.package_data.get("page", "")
-        if book and page:
-            payload["documents"][0]["indexingData"]["referenceInfo"] = {
-                "bookPage": f"{book}/{page}"
+            # Make API request
+            self.status.emit("Sending package to Simplifile...")
+            self.progress.emit(80)
+            
+            headers = {
+                "Content-Type": "application/json",
+                "api_token": self.api_token
             }
             
-        return payload
-    
-    def submit_to_api(self):
-        """Submit package to Simplifile API"""
-        self.status.emit("Starting Simplifile API submission")
-        self.progress.emit(10)
-        
-        # Create request payload
-        payload = self.create_request_payload()
-        if not payload:
-            self.error.emit("Failed to create request payload")
-            return False
-        
-        self.progress.emit(50)
-        self.status.emit("Sending data to Simplifile API")
-        
-        # Prepare headers
-        headers = {
-            "api_token": self.api_token,
-            "Content-Type": "application/json"
-        }
-        
-        try:
-            # Make the API request
             response = requests.post(
-                f"{self.base_url}/packages/create",
+                self.base_url,
                 headers=headers,
-                json=payload,
-                timeout=120  # 2 minute timeout for large documents
+                data=json.dumps(payload),
+                timeout=300  # 5 minute timeout for large packages
             )
             
             self.progress.emit(90)
-            self.status.emit(f"Received response (status code: {response.status_code})")
             
             # Process response
             if response.status_code == 200:
                 response_data = response.json()
                 if response_data.get("resultCode") == "SUCCESS":
-                    self.status.emit(f"Successfully created package: {payload['name']}")
+                    self.status.emit("Package uploaded successfully!")
                     self.progress.emit(100)
+                    self.finished.emit(response_data)
                     return True
                 else:
-                    error_msg = response_data.get("message", "Unknown error")
+                    error_msg = response_data.get("message", "Unknown API error")
                     self.error.emit(f"API Error: {error_msg}")
+                    self.finished.emit(response_data)
                     return False
             else:
                 self.error.emit(f"API request failed with status code: {response.status_code}")
                 try:
-                    error_details = response.json()
-                    self.status.emit(f"Error details: {json.dumps(error_details, indent=2)}")
+                    error_data = response.json()
+                    self.status.emit(f"Error details: {json.dumps(error_data, indent=2)}")
+                    self.finished.emit(error_data)
                 except:
                     self.status.emit(f"Response text: {response.text}")
+                    self.finished.emit({"error": response.text})
                 return False
-                
+        
         except Exception as e:
-            self.error.emit(f"Error submitting to Simplifile API: {str(e)}")
+            self.error.emit(f"Error in upload process: {str(e)}")
+            self.finished.emit({"error": str(e)})
             return False
-        finally:
-            self.finished.emit()
-    
-def run_simplifile_api_thread(api_token, submitter_id, recipient_id, document_path, package_data):
-    """Create and return a thread and worker for the Simplifile API operations"""
+
+def run_simplifile_thread(api_token, submitter_id, recipient_id, package_data, document_files):
+    """Create and run a thread for Simplifile API operations"""
     thread = QThread()
-    worker = SimplifileAPIWorker(api_token, submitter_id, recipient_id, document_path, package_data)
+    worker = SimplifileAPI(api_token, submitter_id, recipient_id)
     worker.moveToThread(thread)
     
-    # Connect signals and slots
-    thread.started.connect(worker.submit_to_api)
+    # Connect signals
+    thread.started.connect(lambda: worker.upload_package(package_data, document_files))
     worker.finished.connect(thread.quit)
     worker.finished.connect(worker.deleteLater)
     thread.finished.connect(thread.deleteLater)
