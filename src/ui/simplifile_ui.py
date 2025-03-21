@@ -46,6 +46,57 @@ class SimplifileUI(QWidget):
         self.config_file = os.path.join(os.path.expanduser("~"), ".simplifile_config.json")
         self.load_config()
         self.init_ui()
+
+    def update_batch_preview_functionality(self):
+        """Update the batch preview functionality in SimplifileUI"""
+        # Connect the preview button in SimplifileUI
+        self.preview_btn.clicked.connect(self.generate_enhanced_batch_preview)
+        
+    def generate_enhanced_batch_preview(self):
+        """Generate enhanced preview of batch processing"""
+        # Check if all required files are selected
+        if not self.excel_file_path.text():
+            QMessageBox.warning(self, "Missing File", "Please select an Excel file.")
+            return
+            
+        if not self.deeds_file_path.text() and not self.mortgage_file_path.text():
+            QMessageBox.warning(self, "Missing Files", 
+                            "Please select at least one PDF file (Deeds or Mortgage Satisfactions).")
+            return
+        
+        # Run the enhanced preview generation
+        self.update_output("Generating enhanced batch preview...")
+        self.progress_bar.setValue(5)
+        self.preview_btn.setEnabled(False)
+        
+        self.preview_thread, self.preview_worker = run_simplifile_batch_preview(
+            self.excel_file_path.text(),
+            self.deeds_file_path.text(),
+            self.mortgage_file_path.text()
+        )
+        
+        # Connect signals
+        self.preview_worker.status.connect(self.update_status)
+        self.preview_worker.progress.connect(self.update_progress)
+        self.preview_worker.error.connect(self.show_error)
+        self.preview_worker.preview_ready.connect(self.show_enhanced_preview_dialog)
+        
+        # Connect cleanup handlers
+        self.preview_thread.finished.connect(lambda: self.preview_btn.setEnabled(True))
+        
+        # Start thread
+        self.preview_thread.start()
+
+    def show_enhanced_preview_dialog(self, preview_json):
+        """Show the enhanced preview dialog with the generated data"""
+        try:
+            # Open the enhanced preview dialog
+            from .batch_preview_dialog import BatchPreviewDialog
+            dialog = BatchPreviewDialog(preview_json, self)
+            dialog.exec()
+            
+        except Exception as e:
+            self.show_error(f"Error displaying preview: {str(e)}")
     
     def load_config(self):
         """Load config from file"""
@@ -84,16 +135,16 @@ class SimplifileUI(QWidget):
         
         # Create tab widget for Single and Batch uploads
         self.tab_widget = QTabWidget()
-        
-        # Single Upload Tab (existing functionality)
-        self.single_upload_tab = QWidget()
-        self.setup_single_upload_tab()
-        self.tab_widget.addTab(self.single_upload_tab, "Single Upload")
-        
-        # Batch Upload Tab (new functionality)
+
+        # Batch Upload Tab (primary functionality)
         self.batch_upload_tab = QWidget()
         self.setup_batch_upload_tab()
         self.tab_widget.addTab(self.batch_upload_tab, "Batch Upload")
+
+        # Single Upload Tab (secondary functionality)
+        self.single_upload_tab = QWidget()
+        self.setup_single_upload_tab()
+        self.tab_widget.addTab(self.single_upload_tab, "Single Upload")
         
         main_layout.addWidget(self.tab_widget)
         
@@ -121,10 +172,10 @@ class SimplifileUI(QWidget):
         self.setLayout(main_layout)
     
     def create_api_config_group(self):
-        """Create API configuration group box"""
+        """Create collapsible API configuration group box"""
         api_group = QGroupBox("API Configuration")
         api_layout = QFormLayout()
-        
+            
         self.api_token = QLineEdit(self.config.get("api_token", ""))
         self.api_token.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_token.setPlaceholderText("Your Simplifile API token")
@@ -214,11 +265,10 @@ class SimplifileUI(QWidget):
         self.single_upload_tab.setLayout(single_layout)
     
     def setup_batch_upload_tab(self):
-        """Setup the batch upload tab (new functionality)"""
+        """Setup the batch upload tab (primary functionality) with a simplified layout"""
         batch_layout = QVBoxLayout()
         
-        # File Selection Section
-        files_group = QGroupBox("Batch Files")
+        # File Selection Section - No Group Box
         files_layout = QFormLayout()
         
         # Excel File Selection
@@ -251,41 +301,35 @@ class SimplifileUI(QWidget):
         mortgage_layout.addWidget(mortgage_browse_btn)
         files_layout.addRow("Mortgage Satisfactions (PDF):", mortgage_layout)
         
-        # Batch Settings
-        config_layout = QFormLayout()
+        # Add files layout directly to batch layout
+        batch_layout.addLayout(files_layout)
         
-        # Document naming pattern
-        self.naming_pattern = QLineEdit("{account_number} {last_name} {doc_type}")
-        self.naming_pattern.setToolTip("Use {account_number}, {last_name}, and {doc_type} as placeholders")
-        config_layout.addRow("Naming Pattern:", self.naming_pattern)
+        # Add a separator
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        batch_layout.addWidget(separator)
         
-        # Informational labels
-        deed_info = QLabel("• Deeds will be split every 4 pages as separate documents")
-        deed_info.setStyleSheet("color: #666;")
-        mortgage_info = QLabel("• Mortgage satisfactions will be processed as 1 page per document")
-        mortgage_info.setStyleSheet("color: #666;")
+        # Batch preview - No Group Box
+        preview_layout = QHBoxLayout()
         
-        # Add to layout
-        files_layout.addRow("", deed_info)
-        files_layout.addRow("", mortgage_info)
-        files_layout.addRow("Batch Configuration:", config_layout)
+        # Label for preview section
+        preview_label = QLabel("Batch Preview:")
+        preview_layout.addWidget(preview_label)
         
-        files_group.setLayout(files_layout)
-        batch_layout.addWidget(files_group)
-        
-        # Batch preview (Could be implemented in future versions)
-        preview_group = QGroupBox("Batch Preview")
-        preview_layout = QVBoxLayout()
-        
-        preview_info = QLabel("Excel data and document files will be matched in order (Row 1 → Doc 1)")
-        preview_layout.addWidget(preview_info)
-        
+        # Preview button
         self.preview_btn = QPushButton("Generate Preview")
-        self.preview_btn.clicked.connect(self.generate_batch_preview)
+        self.preview_btn.clicked.connect(self.generate_enhanced_batch_preview)
         preview_layout.addWidget(self.preview_btn)
+        preview_layout.addStretch()  # Push button to the left
         
-        preview_group.setLayout(preview_layout)
-        batch_layout.addWidget(preview_group)
+        batch_layout.addLayout(preview_layout)
+        
+        # Add another separator
+        separator2 = QFrame()
+        separator2.setFrameShape(QFrame.Shape.HLine)
+        separator2.setFrameShadow(QFrame.Shadow.Sunken)
+        batch_layout.addWidget(separator2)
         
         # Action buttons for batch upload
         actions_layout = QHBoxLayout()
@@ -302,7 +346,13 @@ class SimplifileUI(QWidget):
         
         batch_layout.addLayout(actions_layout)
         
+        # Add some stretch at the bottom to push everything up
+        batch_layout.addStretch()
+        
         self.batch_upload_tab.setLayout(batch_layout)
+        
+        # Set up the enhanced preview functionality
+        self.update_batch_preview_functionality()
     
     def browse_excel_file(self):
         """Browse for Excel file for batch processing"""
@@ -517,7 +567,6 @@ class SimplifileUI(QWidget):
         self.excel_file_path.clear()
         self.deeds_file_path.clear()
         self.mortgage_file_path.clear()
-        self.naming_pattern.setText("{account_number} {last_name} {doc_type}")
         
         self.update_output("Batch upload information cleared")
     
