@@ -281,12 +281,26 @@ class SimplifileAPI(QObject):
             self.error.emit(f"Error fetching recipient requirements: {str(e)}")
             return None
     
+
     def validate_document(self, document_data, instrument_type):
         """Validate document data against recipient requirements for specific instrument type"""
         # Get recipient requirements
         requirements = self.get_recipient_requirements()
         if not requirements:
-            return False, "Could not retrieve requirements for validation"
+            # More informative error about failing to retrieve requirements
+            return False, "Could not retrieve county requirements. This could be due to invalid API credentials, network issues, or the selected county not being properly configured."
+        
+        # Check if the instrument type is recognized by Simplifile
+        valid_instruments = [
+            "Deed - Timeshare", "Mortgage Satisfaction"
+        ]
+        # valid_instruments = [
+        #     "Deed", "Deed - Timeshare", "Mortgage", "Mortgage Satisfaction", 
+        #     "Satisfaction of Mortgage", "Release of Lien", "Assignment of Mortgage"
+        # ]
+        if instrument_type not in valid_instruments:
+            # More informative error about instrument type
+            return False, f"The instrument type '{instrument_type}' may not be recognized by Simplifile. Valid types include: 'Deed', 'Deed - Timeshare', 'Mortgage Satisfaction', etc. Please check that you're using the correct instrument type."
         
         # Find requirements for the specified instrument type
         instrument_reqs = None
@@ -296,9 +310,17 @@ class SimplifileAPI(QObject):
                 break
         
         if not instrument_reqs:
-            return False, f"No requirements found for instrument type: {instrument_type}"
+            # More informative error about missing requirements
+            compatible_instruments = []
+            for instr in requirements.get("recipientRequirements", {}).get("instruments", []):
+                compatible_instruments.append(instr.get("instrument"))
+            
+            if compatible_instruments:
+                return False, f"No requirements found for instrument type: {instrument_type}. This county may not accept this document type. Compatible types are: {', '.join(compatible_instruments)}"
+            else:
+                return False, f"No requirements found for instrument type: {instrument_type}. This county may not accept electronic recordings for this document type."
         
-        # Check required fields
+        # Check required fields (keeping the existing validation logic)
         missing_fields = []
         for req in instrument_reqs:
             if req.get("required") == "ALWAYS":

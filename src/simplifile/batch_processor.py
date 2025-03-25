@@ -919,8 +919,9 @@ class SimplifileBatchProcessor(QObject):
             return None
     
     # Updated upload_packages_to_api with improved error handling
+
     def upload_packages_to_api(self, packages):
-        """Upload packages to Simplifile API"""
+        """Upload packages to Simplifile API with improved error handling"""
         try:
             self.status.emit("Starting API upload process...")
             
@@ -997,7 +998,16 @@ class SimplifileBatchProcessor(QObject):
                             
                             # Extract more detailed error information if available
                             if "errors" in response_data:
-                                error_details = "; ".join([err.get("message", "") for err in response_data["errors"]])
+                                errors_list = []
+                                for err in response_data.get("errors", []):
+                                    error_path = err.get("path", "")
+                                    error_message = err.get("message", "")
+                                    errors_list.append(f"{error_path}: {error_message}")
+                                error_details = "; ".join(errors_list)
+                                
+                            # Log the full response for debugging
+                            detailed_error = f"API Error: {error_msg}\nDetails: {error_details}\nFull response: {json.dumps(response_data, indent=2)}"
+                            self.status.emit(detailed_error)
                                 
                             results["packages"].append({
                                 "package_id": package_id,
@@ -1012,22 +1022,30 @@ class SimplifileBatchProcessor(QObject):
                         error_details = ""
                         try:
                             error_data = response.json()
-                            error_details = error_data.get("message", "")
+                            error_message = error_data.get("message", "")
+                            error_details = f"API Error: {error_message}"
+                            
+                            # Log the full response for debugging
+                            detailed_error = f"HTTP Error {response.status_code}: {error_message}\nFull response: {json.dumps(error_data, indent=2)}"
+                            self.status.emit(detailed_error)
                         except:
                             error_details = response.text[:200] + "..." if len(response.text) > 200 else response.text
-                            
+                            self.status.emit(f"HTTP Error {response.status_code}: {error_details}")
+                                
                         results["packages"].append({
                             "package_id": package_id,
                             "status": "http_error",
                             "message": f"HTTP error {response.status_code}: {error_details}",
                             "package_name": package_name,
-                            "document_count": len(documents)
+                            "document_count": len(documents),
+                            "response_text": response.text
                         })
                         results["summary"]["failed"] += 1
-                
+                    
                 except Exception as e:
                     # Get more detailed error information if available
                     error_info = str(e)
+                    self.status.emit(f"Exception during API call: {error_info}")
                     
                     results["packages"].append({
                         "package_id": package_id,
@@ -1048,7 +1066,7 @@ class SimplifileBatchProcessor(QObject):
                     results["message"] = "All packages failed to upload"
             
             return results
-            
+                
         except Exception as e:
             self.error.emit(f"Error in API upload process: {str(e)}")
             return {
