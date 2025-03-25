@@ -311,127 +311,237 @@ class BatchPreviewDialog(QDialog):
         QMessageBox.information(self, "Copied", "API payload copied to clipboard")
 
     def create_package_list_tab(self):
-        """Create the package list tab"""
+        """Create the package list tab with simplified columns and detail buttons"""
         widget = QWidget()
         layout = QVBoxLayout()
         
-        # Create table for package list
+        # Create table for package list with simplified columns
         table = QTableWidget()
-        table.setColumnCount(8)
+        table.setColumnCount(4)  # Excel Row, Package Name, Documents, Actions
         table.setHorizontalHeaderLabels([
-            "Package ID", "Package Name", "Account Number", 
-            "Grantor Name", "Documents", "Reference Info", 
-            "TMS/Parcel ID", "Excel Row"
+            "Excel Row", "Package Name", "Documents", "Actions"
         ])
         
         # Configure table
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        
+        # Make the table read-only
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         
         # Add packages to table
         packages = self.preview_data.get("packages", [])
         table.setRowCount(len(packages))
         
         for i, package in enumerate(packages):
-            # Package ID
-            table.setItem(i, 0, QTableWidgetItem(package.get("package_id", "")))
+            # Excel Row
+            table.setItem(i, 0, QTableWidgetItem(str(package.get("excel_row", ""))))
             
             # Package Name
             table.setItem(i, 1, QTableWidgetItem(package.get("package_name", "")))
             
-            # Account Number
-            table.setItem(i, 2, QTableWidgetItem(package.get("account_number", "")))
-            
-            # Grantor Names (combine primary and secondary)
-            grantor_name = package.get("grantor_name1", "")
-            if package.get("grantor_name2"):
-                grantor_name += f" & {package.get('grantor_name2')}"
-            table.setItem(i, 3, QTableWidgetItem(grantor_name))
-            
-            # Document Count
+            # Documents - format as comma-separated list with page counts
             docs = package.get("documents", [])
-            doc_types = [doc.get("type", "") for doc in docs]
-            doc_info = ", ".join(doc_types)
-            table.setItem(i, 4, QTableWidgetItem(f"{len(docs)} ({doc_info})"))
-            
-            # Reference Info
-            ref_info = []
+            doc_list = []
             for doc in docs:
-                if doc.get("reference_book") and doc.get("reference_page"):
-                    ref_info.append(f"{doc.get('type')}: {doc.get('reference_book')}/{doc.get('reference_page')}")
-            table.setItem(i, 5, QTableWidgetItem(", ".join(ref_info)))
+                doc_type = doc.get("type", "")
+                page_count = doc.get("page_count", 0)
+                doc_list.append(f"{doc_type} {page_count}p")
             
-            # TMS/Parcel ID
-            table.setItem(i, 6, QTableWidgetItem(package.get("tms_number", "")))
+            doc_info = ", ".join(doc_list)
+            table.setItem(i, 2, QTableWidgetItem(doc_info))
             
-            # Excel Row
-            table.setItem(i, 7, QTableWidgetItem(str(package.get("excel_row", ""))))
+            # Actions - Add "Open Details" button
+            actions_widget = QWidget()
+            actions_layout = QHBoxLayout()
+            actions_layout.setContentsMargins(4, 0, 4, 0)
+            
+            open_details_btn = QPushButton("Open Details")
+            open_details_btn.clicked.connect(lambda checked, row=i: self.show_package_details(row))
+            
+            actions_layout.addWidget(open_details_btn)
+            actions_widget.setLayout(actions_layout)
+            
+            table.setCellWidget(i, 3, actions_widget)
         
-        # Double-click handler to show document details
-        table.cellDoubleClicked.connect(lambda row, col: self.show_package_details(row))
+        # Add a label with instructions
+        instructions_label = QLabel("Package Overview - Click 'Open Details' to view document information")
+        instructions_label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(instructions_label)
         
-        layout.addWidget(QLabel("Double-click on a row to view detailed document information"))
+        # Add a note about the read-only nature
+        note_label = QLabel("Note: This is a preview only. Modifications need to be made in the original files.")
+        note_label.setStyleSheet("color: #666;")
+        layout.addWidget(note_label)
+        
         layout.addWidget(table)
         widget.setLayout(layout)
         return widget
     
     def create_package_details_tab(self):
-        """Create the package details tab with document information"""
+        """Create the package details tab with document selection and preview"""
         widget = QWidget()
         layout = QVBoxLayout()
         
+        # Selector section
+        selector_group = QGroupBox("Select Package and Document")
+        selector_layout = QVBoxLayout()
+        
         # Package selector
-        selector_layout = QHBoxLayout()
-        selector_layout.addWidget(QLabel("Select Package:"))
+        package_layout = QHBoxLayout()
+        package_layout.addWidget(QLabel("Package:"))
         
         self.package_selector = QComboBox()
         packages = self.preview_data.get("packages", [])
         
         for package in packages:
             self.package_selector.addItem(
-                f"{package.get('package_id')}: {package.get('package_name')}", 
+                f"{package.get('package_name')} (Row {package.get('excel_row', '')})", 
                 package.get("package_id")
             )
         
-        self.package_selector.currentIndexChanged.connect(self.update_package_details)
-        selector_layout.addWidget(self.package_selector, 1)
-        layout.addLayout(selector_layout)
+        self.package_selector.currentIndexChanged.connect(self.update_document_selector)
+        package_layout.addWidget(self.package_selector, 1)
+        selector_layout.addLayout(package_layout)
         
-        # Create details table
-        self.details_table = QTableWidget()
-        self.details_table.setColumnCount(7)
-        self.details_table.setHorizontalHeaderLabels([
-            "Document ID", "Name", "Type", "Pages", 
-            "Legal Description", "Reference Info", "Parties"
-        ])
+        # Document selector
+        doc_layout = QHBoxLayout()
+        doc_layout.addWidget(QLabel("Document:"))
         
-        # Configure table
-        self.details_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        self.details_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.details_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        self.document_selector = QComboBox()
+        self.document_selector.currentIndexChanged.connect(self.update_document_preview)
+        doc_layout.addWidget(self.document_selector, 1)
+        selector_layout.addLayout(doc_layout)
         
-        layout.addWidget(self.details_table)
+        selector_group.setLayout(selector_layout)
+        layout.addWidget(selector_group)
         
-        # Document preview placeholder
+        # Document preview section
         preview_group = QGroupBox("Document Preview")
         preview_layout = QVBoxLayout()
         
         self.doc_preview = QTextEdit()
         self.doc_preview.setReadOnly(True)
-        self.doc_preview.setPlaceholderText("Select a document to view details")
+        self.doc_preview.setMinimumHeight(400)
+        self.doc_preview.setPlaceholderText("Select a package and document to view details")
         
         preview_layout.addWidget(self.doc_preview)
         preview_group.setLayout(preview_layout)
-        layout.addWidget(preview_group)
+        layout.addWidget(preview_group, 1)  # Give it stretch factor for resizing
         
         # Update with initial package if available
         if packages:
-            self.update_package_details(0)
+            self.update_document_selector(0)
         
         widget.setLayout(layout)
         return widget
-    
+
+    def update_document_selector(self, package_index):
+        """Update the document selector based on the selected package"""
+        if package_index < 0:
+            return
+                
+        packages = self.preview_data.get("packages", [])
+        if package_index >= len(packages):
+            return
+                
+        package = packages[package_index]
+        documents = package.get("documents", [])
+        
+        # Clear and update document selector
+        self.document_selector.clear()
+        
+        for doc in documents:
+            doc_name = doc.get("name", "")
+            doc_type = doc.get("type", "")
+            doc_pages = doc.get("page_count", 0)
+            self.document_selector.addItem(
+                f"{doc_type} ({doc_name}) - {doc_pages}p",
+                doc.get("document_id", "")
+            )
+        
+        # Update preview if documents available
+        if documents:
+            self.update_document_preview(0)
+        else:
+            self.doc_preview.setHtml("<p>No documents available for this package</p>")
+
+    def update_document_preview(self, doc_index):
+        """Show document preview for the selected document"""
+        if doc_index < 0:
+            return
+                
+        # Get current package
+        package_index = self.package_selector.currentIndex()
+        packages = self.preview_data.get("packages", [])
+        
+        if package_index < 0 or package_index >= len(packages):
+            return
+                
+        package = packages[package_index]
+        documents = package.get("documents", [])
+        
+        if doc_index >= len(documents):
+            return
+                
+        doc = documents[doc_index]
+        
+        # Get parent document info based on document type
+        parent_doc_info = ""
+        if doc.get("type") == "Deed - Timeshare":
+            parent_doc_info = f"Parent Document: Deeds PDF, Pages {doc.get('page_range', '')}"
+        elif doc.get("type") == "Mortgage Satisfaction":
+            parent_doc_info = f"Parent Document: Mortgage Satisfactions PDF, Page {doc.get('page_range', '')}"
+        
+        # Format grantor list
+        grantors = [
+            "KING CUNNINGHAM LLC TR (Organization)",
+            "OCEAN CLUB VACATIONS LLC (Organization)"
+        ]
+        
+        # Add individual grantors
+        grantor_name1 = package.get('grantor_name1', '')
+        if grantor_name1:
+            grantors.append(f"{grantor_name1} (Individual)")
+            
+        grantor_name2 = package.get('grantor_name2', '')
+        if grantor_name2:
+            grantors.append(f"{grantor_name2} (Individual)")
+        
+        grantor_list = "<br>".join(grantors)
+        
+        # Grantees are always the same
+        grantee_list = "OCEAN CLUB VACATIONS LLC (Organization)"
+        
+        # Reference information
+        ref_info = ""
+        if doc.get("reference_book") and doc.get("reference_page"):
+            ref_info = f"Book {doc.get('reference_book')}, Page {doc.get('reference_page')}"
+        else:
+            ref_info = "Not provided"
+        
+        # Create simplified preview content
+        html_content = f"""
+        <p>Document Name: {doc.get('name', 'Document')}</p>
+        <p>Document Type: {doc.get('type', '')}</p>
+        <p>Document Length: {doc.get('page_count', '')} page(s)</p>
+        <p>{parent_doc_info}</p>
+        <p>Execution Date: {doc.get('execution_date', 'Not provided')}</p>
+        <p>Legal Description: {doc.get('legal_description', 'Not provided')}</p>
+        <p>Parcel ID/TMS: {doc.get('parcel_id', 'Not provided')}</p>
+        <p>Reference Information: {ref_info}</p>
+        <p>Consideration: {doc.get('consideration', 'Not provided')}</p>
+        
+        <p>Grantors:</p>
+        <p>{grantor_list}</p>
+        
+        <p>Grantees:</p>
+        <p>{grantee_list}</p>
+        """
+        
+        self.doc_preview.setHtml(html_content)
+        
     def create_validation_tab(self):
         """Create the validation tab for data checks"""
         widget = QWidget()

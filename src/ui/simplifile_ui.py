@@ -107,7 +107,7 @@ class SimplifileUI(QWidget):
             else:
                 self.config = {
                     "api_token": "",
-                    "submitter_id": "",
+                    "submitter_id": "SCTPG3",
                     "recipient_id": ""
                 }
         except:
@@ -176,26 +176,52 @@ class SimplifileUI(QWidget):
         api_group = QGroupBox("API Configuration")
         api_layout = QFormLayout()
             
+        # Create a horizontal layout for the API token field and show/hide button
+        api_token_layout = QHBoxLayout()
+        
         self.api_token = QLineEdit(self.config.get("api_token", ""))
         self.api_token.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_token.setPlaceholderText("Your Simplifile API token")
-        api_layout.addRow("API Token:", self.api_token)
+        api_token_layout.addWidget(self.api_token)
         
-        self.submitter_id = QLineEdit(self.config.get("submitter_id", ""))
-        self.submitter_id.setPlaceholderText("e.g., SCTP3G")
+        # Add a toggle button for showing/hiding API token
+        self.toggle_api_token_btn = QPushButton("Show")
+        self.toggle_api_token_btn.setFixedWidth(60)
+        self.toggle_api_token_btn.clicked.connect(self.toggle_api_token_visibility)
+        api_token_layout.addWidget(self.toggle_api_token_btn)
+        
+        api_layout.addRow("API Token:", api_token_layout)
+        
+        self.submitter_id = QLineEdit(self.config.get("submitter_id", "SCTPG3"))
+        self.submitter_id.setPlaceholderText("e.g., SCTPG3")
         api_layout.addRow("Submitter ID:", self.submitter_id)
         
         # County dropdown (recipient)
         self.recipient_combo = QComboBox()
+        
+        # Add an empty/initial option
+        self.recipient_combo.addItem("-- Select County --", "")
+        
+        # Add all county options
         for county in RECIPIENT_COUNTIES:
             self.recipient_combo.addItem(county["name"], county["id"])
         
         # Set default from config if exists
         if self.config.get("recipient_id"):
-            for i, county in enumerate(RECIPIENT_COUNTIES):
+            # If we have a config value, find and select that county
+            county_found = False
+            for i, county in enumerate(RECIPIENT_COUNTIES, 1):  # Start from 1 because of empty item
                 if county["id"] == self.config["recipient_id"]:
                     self.recipient_combo.setCurrentIndex(i)
+                    county_found = True
                     break
+            
+            # If county wasn't found, default to the empty selection
+            if not county_found:
+                self.recipient_combo.setCurrentIndex(0)
+        else:
+            # No config value, default to the empty selection
+            self.recipient_combo.setCurrentIndex(0)
         
         api_layout.addRow("County:", self.recipient_combo)
         
@@ -205,6 +231,15 @@ class SimplifileUI(QWidget):
         
         api_group.setLayout(api_layout)
         return api_group
+
+    def toggle_api_token_visibility(self):
+        """Toggle the visibility of the API token"""
+        if self.api_token.echoMode() == QLineEdit.EchoMode.Password:
+            self.api_token.setEchoMode(QLineEdit.EchoMode.Normal)
+            self.toggle_api_token_btn.setText("Hide")
+        else:
+            self.api_token.setEchoMode(QLineEdit.EchoMode.Password)
+            self.toggle_api_token_btn.setText("Show")
     
     def setup_single_upload_tab(self):
         """Setup the single upload tab (existing functionality)"""
@@ -263,7 +298,7 @@ class SimplifileUI(QWidget):
         single_layout.addLayout(actions_layout)
         
         self.single_upload_tab.setLayout(single_layout)
-    
+
     def setup_batch_upload_tab(self):
         """Setup the batch upload tab (primary functionality) with a simplified layout"""
         batch_layout = QVBoxLayout()
@@ -277,8 +312,15 @@ class SimplifileUI(QWidget):
         self.excel_file_path.setReadOnly(True)
         excel_browse_btn = QPushButton("Browse...")
         excel_browse_btn.clicked.connect(self.browse_excel_file)
+        
+        # Add template download button
+        excel_template_btn = QPushButton("Download Template")
+        excel_template_btn.clicked.connect(self.download_excel_template)
+        excel_template_btn.setToolTip("Download an Excel template with the required format")
+        
         excel_layout.addWidget(self.excel_file_path)
         excel_layout.addWidget(excel_browse_btn)
+        excel_layout.addWidget(excel_template_btn)
         files_layout.addRow("Excel File:", excel_layout)
         
         # Deed Documents PDF Selection
@@ -353,7 +395,74 @@ class SimplifileUI(QWidget):
         
         # Set up the enhanced preview functionality
         self.update_batch_preview_functionality()
-    
+
+    def download_excel_template(self):
+        """Create and download a very simple Excel template file with only headers"""
+        try:
+            import pandas as pd
+            
+            # Ask user where to save the template
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "Save Excel Template", "simplifile_template.xlsx", "Excel Files (*.xlsx)"
+            )
+            
+            if not file_path:
+                return
+                
+            # Add .xlsx extension if not present
+            if not file_path.lower().endswith('.xlsx'):
+                file_path += '.xlsx'
+            
+            # Create headers only
+            headers = [
+                'KC File No.', 'Account', 'Last Name #1', 'First Name #1',
+                '&', 'Last Name #2', 'First Name #2', 'Deed Book',
+                'Deed Page', 'Mortgage Book', 'Mortgage Page', 'Recorded Date',
+                'Execution Date', 'Consideration', 'Suite', 'GRANTOR/GRANTEE',
+                'LEGAL DESCRIPTION'
+            ]
+            
+            # Create empty DataFrame with just the headers
+            df = pd.DataFrame(columns=headers)
+            
+            # Save with basic formatting - no need for xlsxwriter
+            df.to_excel(file_path, index=False)
+            
+            # Show success message
+            QMessageBox.information(
+                self, 
+                "Template Created", 
+                f"Excel template has been saved to:\n{file_path}"
+            )
+            
+            # Open the file directory
+            import os
+            import subprocess
+            
+            # Get the directory containing the file
+            dir_path = os.path.dirname(os.path.abspath(file_path))
+            
+            # Open the directory in file explorer
+            if os.name == 'nt':  # Windows
+                subprocess.Popen(f'explorer "{dir_path}"')
+            elif os.name == 'posix':  # macOS or Linux
+                try:
+                    # Try macOS first
+                    subprocess.Popen(['open', dir_path])
+                except:
+                    try:
+                        # Try Linux
+                        subprocess.Popen(['xdg-open', dir_path])
+                    except:
+                        pass
+            
+        except Exception as e:
+            QMessageBox.critical(
+                self, 
+                "Error Creating Template", 
+                f"Failed to create Excel template:\n{str(e)}"
+            )
+
     def browse_excel_file(self):
         """Browse for Excel file for batch processing"""
         file_path, _ = QFileDialog.getOpenFileName(
@@ -504,7 +613,7 @@ class SimplifileUI(QWidget):
 
     # Update the batch_process_finished method in SimplifileUI class
     def batch_process_finished(self, result_data):
-        """Handle completion of batch processing"""
+        """Handle completion of batch processing with detailed error reporting"""
         self.batch_upload_btn.setEnabled(True)
         
         if result_data.get("resultCode") == "SUCCESS":
@@ -525,6 +634,21 @@ class SimplifileUI(QWidget):
                     self.update_output(f"✓ {package_id}: {package_name} - Prepared successfully (preview mode)")
                 else:
                     self.update_output(f"✗ {package_id}: {package_name} - Failed: {msg}")
+                    
+                    # Add detailed error information from API response if available
+                    if "api_response" in package:
+                        api_response = package.get("api_response", {})
+                        errors = api_response.get("errors", [])
+                        if errors:
+                            self.update_output("  Detailed errors:")
+                            for error in errors:
+                                path = error.get("path", "Unknown field")
+                                error_msg = error.get("message", "Unknown error")
+                                self.update_output(f"  • {path}: {error_msg}")
+                    
+                    # Add HTTP error details if available
+                    if "response_text" in package:
+                        self.update_output(f"  Response: {package.get('response_text', '')}")
             
             # Show success message with appropriate text based on result
             if "summary" in result_data:
@@ -534,8 +658,19 @@ class SimplifileUI(QWidget):
                 failed = summary.get("failed", 0)
                 
                 if failed > 0:
-                    QMessageBox.warning(self, "Processing Completed with Issues", 
-                                    f"Batch processing completed with {successful} successful and {failed} failed packages.")
+                    error_dialog = QMessageBox(self)
+                    error_dialog.setWindowTitle("Processing Completed with Issues")
+                    error_dialog.setIcon(QMessageBox.Icon.Warning)
+                    
+                    # Create detailed message with package-specific errors
+                    detailed_msg = f"Batch processing completed with {successful} successful and {failed} failed packages.\n\nDetails:\n"
+                    for package in packages:
+                        if package.get("status") != "success" and package.get("status") != "preview_success":
+                            detailed_msg += f"\n{package.get('package_id')}: {package.get('message')}"
+                    
+                    error_dialog.setText(detailed_msg)
+                    error_dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+                    error_dialog.exec()
                 else:
                     QMessageBox.information(self, "Processing Complete", 
                                         f"Batch processing completed successfully. {successful} packages processed.")
@@ -543,18 +678,56 @@ class SimplifileUI(QWidget):
             # Handle partial success
             self.update_output(f"Batch processing completed with partial success: {result_data.get('message', '')}")
             
-            # Show warning with details
-            QMessageBox.warning(self, "Processing Completed with Issues", 
-                            result_data.get('message', 'Some packages failed to upload.'))
+            # Show detailed warning with all errors
+            packages = result_data.get("packages", [])
+            error_msg = f"Some packages failed to upload:\n\n"
+            
+            for package in packages:
+                if package.get("status") != "success" and package.get("status") != "preview_success":
+                    error_msg += f"{package.get('package_id')}: {package.get('message')}\n"
+            
+            QMessageBox.warning(self, "Processing Completed with Issues", error_msg)
         else:
-            # Handle failure
+            # Handle failure with more detailed information
             error_msg = result_data.get("message", "Unknown error")
             self.update_output(f"Batch processing failed: {error_msg}")
             
-            # Show error message
-            QMessageBox.critical(self, "Processing Failed", 
-                            f"Batch processing failed: {error_msg}")
-        
+            # Create detailed error report
+            detailed_error = "Batch processing failed\n\n"
+            detailed_error += f"Error: {error_msg}\n\n"
+            
+            # Add details for each package if available
+            packages = result_data.get("packages", [])
+            if packages:
+                detailed_error += "Package details:\n"
+                for package in packages:
+                    status = package.get("status", "unknown")
+                    msg = package.get("message", "")
+                    package_id = package.get("package_id", "")
+                    detailed_error += f"\n• {package_id} ({status}): {msg}"
+            
+            # Show error message dialog with scroll area for large error reports
+            from PyQt6.QtWidgets import QScrollArea, QDialog, QVBoxLayout, QTextEdit, QPushButton
+            
+            error_dialog = QDialog(self)
+            error_dialog.setWindowTitle("Processing Failed")
+            error_dialog.resize(600, 400)
+            
+            layout = QVBoxLayout()
+            
+            error_text = QTextEdit()
+            error_text.setReadOnly(True)
+            error_text.setText(detailed_error)
+            
+            close_btn = QPushButton("Close")
+            close_btn.clicked.connect(error_dialog.accept)
+            
+            layout.addWidget(error_text)
+            layout.addWidget(close_btn)
+            
+            error_dialog.setLayout(layout)
+            error_dialog.exec()
+
     def clear_batch(self):
         """Clear batch upload form"""
         reply = QMessageBox.question(self, "Confirm Clear", 
