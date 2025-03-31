@@ -422,7 +422,7 @@ class MainWindow(QMainWindow):
         
         # Start thread
         self.simplifile_thread.start()
-    
+
     def start_simplifile_batch_process(self, excel_path, deeds_path, mortgage_path):
         """Start Simplifile batch processing with API support"""
         # Get API credentials
@@ -430,17 +430,20 @@ class MainWindow(QMainWindow):
         submitter_id = self.simplifile_ui.submitter_id.text()
         recipient_id = self.simplifile_ui.recipient_combo.currentData()
         
+        # Get affidavits path if available
+        affidavits_path = self.simplifile_ui.affidavits_file_path.text() if hasattr(self.simplifile_ui, 'affidavits_file_path') else None
+        
         # Determine if this is preview mode (default to True for safety)
         preview_mode = True  # This could be passed from the UI if we had a checkbox
         
         self.batch_thread, self.batch_worker = run_simplifile_batch_thread(
+            api_token, 
+            submitter_id,
+            recipient_id,
             excel_path, 
             deeds_path, 
             mortgage_path,
-            api_token,
-            submitter_id,
-            recipient_id,
-            preview_mode
+            affidavits_path
         )
         
         # Connect signals
@@ -451,12 +454,12 @@ class MainWindow(QMainWindow):
         
         # Start thread
         self.batch_thread.start()
-    
+
     def show_simplifile_error(self, error_message):
         """Show error message from Simplifile process"""
         self.simplifile_ui.update_output(f"Error: {error_message}")
         QMessageBox.critical(self, "Simplifile Error", error_message)
-    
+
     def simplifile_upload_finished(self):
         """Called when Simplifile upload process finishes"""
         self.simplifile_ui.update_output("Simplifile upload process completed.")
