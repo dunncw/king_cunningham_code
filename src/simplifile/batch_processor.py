@@ -20,8 +20,9 @@ class SimplifileBatchPreview(QObject):
     def __init__(self):
         super().__init__()
         self.temp_dir = tempfile.mkdtemp()
-        
-    def generate_preview(self, excel_path, deeds_path, mortgage_path):
+
+    # Update the generate_preview method in the SimplifileBatchPreview class
+    def generate_preview(self, excel_path, deeds_path, mortgage_path, affidavits_path=None):
         """Generate an enhanced preview of the batch processing"""
         try:
             self.status.emit("Starting preview generation...")
@@ -41,6 +42,8 @@ class SimplifileBatchPreview(QObject):
             # Generate preview of PDF splits without actually creating files
             deed_splits = []
             mortgage_splits = []
+            affidavit_splits = []
+            has_merged_docs = False
             
             if deeds_path:
                 self.status.emit("Analyzing deed documents...")
@@ -48,6 +51,22 @@ class SimplifileBatchPreview(QObject):
                 if not deed_splits and deeds_path:
                     self.error.emit("Failed to analyze deed documents")
                     return False
+            
+            self.progress.emit(30)
+            
+            if affidavits_path:
+                self.status.emit("Analyzing affidavit documents...")
+                affidavit_splits = self.preview_affidavit_splits(affidavits_path)
+                if not affidavit_splits and affidavits_path:
+                    self.error.emit("Failed to analyze affidavit documents")
+                    return False
+                
+                # Check if we can merge deeds and affidavits
+                if deed_splits and affidavit_splits:
+                    self.status.emit("Analyzing merged deed and affidavit documents...")
+                    has_merged_docs = True
+                    
+                    # We'll handle this in the preview data building
             
             self.progress.emit(40)
             
@@ -61,7 +80,13 @@ class SimplifileBatchPreview(QObject):
             self.progress.emit(60)
             
             # Create comprehensive preview data
-            preview_data = self.build_enhanced_preview_data(excel_data, deed_splits, mortgage_splits)
+            preview_data = self.build_enhanced_preview_data(
+                excel_data, 
+                deed_splits, 
+                mortgage_splits, 
+                affidavit_splits, 
+                has_merged_docs
+            )
             if not preview_data:
                 self.error.emit("Failed to create preview data")
                 return False
@@ -79,7 +104,51 @@ class SimplifileBatchPreview(QObject):
         except Exception as e:
             self.error.emit(f"Error in preview generation: {str(e)}")
             return False
-    
+
+    # Add this new method to the SimplifileBatchPreview class
+    def preview_affidavit_splits(self, pdf_path):
+        """Analyze affidavit PDF to determine how it would be split (without creating files)"""
+        try:
+            # Read PDF
+            pdf = PdfReader(pdf_path)
+            total_pages = len(pdf.pages)
+            pages_per_doc = 2  # Affidavits are 2 pages each
+            doc_count = (total_pages + pages_per_doc - 1) // pages_per_doc  # Ceiling division
+            
+            self.status.emit(f"Affidavit PDF contains {total_pages} pages which would be split into {doc_count} documents (2 pages each)")
+            
+            # Create enhanced split information
+            affidavit_splits = []
+            for i in range(doc_count):
+                start_page = i * pages_per_doc
+                end_page = min(start_page + pages_per_doc, total_pages)
+                
+                # Try to extract some text from first page for identification
+                sample_text = ""
+                if start_page < total_pages:
+                    try:
+                        page = pdf.pages[start_page]
+                        sample_text = page.extract_text()[:100] if hasattr(page, 'extract_text') else ""
+                        sample_text = sample_text.replace('\n', ' ').strip()
+                    except:
+                        sample_text = "Text extraction failed"
+                
+                affidavit_splits.append({
+                    "index": i,
+                    "start_page": start_page + 1,  # 1-based for display
+                    "end_page": end_page,
+                    "page_count": end_page - start_page,
+                    "type": "Affidavit",
+                    "sample_text": sample_text,
+                    "file_size_kb": "~15-25KB"  # Estimated size after split
+                })
+            
+            return affidavit_splits
+            
+        except Exception as e:
+            self.error.emit(f"Error analyzing affidavit PDF: {str(e)}")
+            return []
+
     def load_excel_data(self, excel_path):
         """Load Excel data with enhanced validation"""
         try:
@@ -143,17 +212,18 @@ class SimplifileBatchPreview(QObject):
         except Exception as e:
             self.error.emit(f"Error loading Excel file: {str(e)}")
             return None
-    
+
+
     def preview_deed_splits(self, pdf_path):
         """Analyze deed PDF to determine how it would be split (without creating files)"""
         try:
             # Read PDF
             pdf = PdfReader(pdf_path)
             total_pages = len(pdf.pages)
-            pages_per_doc = 4  # Deeds are 4 pages each
+            pages_per_doc = 2  # Deeds are now 2 pages each (not 4)
             doc_count = (total_pages + pages_per_doc - 1) // pages_per_doc  # Ceiling division
             
-            self.status.emit(f"Deed PDF contains {total_pages} pages which would be split into {doc_count} documents (4 pages each)")
+            self.status.emit(f"Deed PDF contains {total_pages} pages which would be split into {doc_count} documents (2 pages each)")
             
             # Create enhanced split information
             deed_splits = []
@@ -178,7 +248,7 @@ class SimplifileBatchPreview(QObject):
                     "page_count": end_page - start_page,
                     "type": "Deed - Timeshare",
                     "sample_text": sample_text,
-                    "file_size_kb": "~25-50KB"  # Estimated size after split
+                    "file_size_kb": "~15-25KB"  # Estimated size after split
                 })
             
             return deed_splits
@@ -186,7 +256,8 @@ class SimplifileBatchPreview(QObject):
         except Exception as e:
             self.error.emit(f"Error analyzing deed PDF: {str(e)}")
             return []
-    
+
+
     def preview_mortgage_splits(self, pdf_path):
         """Analyze mortgage PDF to determine how it would be split (without creating files)"""
         try:
@@ -233,10 +304,39 @@ class SimplifileBatchPreview(QObject):
         # Remove hyphens as specified in the guide
         name = name.replace('-', ' ')
         return name
-    
-    def build_enhanced_preview_data(self, excel_data, deed_splits, mortgage_splits):
-        """Build comprehensive preview data structure with validation information"""
+
+
+    def build_enhanced_preview_data(self, excel_data, deed_splits, mortgage_splits, affidavit_splits=None, has_merged_docs=False):
+        """Build comprehensive preview data structure with validation information, including affidavits"""
         try:
+            # If we have merged documents, we need to show this in the preview
+            if has_merged_docs:
+                # Create a merged version of deed_splits that shows how they'll be combined with affidavits
+                merged_splits = []
+                merge_count = min(len(deed_splits), len(affidavit_splits))
+                
+                for i in range(merge_count):
+                    deed = deed_splits[i]
+                    affidavit = affidavit_splits[i]
+                    
+                    merged_splits.append({
+                        "index": i,
+                        "start_page": f"D:{deed['start_page']}-{deed['end_page']},A:{affidavit['start_page']}-{affidavit['end_page']}",
+                        "end_page": f"Combined 4 pages",
+                        "page_count": deed['page_count'] + affidavit['page_count'],
+                        "type": "Deed - Timeshare",  # Keep original type for API compatibility
+                        "sample_text": deed['sample_text'],
+                        "file_size_kb": "~50-75KB",  # Estimated size after merge
+                        "is_merged": True,
+                        "deed_index": deed['index'],
+                        "affidavit_index": affidavit['index'],
+                        "merge_details": "2-page deed + 2-page affidavit = 4-page document"
+                    })
+                
+                # Use merged_splits instead of deed_splits for the rest of the preview
+                original_deed_splits = deed_splits.copy()
+                deed_splits = merged_splits
+            
             # Count how many packages will be created
             total_packages = max(len(deed_splits), len(mortgage_splits))
             if total_packages == 0:
@@ -266,6 +366,26 @@ class SimplifileBatchPreview(QObject):
                     "document_issues": []
                 }
             }
+            
+            # Add information about affidavits and merged documents
+            if affidavit_splits:
+                preview_data["summary"]["affidavit_documents"] = len(affidavit_splits)
+                
+                if has_merged_docs:
+                    preview_data["summary"]["merged_documents"] = min(len(deed_splits), len(affidavit_splits))
+                    preview_data["summary"]["merge_status"] = "Each 2-page deed will be merged with a 2-page affidavit to create 4-page documents for upload"
+                    
+                    # Add warning if counts don't match
+                    if len(original_deed_splits) != len(affidavit_splits):
+                        diff = abs(len(original_deed_splits) - len(affidavit_splits))
+                        if len(original_deed_splits) > len(affidavit_splits):
+                            preview_data["summary"]["warnings"].append(
+                                f"Warning: Found {diff} more deed documents than affidavit documents. Extra deeds will not be merged."
+                            )
+                        else:
+                            preview_data["summary"]["warnings"].append(
+                                f"Warning: Found {diff} more affidavit documents than deed documents. Extra affidavits will not be used."
+                            )
             
             # Add this to the beginning of the method, right after declaring preview_data
             if hasattr(self, 'missing_recommended_columns') and self.missing_recommended_columns:
@@ -323,7 +443,8 @@ class SimplifileBatchPreview(QObject):
                 grantor_grantee = self.format_name(get_cell_value('GRANTOR/GRANTEE', 'OCEAN CLUB VACATIONS LLC'))
                 legal_description = self.format_name(get_cell_value('LEGAL DESCRIPTION', 'ANDERSON OCEAN CLUB HPR'))
                 
-                # Set package name following convention
+                # Set package name following convention - Updated as per Shannon's request
+                # (Account # Last name TD KC File No) (93-505200 DOE TD 93-7)
                 package_name = f"{account_number} {last_name1} TD {kc_file_no}"
                 
                 # Create enhanced package information
@@ -372,23 +493,48 @@ class SimplifileBatchPreview(QObject):
                 if i < len(deed_splits):
                     deed = deed_splits[i]
                     
-                    deed_doc = {
-                        "document_id": f"D-{account_number}-TD",
-                        "name": f"{account_number} {last_name1} TD",
-                        "type": deed["type"],
-                        "page_range": f"{deed['start_page']}-{deed['end_page']}",
-                        "page_count": deed["page_count"],
-                        "reference_book": deed_book,
-                        "reference_page": deed_page,
-                        "legal_description": legal_description,
-                        "parcel_id": suite,
-                        "consideration": consideration,
-                        "execution_date": execution_date,
-                        "sample_text": deed["sample_text"],
-                        "estimated_size": deed["file_size_kb"],
-                        "validated": True,
-                        "validation_issues": []
-                    }
+                    # Document name based on convention
+                    deed_doc_name = f"{account_number} {last_name1} TD"
+                    
+                    # Special handling for merged documents
+                    if has_merged_docs and "is_merged" in deed and deed["is_merged"]:
+                        deed_doc = {
+                            "document_id": f"D-{account_number}-TD",
+                            "name": deed_doc_name,
+                            "type": "Deed - Timeshare",
+                            "page_info": deed["start_page"],
+                            "page_count": deed["page_count"],
+                            "reference_book": deed_book,
+                            "reference_page": deed_page,
+                            "legal_description": legal_description,
+                            "parcel_id": suite,
+                            "consideration": consideration,
+                            "execution_date": execution_date,
+                            "sample_text": deed["sample_text"],
+                            "estimated_size": deed["file_size_kb"],
+                            "is_merged": True,
+                            "merge_details": deed.get("merge_details", "Merged deed and affidavit"),
+                            "validated": True,
+                            "validation_issues": []
+                        }
+                    else:
+                        deed_doc = {
+                            "document_id": f"D-{account_number}-TD",
+                            "name": deed_doc_name,
+                            "type": deed["type"],
+                            "page_range": f"{deed['start_page']}-{deed['end_page']}",
+                            "page_count": deed["page_count"],
+                            "reference_book": deed_book,
+                            "reference_page": deed_page,
+                            "legal_description": legal_description,
+                            "parcel_id": suite,
+                            "consideration": consideration,
+                            "execution_date": execution_date,
+                            "sample_text": deed["sample_text"],
+                            "estimated_size": deed["file_size_kb"],
+                            "validated": True,
+                            "validation_issues": []
+                        }
                     
                     # Validate deed document
                     if not deed_book or not deed_page:
@@ -405,9 +551,12 @@ class SimplifileBatchPreview(QObject):
                 if i < len(mortgage_splits):
                     mortgage = mortgage_splits[i]
                     
+                    # Document name following convention exactly
+                    mortgage_doc_name = f"{account_number} {last_name1} SAT"
+                    
                     mortgage_doc = {
                         "document_id": f"D-{account_number}-SAT",
-                        "name": f"{account_number} {last_name1} SAT",
+                        "name": mortgage_doc_name,
                         "type": mortgage["type"],
                         "page_range": f"{mortgage['start_page']}-{mortgage['end_page']}",
                         "page_count": mortgage["page_count"],
@@ -481,7 +630,7 @@ class SimplifileBatchProcessor(QObject):
         self.preview_mode = True  # Default to preview mode
         
     # Updated process_batch function with validation
-    def process_batch(self, excel_path, deeds_path, mortgage_path, preview_mode=True):
+    def process_batch(self, excel_path, deeds_path, mortgage_path, preview_mode=True, affidavits_path=None, skip_validation=True):
         """Process batch upload"""
         try:
             self.preview_mode = preview_mode
@@ -496,6 +645,7 @@ class SimplifileBatchProcessor(QObject):
             # Process PDF files
             deed_files = []
             mortgage_files = []
+            affidavit_files = []
             
             if deeds_path:
                 self.status.emit("Processing deed documents...")
@@ -503,6 +653,18 @@ class SimplifileBatchProcessor(QObject):
                 if not deed_files and deeds_path:
                     self.error.emit("Failed to process deed documents")
                     return False
+            
+            if affidavits_path:
+                self.status.emit("Processing affidavit documents...")
+                affidavit_files = self.split_affidavits_pdf(affidavits_path)
+                if not affidavit_files and affidavits_path:
+                    self.error.emit("Failed to process affidavit documents")
+                    return False
+                
+                # If we have both deed and affidavit files, merge them
+                if deed_files and affidavit_files:
+                    self.status.emit("Merging deed and affidavit documents...")
+                    deed_files = self.merge_deeds_and_affidavits(deed_files, affidavit_files)
             
             if mortgage_path:
                 self.status.emit("Processing mortgage satisfaction documents...")
@@ -520,7 +682,7 @@ class SimplifileBatchProcessor(QObject):
                 return False
             
             # Validate documents if not in preview mode
-            if not self.preview_mode:
+            if not self.preview_mode and not skip_validation:
                 self.status.emit("Validating documents against API requirements...")
                 # Create API helper for validation
                 api_helper = SimplifileAPI(self.api_token, self.submitter_id, self.recipient_id)
@@ -571,7 +733,133 @@ class SimplifileBatchProcessor(QObject):
         except Exception as e:
             self.error.emit(f"Error in batch processing: {str(e)}")
             return False
-    
+
+
+    # Add these new methods to the SimplifileBatchProcessor class
+    def split_affidavits_pdf(self, pdf_path):
+        """Split affidavit document PDF into individual files (every 2 pages).
+        
+        Each affidavit is assumed to be 2 pages. These will later be merged with
+        corresponding 2-page deeds to create complete 4-page documents for upload.
+        """
+        try:
+            affidavit_files = []
+            
+            # Read PDF
+            pdf = PdfReader(pdf_path)
+            total_pages = len(pdf.pages)
+            pages_per_doc = 2  # Affidavits are 2 pages each
+            doc_count = (total_pages + pages_per_doc - 1) // pages_per_doc  # Ceiling division
+            
+            self.status.emit(f"Splitting {total_pages} pages into {doc_count} affidavit documents...")
+            
+            for i in range(doc_count):
+                start_page = i * pages_per_doc
+                end_page = min(start_page + pages_per_doc, total_pages)
+                
+                # Create a new PDF writer for this chunk
+                output_pdf = PdfWriter()
+                
+                # Add pages from the original document
+                for page_num in range(start_page, end_page):
+                    output_pdf.add_page(pdf.pages[page_num])
+                
+                # Save the split document
+                output_path = os.path.join(self.temp_dir, f"affidavit_{i+1}.pdf")
+                with open(output_path, "wb") as output_file:
+                    output_pdf.write(output_file)
+                
+                affidavit_files.append({
+                    "index": i,
+                    "path": output_path,
+                    "type": "Affidavit"
+                })
+                
+                self.progress.emit(45 + (i * 5 // doc_count))
+            
+            self.status.emit(f"Created {len(affidavit_files)} affidavit documents")
+            return affidavit_files
+            
+        except Exception as e:
+            self.error.emit(f"Error splitting affidavit PDF: {str(e)}")
+            return []
+
+
+    def merge_deeds_and_affidavits(self, deed_files, affidavit_files):
+        """Merge deed files (2 pages) with affidavit files (2 pages) to create 4-page documents.
+        
+        For each matching pair:
+        1. Take the 2-page deed document
+        2. Append all pages from the corresponding 2-page affidavit
+        3. Save as a new 4-page document for upload
+        
+        If there are more deeds than affidavits, the extra deeds will remain unmerged.
+        """
+        try:
+            merged_files = []
+            
+            # We need to match each deed with its corresponding affidavit
+            # For now, we'll assume they're in the same order
+            # If there are more affidavits than deeds, we'll just use the first N affidavits that match deeds
+            doc_count = min(len(deed_files), len(affidavit_files))
+            
+            self.status.emit(f"Merging {doc_count} deed and affidavit document pairs...")
+            
+            for i in range(doc_count):
+                deed = deed_files[i]
+                affidavit = affidavit_files[i]
+                
+                # Create a new PDF writer for the merged document
+                output_pdf = PdfWriter()
+                
+                # Read the deed PDF
+                deed_pdf = PdfReader(deed["path"])
+                
+                # Read the affidavit PDF
+                affidavit_pdf = PdfReader(affidavit["path"])
+                
+                # Add pages from deed document
+                for page in deed_pdf.pages:
+                    output_pdf.add_page(page)
+                
+                # Add pages from affidavit document
+                for page in affidavit_pdf.pages:
+                    output_pdf.add_page(page)
+                
+                # Save the merged document
+                output_path = os.path.join(self.temp_dir, f"merged_deed_{i+1}.pdf")
+                with open(output_path, "wb") as output_file:
+                    output_pdf.write(output_file)
+                
+                # Create merged document info (copy from deed but update path)
+                merged_file = deed.copy()
+                merged_file["path"] = output_path
+                merged_file["source"] = "merged_deed_and_affidavit"
+                merged_file["type"] = "Deed - Timeshare"  # Keep original type for API
+                
+                merged_files.append(merged_file)
+                
+                self.progress.emit(50 + (i * 10 // doc_count))
+            
+            # Check if we have unmatched deed documents
+            if len(deed_files) > len(affidavit_files):
+                unmatched_count = len(deed_files) - len(affidavit_files)
+                self.status.emit(f"Warning: Found {unmatched_count} deed documents without matching affidavits")
+                
+                # Add the remaining deed files without merging
+                for i in range(doc_count, len(deed_files)):
+                    merged_files.append(deed_files[i])
+            
+            self.status.emit(f"Created {len(merged_files)} merged documents")
+            return merged_files
+            
+        except Exception as e:
+            self.error.emit(f"Error merging deed and affidavit documents: {str(e)}")
+            # On error, return the original deed files so processing can continue
+            self.status.emit("Using original deed files without merging due to error")
+            return deed_files
+
+
     def load_excel_data(self, excel_path):
         """Load and validate Excel data according to the required schema"""
         try:
@@ -605,19 +893,24 @@ class SimplifileBatchProcessor(QObject):
         except Exception as e:
             self.error.emit(f"Error loading Excel file: {str(e)}")
         return None
-    
+
+
     def split_deeds_pdf(self, pdf_path):
-        """Split deed document PDF into individual files (every 4 pages)"""
+        """Split deed document PDF into individual files (every 2 pages).
+        
+        Each deed is assumed to be 2 pages. These will later be merged with
+        corresponding 2-page affidavits to create complete 4-page documents for upload.
+        """
         try:
             deed_files = []
             
             # Read PDF
             pdf = PdfReader(pdf_path)
             total_pages = len(pdf.pages)
-            pages_per_doc = 4  # Deeds are 4 pages each
+            pages_per_doc = 2  # Deeds are now 2 pages each (not 4)
             doc_count = (total_pages + pages_per_doc - 1) // pages_per_doc  # Ceiling division
             
-            self.status.emit(f"Splitting {total_pages} pages into {doc_count} deed documents...")
+            self.status.emit(f"Splitting {total_pages} pages into {doc_count} deed documents (2 pages each)...")
             
             for i in range(doc_count):
                 start_page = i * pages_per_doc
@@ -649,7 +942,7 @@ class SimplifileBatchProcessor(QObject):
         except Exception as e:
             self.error.emit(f"Error splitting deed PDF: {str(e)}")
             return []
-    
+
     def split_mortgage_pdf(self, pdf_path):
         """Split mortgage satisfaction PDF into individual files (1 page per document)"""
         try:
@@ -687,7 +980,9 @@ class SimplifileBatchProcessor(QObject):
         except Exception as e:
             self.error.emit(f"Error splitting mortgage PDF: {str(e)}")
             return []
-    
+
+
+    # Update the prepare_packages method in the SimplifileBatchProcessor class
     def prepare_packages(self, excel_data, deed_files, mortgage_files):
         """Prepare packages following the exact instructions"""
         try:
@@ -745,6 +1040,9 @@ class SimplifileBatchProcessor(QObject):
                 
                 # Set package name following convention exactly as in instructions
                 package_name = f"{account_number} {last_name1} TD {kc_file_no}"
+                
+                # Create the new submitterPackageID format combining KC File No and account number
+                package_id = f"{kc_file_no}-{account_number}"
                 
                 self.status.emit(f"Preparing package {i+1}/{total_packages}: {package_name}")
                 
@@ -878,7 +1176,7 @@ class SimplifileBatchProcessor(QObject):
                 
                 # Create package info with proper settings as specified
                 package = {
-                    "package_id": f"P-{account_number}",
+                    "package_id": package_id,  # Using the new format for submitterPackageID
                     "package_name": package_name,
                     "documents": package_docs,
                     "excel_row": i + 2,  # Excel row (1-based, with header)
@@ -897,7 +1195,8 @@ class SimplifileBatchProcessor(QObject):
         except Exception as e:
             self.error.emit(f"Error preparing packages: {str(e)}")
             return []
-            
+
+
     def format_name(self, name):
         """Format names according to requirements"""
         if not isinstance(name, str):
@@ -1189,14 +1488,14 @@ class SimplifileBatchProcessor(QObject):
             self.status.emit(f"Warning: Error cleaning up temporary files: {str(e)}")
 
 
-def run_simplifile_batch_preview(excel_path, deeds_path, mortgage_path):
+def run_simplifile_batch_preview(excel_path, deeds_path, mortgage_path, affidavits_path=None):
     """Create and run a thread for Simplifile batch preview"""
     thread = QThread()
     worker = SimplifileBatchPreview()
     worker.moveToThread(thread)
     
     # Connect signals
-    thread.started.connect(lambda: worker.generate_preview(excel_path, deeds_path, mortgage_path))
+    thread.started.connect(lambda: worker.generate_preview(excel_path, deeds_path, mortgage_path, affidavits_path))
     worker.preview_ready.connect(thread.quit)
     worker.error.connect(lambda e: thread.quit())
     worker.preview_ready.connect(worker.deleteLater)
@@ -1205,14 +1504,15 @@ def run_simplifile_batch_preview(excel_path, deeds_path, mortgage_path):
     return thread, worker
 
 
-def run_simplifile_batch_process(excel_path, deeds_path, mortgage_path, api_token=None, submitter_id=None, recipient_id=None, preview_mode=True):
+# Update the function definition in batch_processor.py
+def run_simplifile_batch_process(excel_path, deeds_path, mortgage_path, api_token=None, submitter_id=None, recipient_id=None, preview_mode=True, affidavits_path=None):
     """Create and run a thread for Simplifile batch processing"""
     thread = QThread()
     worker = SimplifileBatchProcessor(api_token, submitter_id, recipient_id)
     worker.moveToThread(thread)
     
     # Connect signals
-    thread.started.connect(lambda: worker.process_batch(excel_path, deeds_path, mortgage_path, preview_mode))
+    thread.started.connect(lambda: worker.process_batch(excel_path, deeds_path, mortgage_path, preview_mode, affidavits_path))
     worker.finished.connect(thread.quit)
     worker.error.connect(lambda e: thread.quit())
     worker.finished.connect(worker.deleteLater)
@@ -1220,14 +1520,15 @@ def run_simplifile_batch_process(excel_path, deeds_path, mortgage_path, api_toke
     
     return thread, worker
 
-def run_simplifile_batch_thread(api_token, submitter_id, recipient_id, excel_path, deeds_path, mortgage_path):
+# Also update run_simplifile_batch_thread
+def run_simplifile_batch_thread(api_token, submitter_id, recipient_id, excel_path, deeds_path, mortgage_path, affidavits_path=None):
     """Create and run a thread for Simplifile batch operations"""
     thread = QThread()
     worker = SimplifileBatchProcessor(api_token, submitter_id, recipient_id)
     worker.moveToThread(thread)
     
     # Connect signals
-    thread.started.connect(lambda: worker.process_batch(excel_path, deeds_path, mortgage_path))
+    thread.started.connect(lambda: worker.process_batch(excel_path, deeds_path, mortgage_path, False, affidavits_path))
     worker.finished.connect(thread.quit)
     worker.finished.connect(worker.deleteLater)
     thread.finished.connect(thread.deleteLater)

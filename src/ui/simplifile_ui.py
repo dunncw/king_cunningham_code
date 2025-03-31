@@ -51,7 +51,7 @@ class SimplifileUI(QWidget):
         """Update the batch preview functionality in SimplifileUI"""
         # Connect the preview button in SimplifileUI
         self.preview_btn.clicked.connect(self.generate_enhanced_batch_preview)
-        
+
     def generate_enhanced_batch_preview(self):
         """Generate enhanced preview of batch processing"""
         # Check if all required files are selected
@@ -72,7 +72,8 @@ class SimplifileUI(QWidget):
         self.preview_thread, self.preview_worker = run_simplifile_batch_preview(
             self.excel_file_path.text(),
             self.deeds_file_path.text(),
-            self.mortgage_file_path.text()
+            self.mortgage_file_path.text(),
+            self.affidavits_file_path.text()  # Add this new parameter
         )
         
         # Connect signals
@@ -333,6 +334,16 @@ class SimplifileUI(QWidget):
         deeds_layout.addWidget(deeds_browse_btn)
         files_layout.addRow("Deed Documents (PDF):", deeds_layout)
         
+        # NEW: Affidavit Documents PDF Selection
+        affidavits_layout = QHBoxLayout()
+        self.affidavits_file_path = QLineEdit()
+        self.affidavits_file_path.setReadOnly(True)
+        affidavits_browse_btn = QPushButton("Browse...")
+        affidavits_browse_btn.clicked.connect(self.browse_affidavits_file)
+        affidavits_layout.addWidget(self.affidavits_file_path)
+        affidavits_layout.addWidget(affidavits_browse_btn)
+        files_layout.addRow("Affidavits (PDF):", affidavits_layout)
+        
         # Mortgage Satisfaction PDF Selection
         mortgage_layout = QHBoxLayout()
         self.mortgage_file_path = QLineEdit()
@@ -395,6 +406,15 @@ class SimplifileUI(QWidget):
         
         # Set up the enhanced preview functionality
         self.update_batch_preview_functionality()
+
+    def browse_affidavits_file(self):
+        """Browse for Affidavit documents PDF file"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select Affidavit Documents PDF", "", "PDF Files (*.pdf);;All Files (*)"
+        )
+        if file_path:
+            self.affidavits_file_path.setText(file_path)
+            self.update_output(f"Selected Affidavit documents file: {os.path.basename(file_path)}")
 
     def download_excel_template(self):
         """Create and download a very simple Excel template file with only headers"""
@@ -524,7 +544,8 @@ class SimplifileUI(QWidget):
         
         # Start thread
         self.preview_thread.start()
-    
+
+
     def show_preview_dialog(self, preview_json):
         """Show the preview dialog with the generated data"""
         try:
@@ -536,10 +557,21 @@ class SimplifileUI(QWidget):
             
         except Exception as e:
             self.show_error(f"Error displaying preview: {str(e)}")
-    
+
+
     # Update the process_batch_upload method in SimplifileUI class
     def process_batch_upload(self):
-        """Process and start the batch upload with actual API calls"""
+        """Process and start the batch upload with actual API calls.
+        
+        This will:
+        1. Load the Excel data file
+        2. Split the deeds PDF into 2-page documents
+        3. Split the affidavits PDF into 2-page documents
+        4. Merge matching deed and affidavit documents to create 4-page documents
+        5. Split the mortgage satisfaction PDF into 1-page documents
+        6. Prepare packages for upload
+        7. Upload packages to Simplifile API (if not in preview mode)
+        """
         # Validate API configuration
         api_token = self.api_token.text()
         submitter_id = self.submitter_id.text()
@@ -560,12 +592,25 @@ class SimplifileUI(QWidget):
                             "Please select at least one PDF file (Deeds or Mortgage Satisfactions).")
             return
         
+        # Validate deed and affidavit files if deeds are provided
+        if self.deeds_file_path.text() and not self.affidavits_file_path.text():
+            reply = QMessageBox.question(
+                self, 
+                "Missing Affidavits",
+                "You've selected a Deed file but no Affidavit file. The Deeds will be processed without affidavits. Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                return
+        
         # Confirm batch upload
         recipient_name = self.recipient_combo.currentText()
         message = f"Process batch upload to {recipient_name}?\n\n"
         
         if self.deeds_file_path.text():
             message += f"- Deed Documents: {os.path.basename(self.deeds_file_path.text())}\n"
+        if self.affidavits_file_path.text():
+            message += f"- Affidavit Documents: {os.path.basename(self.affidavits_file_path.text())}\n"
         if self.mortgage_file_path.text():
             message += f"- Mortgage Satisfactions: {os.path.basename(self.mortgage_file_path.text())}\n"
         message += f"- Excel Data: {os.path.basename(self.excel_file_path.text())}\n\n"
@@ -592,6 +637,7 @@ class SimplifileUI(QWidget):
         self.progress_bar.setValue(5)
         self.batch_upload_btn.setEnabled(False)
         
+        # Pass the affidavits file path to the batch processor
         self.batch_thread, self.batch_worker = run_simplifile_batch_process(
             self.excel_file_path.text(),
             self.deeds_file_path.text(),
@@ -599,7 +645,8 @@ class SimplifileUI(QWidget):
             api_token,
             submitter_id,
             recipient_id,
-            preview_mode
+            preview_mode,
+            self.affidavits_file_path.text()  # Add this new parameter
         )
         
         # Connect signals
@@ -740,9 +787,10 @@ class SimplifileUI(QWidget):
         self.excel_file_path.clear()
         self.deeds_file_path.clear()
         self.mortgage_file_path.clear()
+        self.affidavits_file_path.clear()
         
         self.update_output("Batch upload information cleared")
-    
+
     # Existing methods from SimplifileUI class
     def add_document(self, doc_data=None):
         """Add a new document to the package"""
