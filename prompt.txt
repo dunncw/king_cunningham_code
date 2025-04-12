@@ -1,42 +1,83 @@
-project_root/
+'''
+D:.
+│   main.py
 │
-├── src/
-│   ├── main.py
-│   ├── config.py
+├───crg_automation
+│   │   crg.py
+│   │   excel_processor.py
 │   │
-│   ├── document_processor/
-│   │   ├── __init__.py
-│   │   ├── processor.py
-│   │   └── ocr_utils.py
+│   └───__pycache__
+│           crg.cpython-312.pyc
+│           excel_processor.cpython-312.pyc
+│
+├───document_processor
+│   │   processor.py
 │   │
-│   ├── web_automation/
-│   │   ├── __init__.py
-│   │   ├── excel_reader.py
-│   │   ├── form_filler.py
-│   │   └── browser_utils.py
+│   └───__pycache__
+│           processor.cpython-312.pyc
+│
+├───pacer
+│   │   excel_processor.py
+│   │   pacer.py
 │   │
-│   └── ui/
-│       ├── __init__.py
-│       ├── main_window.py
-│       ├── document_processor_ui.py
-│       └── web_automation_ui.py
+│   └───__pycache__
+│           excel_processor.cpython-312.pyc
+│           pacer.cpython-312.pyc
 │
-├── resources/
-│   ├── app_icon.ico
-│   ├── spinner.gif
-│   └── splash_image.png
+├───scra_automation
+│   │   scra.py
+│   │   scra_multi_request_formatter.py
+│   │   scra_results_interp.py
+│   │
+│   └───__pycache__
+│           scra.cpython-312.pyc
+│           scra_multi_request_formatter.cpython-312.pyc
 │
-├── drivers/
-│   ├── chromedriver.exe
-│   ├── geckodriver.exe
-│   └── msedgedriver.exe
+├───simplifile
+│   │   api.py
+│   │   batch_processor.py
+│   │   models.py
+│   │   utils.py
+│   │   __init__.py
+│   │
+│   └───__pycache__
+│           api.cpython-312.pyc
+│           batch_processor.cpython-312.pyc
+│           models.cpython-312.pyc
+│           utils.cpython-312.pyc
+│           __init__.cpython-312.pyc
 │
-├── tests/
-│   ├── test_document_processor.py
-│   ├── test_web_automation.py
-│   └── test_update_checker.py
+├───ui
+│   │   batch_preview_dialog.py
+│   │   crg_automation_ui.py
+│   │   document_processor_ui.py
+│   │   main_window.py
+│   │   pacer_automation_ui.py
+│   │   scra_automation_ui.py
+│   │   simplifile_ui.py
+│   │   web_automation_ui.py
+│   │
+│   └───__pycache__
+│           batch_preview_dialog.cpython-312.pyc
+│           crg_automation_ui.cpython-312.pyc
+│           document_processor_ui.cpython-312.pyc
+│           main_window.cpython-312.pyc
+│           pacer_automation_ui.cpython-312.pyc
+│           scra_automation_ui.cpython-312.pyc
+│           simplifile_ui.cpython-312.pyc
+│           web_automation_ui.cpython-312.pyc
 │
-├── build.py
-├── KC_app.spec
-├── requirements.txt
-└── README.md
+├───utils
+│   │   updater.py
+│   │
+│   └───__pycache__
+│           updater.cpython-312.pyc
+│
+└───web_automation
+    │   automation.py
+    │   excel_processor.py
+    │
+    └───__pycache__
+            automation.cpython-312.pyc
+            excel_processor.cpython-312.pyc
+'''

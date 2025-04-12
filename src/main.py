@@ -12,9 +12,7 @@ from utils.updater import UpdateChecker
 
 __version__ = "0.0.5"
 
-# TODO: refactor entire code base
-# TODO: try to build a cli for adding a new page to the application
-# TODO: build out a framework for downloading files with requests instead of browser dialogue 'https://www.reddit.com/r/learnpython/comments/18drzsn/chrome_save_as_dialog_box_interactions/'
+# TODO: need to build updater application to push updates so users only have to downlaod the app once https://www.pyupdater.org/ 
 
 def get_resource_path(relative_path):
     try:

@@ -22,14 +22,16 @@ class SimplifileAPI(QObject):
     status = pyqtSignal(str)
     error = pyqtSignal(str)
     finished = pyqtSignal(dict)
-    
+
+
     def __init__(self, api_token, submitter_id, recipient_id):
         super().__init__()
         self.api_token = api_token
         self.submitter_id = submitter_id
         self.recipient_id = recipient_id
         self.base_url = f"https://api.simplifile.com/sf/rest/api/erecord/submitters/{submitter_id}/packages/create"
-    
+
+
     def encode_file(self, file_path):
         """Convert a file to base64 encoding"""
         try:
@@ -39,7 +41,8 @@ class SimplifileAPI(QObject):
         except Exception as e:
             self.error.emit(f"Error encoding file {os.path.basename(file_path)}: {str(e)}")
             return None
-    
+
+
     def format_person(self, person_data, entity_type="Individual"):
         """Format person data according to API requirements"""
         if entity_type == "Individual":
@@ -55,7 +58,8 @@ class SimplifileAPI(QObject):
                 "nameUnparsed": person_data.get("name", "").upper(),
                 "type": "Organization"
             }
-    
+
+
     def format_legal_description(self, description_data):
         """Format legal description according to API requirements"""
         result = {
@@ -67,7 +71,8 @@ class SimplifileAPI(QObject):
             result["unitNumber"] = description_data["unit_number"]
             
         return result
-    
+
+
     def format_reference_information(self, reference_data):
         """Format reference information according to API requirements"""
         return {
@@ -75,7 +80,8 @@ class SimplifileAPI(QObject):
             "book": reference_data.get("book", ""),
             "page": int(reference_data.get("page", 0))
         }
-    
+
+
     def create_document_payload(self, doc_data):
         """Create a document entry for the API payload"""
         # Start with default grantors and grantees
@@ -175,7 +181,8 @@ class SimplifileAPI(QObject):
             document["indexingData"]["referenceInformation"] = reference_information
         
         return document
-    
+
+
     def get_package_operations(self, package_data):
         """Get package operations based on package data"""
         return {
@@ -183,7 +190,8 @@ class SimplifileAPI(QObject):
             "submitImmediately": package_data.get("submit_immediately", False),
             "verifyPageMargins": package_data.get("verify_page_margins", True)
         }
-    
+
+
     def upload_package(self, package_data, document_files):
         """Upload a package with documents to Simplifile"""
         self.status.emit("Starting upload process...")
@@ -255,7 +263,8 @@ class SimplifileAPI(QObject):
             self.error.emit(f"Error in upload process: {str(e)}")
             self.finished.emit({"error": str(e)})
             return False
-    
+
+
     def get_recipient_requirements(self):
         """Fetch recipient requirements from Simplifile API"""
         try:
@@ -280,7 +289,7 @@ class SimplifileAPI(QObject):
         except Exception as e:
             self.error.emit(f"Error fetching recipient requirements: {str(e)}")
             return None
-    
+
 
     def validate_document(self, document_data, instrument_type):
         """Validate document data against recipient requirements for specific instrument type"""
@@ -356,7 +365,8 @@ class SimplifileAPI(QObject):
             return False, f"Missing required fields: {', '.join(missing_fields)}"
         
         return True, "Document is valid"
-    
+
+
     def create_document_from_data(self, document_data, file_path, instrument_type):
         """Create a document payload based on structured data and instrument type"""
         # Validate document data
@@ -451,6 +461,46 @@ class SimplifileAPI(QObject):
         
         return doc
 
+
+    def test_connection(self):
+        """Test API connection with provided credentials"""
+        try:
+            self.status.emit("Testing API connection...")
+            
+            # Build API URL for recipient requirements - this is a lightweight endpoint to test
+            url = f"https://api.simplifile.com/sf/rest/api/erecord/submitters/{self.submitter_id}/recipients"
+            
+            headers = {
+                "Content-Type": "application/json",
+                "api_token": self.api_token
+            }
+            
+            response = requests.get(
+                url,
+                headers=headers,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                self.status.emit("API connection successful!")
+                return True, "Connection successful!"
+            else:
+                error_msg = f"API connection failed with status code: {response.status_code}"
+                try:
+                    error_data = response.json()
+                    error_details = error_data.get("message", "Unknown error")
+                    error_msg += f" - {error_details}"
+                except:
+                    error_msg += f" - {response.text[:100]}"
+                
+                self.error.emit(error_msg)
+                return False, error_msg
+                
+        except Exception as e:
+            error_msg = f"Error testing API connection: {str(e)}"
+            self.error.emit(error_msg)
+            return False, error_msg
+
 def run_simplifile_thread(api_token, submitter_id, recipient_id, package_data, document_files):
     """Create and run a thread for Simplifile API operations"""
     thread = QThread()
@@ -459,6 +509,21 @@ def run_simplifile_thread(api_token, submitter_id, recipient_id, package_data, d
     
     # Connect signals
     thread.started.connect(lambda: worker.upload_package(package_data, document_files))
+    worker.finished.connect(thread.quit)
+    worker.finished.connect(worker.deleteLater)
+    thread.finished.connect(thread.deleteLater)
+    
+    return thread, worker
+
+def run_simplifile_connection_test(api_token, submitter_id):
+    """Create and run a thread for testing Simplifile API connection"""
+    thread = QThread()
+    worker = SimplifileAPI(api_token, submitter_id, "")  # Empty recipient ID is fine for connection test
+    worker.moveToThread(thread)
+    
+    # Connect signals
+    thread.started.connect(worker.test_connection)
+    # We need to emit the result from test_connection
     worker.finished.connect(thread.quit)
     worker.finished.connect(worker.deleteLater)
     thread.finished.connect(thread.deleteLater)
