@@ -39,18 +39,35 @@ DEFAULT_GRANTEES = [
 class SimplifileUI(QWidget):
     start_simplifile_upload = pyqtSignal(str, str, str, dict, list)
     start_simplifile_batch_upload = pyqtSignal(str, str, str, str, str, str)
-    
+
+
     def __init__(self):
         super().__init__()
         self.documents = []
         self.config_file = os.path.join(os.path.expanduser("~"), ".simplifile_config.json")
         self.load_config()
+
+        # Initialize thread and worker variables
+        self.preview_thread = None
+        self.preview_worker = None
+        self.batch_thread = None
+        self.batch_worker = None
+        self.test_thread = None
+        self.test_worker = None
+
         self.init_ui()
+
 
     def update_batch_preview_functionality(self):
         """Update the batch preview functionality in SimplifileUI"""
+        # Disconnect previous connection if it exists
+        try:
+            self.preview_btn.clicked.disconnect()
+        except:
+            pass
         # Connect the preview button in SimplifileUI
         self.preview_btn.clicked.connect(self.generate_enhanced_batch_preview)
+
 
     def generate_enhanced_batch_preview(self):
         """Generate enhanced preview of batch processing"""
@@ -58,14 +75,14 @@ class SimplifileUI(QWidget):
         if not self.excel_file_path.text():
             QMessageBox.warning(self, "Missing File", "Please select an Excel file.")
             return
-            
+        
         if not self.deeds_file_path.text() and not self.mortgage_file_path.text():
             QMessageBox.warning(self, "Missing Files", 
                             "Please select at least one PDF file (Deeds or Mortgage Satisfactions).")
             return
         
         # Run the enhanced preview generation
-        self.update_output("Generating enhanced batch preview...")
+        # self.update_output("Generating enhanced batch preview...")
         self.progress_bar.setValue(5)
         self.preview_btn.setEnabled(False)
         
@@ -88,6 +105,7 @@ class SimplifileUI(QWidget):
         # Start thread
         self.preview_thread.start()
 
+
     def show_enhanced_preview_dialog(self, preview_json):
         """Show the enhanced preview dialog with the generated data"""
         try:
@@ -98,7 +116,8 @@ class SimplifileUI(QWidget):
             
         except Exception as e:
             self.show_error(f"Error displaying preview: {str(e)}")
-    
+
+
     def load_config(self):
         """Load config from file"""
         try:
@@ -108,7 +127,7 @@ class SimplifileUI(QWidget):
             else:
                 self.config = {
                     "api_token": "",
-                    "submitter_id": "SCTPG3",
+                    "submitter_id": "SCTP3G",
                     "recipient_id": ""
                 }
         except:
@@ -117,7 +136,8 @@ class SimplifileUI(QWidget):
                 "submitter_id": "",
                 "recipient_id": ""
             }
-    
+
+
     def save_config(self):
         """Save config to file"""
         try:
@@ -126,7 +146,8 @@ class SimplifileUI(QWidget):
             return True
         except:
             return False
-    
+
+
     def init_ui(self):
         main_layout = QVBoxLayout()
         
@@ -171,7 +192,8 @@ class SimplifileUI(QWidget):
         main_layout.addWidget(self.output_text)
         
         self.setLayout(main_layout)
-    
+
+
     def create_api_config_group(self):
         """Create collapsible API configuration group box"""
         api_group = QGroupBox("API Configuration")
@@ -193,8 +215,8 @@ class SimplifileUI(QWidget):
         
         api_layout.addRow("API Token:", api_token_layout)
         
-        self.submitter_id = QLineEdit(self.config.get("submitter_id", "SCTPG3"))
-        self.submitter_id.setPlaceholderText("e.g., SCTPG3")
+        self.submitter_id = QLineEdit(self.config.get("submitter_id", "SCTP3G"))
+        self.submitter_id.setPlaceholderText("e.g., SCTP3G")
         api_layout.addRow("Submitter ID:", self.submitter_id)
         
         # County dropdown (recipient)
@@ -226,12 +248,76 @@ class SimplifileUI(QWidget):
         
         api_layout.addRow("County:", self.recipient_combo)
         
+        # Add buttons in a horizontal layout
+        buttons_layout = QHBoxLayout()
+        
         save_api_btn = QPushButton("Save API Configuration")
         save_api_btn.clicked.connect(self.save_api_settings)
-        api_layout.addRow("", save_api_btn)
+        buttons_layout.addWidget(save_api_btn)
+        
+        # Add test connection button
+        test_connection_btn = QPushButton("Test API Connection")
+        test_connection_btn.clicked.connect(self.test_api_connection)
+        test_connection_btn.setStyleSheet("background-color: #3498db; color: white;")
+        buttons_layout.addWidget(test_connection_btn)
+        
+        api_layout.addRow("", buttons_layout)
         
         api_group.setLayout(api_layout)
         return api_group
+
+
+    def test_api_connection(self):
+        """Test connection to Simplifile API with current credentials"""
+        # Validate inputs
+        api_token = self.api_token.text()
+        submitter_id = self.submitter_id.text()
+        
+        if not api_token or not submitter_id:
+            QMessageBox.warning(self, "Missing Credentials", 
+                            "Please enter your API token and submitter ID to test the connection.")
+            return
+        
+        # Run the connection test
+        from simplifile.api import run_simplifile_connection_test
+        
+        # self.update_output("Testing API connection...")
+        self.progress_bar.setValue(10)
+        
+        self.test_thread, self.test_worker = run_simplifile_connection_test(api_token, submitter_id)
+        
+        # Connect signals
+        self.test_worker.status.connect(self.update_status)
+        self.test_worker.error.connect(self.show_connection_error)
+        self.test_worker.finished.connect(self.connection_test_finished)
+        
+        # Start thread
+        self.test_thread.start()
+
+
+    def show_connection_error(self, error_message):
+        """Display connection error message"""
+        self.update_output(f"Connection Error: {error_message}")
+        QMessageBox.critical(self, "Connection Failed", error_message)
+        self.progress_bar.setValue(0)
+
+
+    def connection_test_finished(self, result):
+        """Handle connection test completion"""
+        # Check if we got any result
+        if isinstance(result, tuple) and len(result) == 2:
+            success, message = result
+            if success:
+                self.update_output("API Connection Successful!")
+                self.progress_bar.setValue(100)
+                QMessageBox.information(self, "Connection Successful", 
+                                    "Successfully connected to Simplifile API with your credentials.")
+            else:
+                self.show_connection_error(message)
+        else:
+            # If we didn't get a valid result tuple, use a generic message
+            self.progress_bar.setValue(0)
+
 
     def toggle_api_token_visibility(self):
         """Toggle the visibility of the API token"""
@@ -241,7 +327,8 @@ class SimplifileUI(QWidget):
         else:
             self.api_token.setEchoMode(QLineEdit.EchoMode.Password)
             self.toggle_api_token_btn.setText("Show")
-    
+
+
     def setup_single_upload_tab(self):
         """Setup the single upload tab (existing functionality)"""
         single_layout = QVBoxLayout()
@@ -299,6 +386,7 @@ class SimplifileUI(QWidget):
         single_layout.addLayout(actions_layout)
         
         self.single_upload_tab.setLayout(single_layout)
+
 
     def setup_batch_upload_tab(self):
         """Setup the batch upload tab (primary functionality) with a simplified layout"""
@@ -407,6 +495,7 @@ class SimplifileUI(QWidget):
         # Set up the enhanced preview functionality
         self.update_batch_preview_functionality()
 
+
     def browse_affidavits_file(self):
         """Browse for Affidavit documents PDF file"""
         file_path, _ = QFileDialog.getOpenFileName(
@@ -415,6 +504,7 @@ class SimplifileUI(QWidget):
         if file_path:
             self.affidavits_file_path.setText(file_path)
             self.update_output(f"Selected Affidavit documents file: {os.path.basename(file_path)}")
+
 
     def download_excel_template(self):
         """Create and download a very simple Excel template file with only headers"""
@@ -1372,7 +1462,8 @@ class DocumentDialog(QDialog):
             if 0 <= row < len(self.person_grantees):
                 self.person_grantees.pop(row)
                 table.removeRow(row)
-    
+
+
     def remove_org(self, party_type, row):
         """Remove an organization from grantors or grantees"""
         if party_type == "grantor":
@@ -1385,7 +1476,8 @@ class DocumentDialog(QDialog):
             if 0 <= row < len(self.org_grantees):
                 self.org_grantees.pop(row)
                 table.removeRow(row)
-    
+
+
     def get_document_data(self):
         """Get all document data from the form"""
         if not self.file_path.text():
