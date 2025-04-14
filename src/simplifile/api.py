@@ -465,8 +465,6 @@ class SimplifileAPI(QObject):
     def test_connection(self):
         """Test API connection with provided credentials"""
         try:
-            self.status.emit("Testing API connection...")
-            
             # Build API URL for recipient requirements - this is a lightweight endpoint to test
             url = f"https://api.simplifile.com/sf/rest/api/erecord/submitters/{self.submitter_id}/recipients"
             
@@ -482,24 +480,29 @@ class SimplifileAPI(QObject):
             )
             
             if response.status_code == 200:
-                self.status.emit("API connection successful!")
                 return True, "Connection successful!"
             else:
                 error_msg = f"API connection failed with status code: {response.status_code}"
                 try:
                     error_data = response.json()
                     error_details = error_data.get("message", "Unknown error")
-                    error_msg += f" - {error_details}"
+                    result_code = error_data.get("resultCode", "")
+                    
+                    if response.status_code == 401 or result_code == "UNAUTHORIZED":
+                        error_msg = "Authentication failed: Invalid API token or submitter ID"
+                    else:
+                        error_msg += f" - {error_details}"
                 except:
                     error_msg += f" - {response.text[:100]}"
                 
-                self.error.emit(error_msg)
+                # Only emit status, not error since we're handling everything through the return value
                 return False, error_msg
                 
         except Exception as e:
             error_msg = f"Error testing API connection: {str(e)}"
-            self.error.emit(error_msg)
+            # Only emit status, not error
             return False, error_msg
+
 
 def run_simplifile_thread(api_token, submitter_id, recipient_id, package_data, document_files):
     """Create and run a thread for Simplifile API operations"""
@@ -521,9 +524,28 @@ def run_simplifile_connection_test(api_token, submitter_id):
     worker = SimplifileAPI(api_token, submitter_id, "")  # Empty recipient ID is fine for connection test
     worker.moveToThread(thread)
     
-    # Connect signals
+    # Store the original method to avoid multiple signal emissions
+    original_test_connection = worker.test_connection
+    
+    def wrapped_test_connection():
+        success, message = original_test_connection()
+        
+        # Only emit the finished signal, don't emit error separately if there's an error
+        # since we'll handle everything through the finished signal
+        result_dict = {
+            "resultCode": "SUCCESS" if success else "ERROR",
+            "message": message,
+            "test_result": (success, message)
+        }
+        worker.finished.emit(result_dict)
+        return success, message
+    
+    worker.test_connection = wrapped_test_connection
+    
+    # Connect signals - avoid connecting the error signal
     thread.started.connect(worker.test_connection)
-    # We need to emit the result from test_connection
+    
+    # Clean up
     worker.finished.connect(thread.quit)
     worker.finished.connect(worker.deleteLater)
     thread.finished.connect(thread.deleteLater)
