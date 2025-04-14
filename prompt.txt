@@ -1,4 +1,6 @@
-'''
+(.venv) D:\repositorys\KC_appp\src>tree /f
+Folder PATH listing for volume New Volume
+Volume serial number is 48F9-E785
 D:.
 │   main.py
 │
@@ -35,15 +37,24 @@ D:.
 │
 ├───simplifile
 │   │   api.py
+│   │   api_client.py
 │   │   batch_processor.py
+│   │   data_formatter.py
+│   │   data_validator.py
 │   │   models.py
+│   │   pdf_processor.py
 │   │   utils.py
 │   │   __init__.py
 │   │
 │   └───__pycache__
 │           api.cpython-312.pyc
+│           api_client.cpython-312.pyc
 │           batch_processor.cpython-312.pyc
+│           data_formatter.cpython-312.pyc
+│           data_validator.cpython-312.pyc
 │           models.cpython-312.pyc
+│           pdf_processor.cpython-312.pyc
+│           thread_factory.cpython-312.pyc
 │           utils.cpython-312.pyc
 │           __init__.cpython-312.pyc
 │
@@ -80,4 +91,3 @@ D:.
     └───__pycache__
             automation.cpython-312.pyc
             excel_processor.cpython-312.pyc
-'''

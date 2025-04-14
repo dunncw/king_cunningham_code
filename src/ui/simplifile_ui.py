@@ -278,18 +278,26 @@ class SimplifileUI(QWidget):
                             "Please enter your API token and submitter ID to test the connection.")
             return
         
+        # Get the button that triggered this action
+        test_button = self.sender()
+        if test_button:
+            test_button.setEnabled(False)
+        
         # Run the connection test
         from simplifile.api import run_simplifile_connection_test
         
-        # self.update_output("Testing API connection...")
+        self.update_output("Testing API connection...")
         self.progress_bar.setValue(10)
         
         self.test_thread, self.test_worker = run_simplifile_connection_test(api_token, submitter_id)
         
-        # Connect signals
+        # Connect only to finished signal, not to error signal
         self.test_worker.status.connect(self.update_status)
-        self.test_worker.error.connect(self.show_connection_error)
+        # REMOVE THIS LINE: self.test_worker.error.connect(self.show_connection_error)
         self.test_worker.finished.connect(self.connection_test_finished)
+        
+        # Ensure the button is re-enabled when the thread finishes
+        self.test_thread.finished.connect(lambda: test_button.setEnabled(True) if test_button else None)
         
         # Start thread
         self.test_thread.start()
@@ -304,19 +312,26 @@ class SimplifileUI(QWidget):
 
     def connection_test_finished(self, result):
         """Handle connection test completion"""
-        # Check if we got any result
-        if isinstance(result, tuple) and len(result) == 2:
-            success, message = result
+        # Extract test result from the dictionary
+        if isinstance(result, dict) and "test_result" in result:
+            success, message = result["test_result"]
+            
             if success:
                 self.update_output("API Connection Successful!")
                 self.progress_bar.setValue(100)
                 QMessageBox.information(self, "Connection Successful", 
                                     "Successfully connected to Simplifile API with your credentials.")
             else:
-                self.show_connection_error(message)
+                # Check for specific error types
+                if "UNAUTHORIZED" in message or "401" in message:
+                    error_message = "Authentication failed: Invalid API token or submitter ID"
+                    self.show_connection_error(error_message)
+                else:
+                    self.show_connection_error(message)
         else:
-            # If we didn't get a valid result tuple, use a generic message
+            # If we didn't get a valid result structure, use a generic message
             self.progress_bar.setValue(0)
+            self.update_output("Connection test completed with unknown result")
 
 
     def toggle_api_token_visibility(self):
