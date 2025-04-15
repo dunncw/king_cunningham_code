@@ -294,7 +294,8 @@ class SimplifileBatchPreview(QObject):
         except Exception as e:
             self.error.emit(f"Error analyzing mortgage PDF: {str(e)}")
             return []
-    
+
+
     def format_name(self, name):
         """Format names according to requirements (uppercase, no hyphens)"""
         if not isinstance(name, str):
@@ -440,12 +441,16 @@ class SimplifileBatchPreview(QObject):
                 suite = get_cell_value('Suite')
                 consideration = get_cell_value('Consideration', '0.00')
                 execution_date = get_cell_value('Execution Date', datetime.now().strftime('%m/%d/%Y'))
-                grantor_grantee = self.format_name(get_cell_value('GRANTOR/GRANTEE', 'OCEAN CLUB VACATIONS LLC'))
-                legal_description = self.format_name(get_cell_value('LEGAL DESCRIPTION', 'ANDERSON OCEAN CLUB HPR'))
+                grantor_grantee = self.format_name(get_cell_value('GRANTOR/GRANTEE'))
+                legal_description = self.format_name(get_cell_value('LEGAL DESCRIPTION'))
                 
                 # Set package name following convention - Updated as per Shannon's request
                 # (Account # Last name TD KC File No) (93-505200 DOE TD 93-7)
-                package_name = f"{account_number} {last_name1} TD {kc_file_no}"
+                if last_name1.startswith("ORG:"):
+                    package_name = f"{account_number} {first_name1} TD {kc_file_no}"
+                else:
+                    # For individuals, use the last name as normal
+                    package_name = f"{account_number} {last_name1} TD {kc_file_no}"
                 
                 # Create enhanced package information
                 package = {
@@ -462,6 +467,8 @@ class SimplifileBatchPreview(QObject):
                     "execution_date": execution_date,
                     "grantor_grantee": grantor_grantee,
                     "legal_description": legal_description,
+                    "last_name1": last_name1,  # Store raw values to check for ORG prefix
+                    "last_name2": last_name2,
                     "documents": [],
                     "validated": True,  # Will be set to False if issues found
                     "validation_issues": []
@@ -494,7 +501,15 @@ class SimplifileBatchPreview(QObject):
                     deed = deed_splits[i]
                     
                     # Document name based on convention
-                    deed_doc_name = f"{account_number} {last_name1} TD"
+                    if last_name1.startswith("ORG:"):
+                        deed_doc_name = f"{account_number} {first_name1} TD"
+                    else:
+                        deed_doc_name = f"{account_number} {last_name1} TD"
+                    
+                    # UPDATED: Combine legal description with suite
+                    combined_description = legal_description
+                    if suite and suite not in legal_description:
+                        combined_description = f"{legal_description} {suite}"
                     
                     # Special handling for merged documents
                     if has_merged_docs and "is_merged" in deed and deed["is_merged"]:
@@ -506,7 +521,7 @@ class SimplifileBatchPreview(QObject):
                             "page_count": deed["page_count"],
                             "reference_book": deed_book,
                             "reference_page": deed_page,
-                            "legal_description": legal_description,
+                            "legal_description": combined_description,
                             "parcel_id": suite,
                             "consideration": consideration,
                             "execution_date": execution_date,
@@ -526,7 +541,7 @@ class SimplifileBatchPreview(QObject):
                             "page_count": deed["page_count"],
                             "reference_book": deed_book,
                             "reference_page": deed_page,
-                            "legal_description": legal_description,
+                            "legal_description": combined_description,
                             "parcel_id": suite,
                             "consideration": consideration,
                             "execution_date": execution_date,
@@ -552,7 +567,15 @@ class SimplifileBatchPreview(QObject):
                     mortgage = mortgage_splits[i]
                     
                     # Document name following convention exactly
-                    mortgage_doc_name = f"{account_number} {last_name1} SAT"
+                    if last_name1.startswith("ORG:"):
+                        mortgage_doc_name = f"{account_number} {first_name1} SAT"
+                    else:
+                        mortgage_doc_name = f"{account_number} {last_name1} SAT"
+                    
+                    # UPDATED: Combine legal description with suite
+                    combined_description = legal_description
+                    if suite and suite not in legal_description:
+                        combined_description = f"{legal_description} {suite}"
                     
                     mortgage_doc = {
                         "document_id": f"D-{account_number}-SAT",
@@ -562,7 +585,7 @@ class SimplifileBatchPreview(QObject):
                         "page_count": mortgage["page_count"],
                         "reference_book": mortgage_book,
                         "reference_page": mortgage_page,
-                        "legal_description": legal_description,
+                        "legal_description": combined_description,
                         "parcel_id": suite,
                         "execution_date": execution_date,
                         "sample_text": mortgage["sample_text"],
@@ -982,7 +1005,7 @@ class SimplifileBatchProcessor(QObject):
             return []
 
 
-    # Update the prepare_packages method in the SimplifileBatchProcessor class
+    # Changes for prepare_packages method in batch_processor.py:
     def prepare_packages(self, excel_data, deed_files, mortgage_files):
         """Prepare packages following the exact instructions"""
         try:
@@ -1035,11 +1058,15 @@ class SimplifileBatchProcessor(QObject):
                 suite = get_cell_value('Suite')
                 consideration = get_cell_value('Consideration', '0.00')
                 execution_date = get_cell_value('Execution Date', datetime.now().strftime('%Y-%m-%d'))
-                grantor_grantee = self.format_name(get_cell_value('GRANTOR/GRANTEE', 'OCEAN CLUB VACATIONS LLC'))
-                legal_description = self.format_name(get_cell_value('LEGAL DESCRIPTION', 'ANDERSON OCEAN CLUB HPR'))
+                grantor_grantee = self.format_name(get_cell_value('GRANTOR/GRANTEE'))
+                legal_description = self.format_name(get_cell_value('LEGAL DESCRIPTION'))
                 
                 # Set package name following convention exactly as in instructions
-                package_name = f"{account_number} {last_name1} TD {kc_file_no}"
+                if last_name1.startswith("ORG:"):
+                    package_name = f"{account_number} {first_name1} TD {kc_file_no}"
+                else:
+                    # For individuals, use the last name as normal
+                    package_name = f"{account_number} {last_name1} TD {kc_file_no}"
                 
                 # Create the new submitterPackageID format combining KC File No and account number
                 package_id = f"{kc_file_no}-{account_number}"
@@ -1049,10 +1076,10 @@ class SimplifileBatchProcessor(QObject):
                 # Prepare documents for this package
                 package_docs = []
                 
-                # Prepare grantor list for deed documents
+                # Prepare grantor list for deed documents - UPDATED
                 deed_grantors = []
                 
-                # Add default organization grantors exactly as specified
+                # Add only one default organization grantor
                 deed_grantors.append({
                     "type": "Organization",
                     "nameUnparsed": "KING CUNNINGHAM LLC TR"
@@ -1064,54 +1091,111 @@ class SimplifileBatchProcessor(QObject):
                     "nameUnparsed": grantor_grantee
                 })
                 
-                # Add person grantors (owners)
+                # Add person grantors (owners) - CHECK FOR ORG PREFIX
                 if first_name1 and last_name1:
-                    deed_grantors.append({
-                        "type": "Individual",
-                        "firstName": first_name1,
-                        "lastName": last_name1
-                    })
-                
+                    if last_name1.startswith("ORG:"):
+                        # This is an organization - just use first_name1 as the organization name
+                        deed_grantors.append({
+                            "type": "Organization",
+                            "nameUnparsed": first_name1  # No need to add "ORG:" suffix
+                        })
+                    else:
+                        # This is a person
+                        deed_grantors.append({
+                            "type": "Individual",
+                            "firstName": first_name1,
+                            "lastName": last_name1
+                        })
+
                 if has_second_owner and first_name2 and last_name2:
-                    deed_grantors.append({
-                        "type": "Individual",
-                        "firstName": first_name2,
-                        "lastName": last_name2
-                    })
+                    if last_name2.startswith("ORG:"):
+                        # This is an organization - just use first_name2 as the organization name
+                        deed_grantors.append({
+                            "type": "Organization",
+                            "nameUnparsed": first_name2  # No need to add "ORG:" suffix
+                        })
+                    else:
+                        # This is a person
+                        deed_grantors.append({
+                            "type": "Individual",
+                            "firstName": first_name2,
+                            "lastName": last_name2
+                        })
+
                 
                 # Prepare grantor list for mortgage documents (only the person grantors)
                 mortgage_grantors = []
-                if first_name1 and last_name1:
-                    mortgage_grantors.append({
-                        "type": "Individual",
-                        "firstName": first_name1,
-                        "lastName": last_name1
-                    })
-                
-                if has_second_owner and first_name2 and last_name2:
-                    mortgage_grantors.append({
-                        "type": "Individual",
-                        "firstName": first_name2,
-                        "lastName": last_name2
-                    })
-                
-                # Default grantee (from GRANTOR/GRANTEE column) as specified
-                grantees = [{
+                mortgage_grantors.append({
+                    "type": "Organization",
+                    "nameUnparsed": "KING CUNNINGHAM LLC TR"
+                })
+                deed_grantors.append({
                     "type": "Organization",
                     "nameUnparsed": grantor_grantee
-                }]
+                })
+                
+                # For mortgage docs, also check ORG prefix
+                if first_name1 and last_name1:
+                    if last_name1.startswith("ORG:"):
+                        # This is an organization - just use first_name1 as the organization name
+                        mortgage_grantors.append({
+                            "type": "Organization",
+                            "nameUnparsed": first_name1  # No need to add "ORG:" suffix
+                        })
+                    else:
+                        # This is a person
+                        mortgage_grantors.append({
+                            "type": "Individual",
+                            "firstName": first_name1,
+                            "lastName": last_name1
+                        })
+
+                if has_second_owner and first_name2 and last_name2:
+                    if last_name2.startswith("ORG:"):
+                        # This is an organization - just use first_name2 as the organization name
+                        mortgage_grantors.append({
+                            "type": "Organization",
+                            "nameUnparsed": first_name2  # No need to add "ORG:" suffix
+                        })
+                    else:
+                        # This is a person
+                        mortgage_grantors.append({
+                            "type": "Individual",
+                            "firstName": first_name2,
+                            "lastName": last_name2
+                        })
+                
+                # Default grantee (from GRANTOR/GRANTEE column) as specified
+                grantees = []
+                grantees.append({
+                    "type": "Organization",
+                    "nameUnparsed": grantor_grantee
+                })
                 
                 # Add deed document if available
                 if i < len(deed_files):
                     deed = deed_files[i]
                     
                     # Document name following convention exactly
-                    deed_doc_name = f"{account_number} {last_name1} TD"
+                    # Use the organization name if last_name1 starts with "ORG:"
+                    if last_name1.startswith("ORG:"):
+                        # For organizations, use the first_name (org name) in place of last_name1
+                        deed_doc_name = f"{account_number} {first_name1} TD"
+                        mortgage_doc_name = f"{account_number} {first_name1} SAT"
+                    else:
+                        # For individuals, use the last name as normal
+                        deed_doc_name = f"{account_number} {last_name1} TD"
+                        mortgage_doc_name = f"{account_number} {last_name1} SAT"
                     
-                    # Prepare legal descriptions
+                    # UPDATED: Combine legal description with suite
+                    combined_description = legal_description
+                    if suite and suite not in legal_description:
+                        combined_description = f"{legal_description} {suite}"
+                    
+                    # Prepare legal descriptions with combined text and empty parcelId
                     legal_descriptions = [{
-                        "description": legal_description,
-                        "parcelId": suite if suite else ""
+                        "description": combined_description,
+                        "parcelId": ""  # Leave parcelId blank as requested
                     }]
                     
                     # Prepare reference information as specified
@@ -1143,7 +1227,10 @@ class SimplifileBatchProcessor(QObject):
                     mortgage = mortgage_files[i]
                     
                     # Document name following convention exactly
-                    mortgage_doc_name = f"{account_number} {last_name1} SAT"
+                    if last_name1.startswith("ORG:"):
+                        mortgage_doc_name = f"{account_number} {first_name1} SAT"
+                    else:
+                        mortgage_doc_name = f"{account_number} {last_name1} SAT"
                     
                     # Prepare reference information
                     reference_information = []
@@ -1154,10 +1241,15 @@ class SimplifileBatchProcessor(QObject):
                             "page": int(mortgage_page) if mortgage_page.isdigit() else 0
                         })
                     
-                    # Prepare legal descriptions
+                    # UPDATED: Combine legal description with suite
+                    combined_description = legal_description
+                    if suite and suite not in legal_description:
+                        combined_description = f"{legal_description} {suite}"
+                    
+                    # Prepare legal descriptions with combined text and empty parcelId
                     legal_descriptions = [{
-                        "description": legal_description,
-                        "parcelId": suite if suite else ""
+                        "description": combined_description,
+                        "parcelId": ""  # Leave parcelId blank as requested
                     }]
                     
                     mortgage_doc = {
@@ -1182,7 +1274,8 @@ class SimplifileBatchProcessor(QObject):
                     "excel_row": i + 2,  # Excel row (1-based, with header)
                     "draft_on_errors": True,
                     "submit_immediately": False,  # Never auto-submit as per instructions
-                    "verify_page_margins": True
+                    "verify_page_margins": True,
+                    "grantor_grantee": grantor_grantee  # Store this for preview display
                 }
                 
                 packages.append(package)

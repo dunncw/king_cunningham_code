@@ -5,8 +5,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
     QPushButton, QComboBox, QFormLayout, QFileDialog, QMessageBox, 
     QGroupBox, QTableWidget, QTableWidgetItem, QDateEdit, 
-    QTextEdit, QProgressBar, QDialog, QFrame, QTabWidget,
-    QSplitter
+    QTextEdit, QProgressBar, QDialog, QFrame, QTabWidget, QCheckBox
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QDate
 from PyQt6.QtGui import QFont, QColor
@@ -1099,29 +1098,45 @@ class SimplifileUI(QWidget):
         
         self.update_output("All data cleared")
 
+# Update PersonDialog class to include an organization checkbox
 class PersonDialog(QDialog):
-    """Dialog for adding person grantors or grantees"""
+    """Dialog for adding person grantors or grantees, with org support"""
     
-    def __init__(self, parent=None, person_data=None, title="Add Person"):
+    def __init__(self, parent=None, title="Add Person", person_data=None, show_org_option=False):
         super().__init__(parent)
         self.person_data = person_data or {}
+        self.show_org_option = show_org_option
         self.setWindowTitle(title)
         self.init_ui()
     
     def init_ui(self):
         layout = QFormLayout()
         
+        # Add organization checkbox if requested
+        if self.show_org_option:
+            self.is_organization = QCheckBox("This is an Organization")
+            self.is_organization.stateChanged.connect(self.toggle_org_mode)
+            layout.addRow("", self.is_organization)
+        else:
+            self.is_organization = None
+        
+        # First name field (or organization name)
         self.first_name = QLineEdit(self.person_data.get("first_name", ""))
         self.first_name.setPlaceholderText("First Name")
-        layout.addRow("First Name:", self.first_name)
+        self.first_name_label = QLabel("First Name:")
+        layout.addRow(self.first_name_label, self.first_name)
         
+        # Middle name field
         self.middle_name = QLineEdit(self.person_data.get("middle_name", ""))
         self.middle_name.setPlaceholderText("Middle Name (Optional)")
-        layout.addRow("Middle Name:", self.middle_name)
+        self.middle_name_label = QLabel("Middle Name:")
+        layout.addRow(self.middle_name_label, self.middle_name)
         
+        # Last name field
         self.last_name = QLineEdit(self.person_data.get("last_name", ""))
         self.last_name.setPlaceholderText("Last Name")
-        layout.addRow("Last Name:", self.last_name)
+        self.last_name_label = QLabel("Last Name:")
+        layout.addRow(self.last_name_label, self.last_name)
         
         # Buttons
         button_layout = QHBoxLayout()
@@ -1138,19 +1153,63 @@ class PersonDialog(QDialog):
         
         layout.addRow("", button_layout)
         self.setLayout(layout)
+        
+        # Check if we should initialize as an organization
+        if self.show_org_option and self.person_data.get("is_organization", False):
+            self.is_organization.setChecked(True)
+            self.toggle_org_mode()
+    
+    def toggle_org_mode(self):
+        """Toggle between person and organization mode"""
+        if not self.is_organization:
+            return
+            
+        if self.is_organization.isChecked():
+            # Switch to organization mode
+            self.first_name_label.setText("Organization Name:")
+            self.first_name.setPlaceholderText("Organization Name")
+            self.middle_name_label.setVisible(False)
+            self.middle_name.setVisible(False)
+            self.last_name_label.setVisible(False)
+            self.last_name.setVisible(False)
+        else:
+            # Switch to person mode
+            self.first_name_label.setText("First Name:")
+            self.first_name.setPlaceholderText("First Name")
+            self.middle_name_label.setVisible(True)
+            self.middle_name.setVisible(True)
+            self.last_name_label.setVisible(True)
+            self.last_name.setVisible(True)
     
     def get_person_data(self):
         """Get the person data from the form"""
-        if not self.first_name.text() or not self.last_name.text():
-            QMessageBox.warning(self, "Missing Information", 
-                               "First name and last name are required.")
-            return None
-        
-        return {
-            "first_name": self.first_name.text(),
-            "middle_name": self.middle_name.text(),
-            "last_name": self.last_name.text()
-        }
+        if self.is_organization and self.is_organization.isChecked():
+            # Organization mode
+            if not self.first_name.text():
+                QMessageBox.warning(self, "Missing Information", 
+                                   "Organization name is required.")
+                return None
+            
+            # Return organization data with special ORG: prefix
+            return {
+                "first_name": self.first_name.text(),
+                "middle_name": "",
+                "last_name": "ORG:",  # Special prefix to mark as organization
+                "is_organization": True
+            }
+        else:
+            # Person mode
+            if not self.first_name.text() or not self.last_name.text():
+                QMessageBox.warning(self, "Missing Information", 
+                                   "First name and last name are required.")
+                return None
+            
+            return {
+                "first_name": self.first_name.text(),
+                "middle_name": self.middle_name.text(),
+                "last_name": self.last_name.text(),
+                "is_organization": False
+            }
 
 class OrganizationDialog(QDialog):
     """Dialog for adding organization grantors or grantees"""
@@ -1436,22 +1495,27 @@ class DocumentDialog(QDialog):
                 else:
                     self.org_grantees.append(org_data)
                 self.add_org_to_table(party_type, org_data)
-    
-    def add_person_to_table(self, party_type, person_data):
-        """Add a person to the appropriate table"""
-        table = self.person_grantor_table if party_type == "grantor" else self.person_grantee_table
-        row = table.rowCount()
-        table.insertRow(row)
+
+
+    def add_person(self, party_type):
+        """Add a person to grantors or grantees with ORG support"""
+        # Check for "ORG:" in the Last Name field
+        if party_type == "grantor":
+            title = "Add Person/Organization Grantor"
+        else:
+            title = "Add Person/Organization Grantee"
         
-        table.setItem(row, 0, QTableWidgetItem(person_data.get("first_name", "")))
-        table.setItem(row, 1, QTableWidgetItem(person_data.get("middle_name", "")))
-        table.setItem(row, 2, QTableWidgetItem(person_data.get("last_name", "")))
-        
-        # Remove button
-        remove_btn = QPushButton("Remove")
-        remove_btn.clicked.connect(lambda: self.remove_person(party_type, row))
-        table.setCellWidget(row, 3, remove_btn)
-    
+        dialog = PersonDialog(self, title=title, show_org_option=True)
+        if dialog.exec():
+            person_data = dialog.get_person_data()
+            if person_data:
+                if party_type == "grantor":
+                    self.person_grantors.append(person_data)
+                else:
+                    self.person_grantees.append(person_data)
+                self.add_person_to_table(party_type, person_data)
+
+
     def add_org_to_table(self, party_type, org_data):
         """Add an organization to the appropriate table"""
         table = self.org_grantor_table if party_type == "grantor" else self.org_grantee_table

@@ -211,67 +211,112 @@ class BatchPreviewDialog(QDialog):
             if "consideration" in doc:
                 document["indexingData"]["consideration"] = doc.get("consideration", 0.00)
             
-            # Add grantors
+            # Add grantors - UPDATED to only include KING CUNNINGHAM LLC TR first
             if doc.get("type") == "Deed - Timeshare":
-                # Deed grantors include Organizations and Individuals
+                # Only one default grantor organization
                 document["indexingData"]["grantors"] = [
-                    {"nameUnparsed": "KING CUNNINGHAM LLC TR", "type": "Organization"},
-                    {"nameUnparsed": "OCEAN CLUB VACATIONS LLC", "type": "Organization"}
+                    {"nameUnparsed": "KING CUNNINGHAM LLC TR", "type": "Organization"}
                 ]
                 
-                # Add Individual grantors
+                # Add grantor/grantee from Excel
+                grantor_grantee = package.get("grantor_grantee")
+                document["indexingData"]["grantors"].append({
+                    "nameUnparsed": grantor_grantee,
+                    "type": "Organization"
+                })
+                
+                # Add Individual grantors - check for "ORG:" prefix
                 grantor_name1 = package.get("grantor_name1", "")
                 if grantor_name1:
-                    parts = grantor_name1.split()
-                    if len(parts) > 1:
+                    # Check if this might be an organization (name starts with "ORG:")
+                    if "last_name1" in package and package["last_name1"].startswith("ORG:"):
+                        # Use first_name1 as the organization name without adding "ORG:"
+                        first_name1 = package.get("first_name1", "")
                         document["indexingData"]["grantors"].append({
-                            "firstName": parts[0],
-                            "lastName": " ".join(parts[1:]),
-                            "type": "Individual"
+                            "nameUnparsed": first_name1,
+                            "type": "Organization"
                         })
-                
+                    elif grantor_name1:
+                        parts = grantor_name1.split()
+                        if len(parts) > 1:
+                            document["indexingData"]["grantors"].append({
+                                "firstName": parts[0],
+                                "lastName": " ".join(parts[1:]),
+                                "type": "Individual"
+                            })
+
                 grantor_name2 = package.get("grantor_name2", "")
                 if grantor_name2:
-                    parts = grantor_name2.split()
-                    if len(parts) > 1:
+                    # Check if this might be an organization (name starts with "ORG:")
+                    if "last_name2" in package and package["last_name2"].startswith("ORG:"):
+                        # Use first_name2 as the organization name without adding "ORG:"
+                        first_name2 = package.get("first_name2", "")
                         document["indexingData"]["grantors"].append({
-                            "firstName": parts[0],
-                            "lastName": " ".join(parts[1:]),
-                            "type": "Individual"
+                            "nameUnparsed": first_name2,
+                            "type": "Organization"
                         })
+                    elif grantor_name2:
+                        parts = grantor_name2.split()
+                        if len(parts) > 1:
+                            document["indexingData"]["grantors"].append({
+                                "firstName": parts[0],
+                                "lastName": " ".join(parts[1:]),
+                                "type": "Individual"
+                            })
+
             elif doc.get("type") == "Mortgage Satisfaction":
                 # Mortgage grantors only include Individuals
                 grantor_name1 = package.get("grantor_name1", "")
                 if grantor_name1:
-                    parts = grantor_name1.split()
-                    if len(parts) > 1:
+                    # Check if this might be an organization (name starts with "ORG:")
+                    if "last_name1" in package and package["last_name1"].startswith("ORG:"):
                         document["indexingData"]["grantors"].append({
-                            "firstName": parts[0],
-                            "lastName": " ".join(parts[1:]),
-                            "type": "Individual"
+                            "nameUnparsed": grantor_name1,
+                            "type": "Organization"
                         })
+                    elif grantor_name1:
+                        parts = grantor_name1.split()
+                        if len(parts) > 1:
+                            document["indexingData"]["grantors"].append({
+                                "firstName": parts[0],
+                                "lastName": " ".join(parts[1:]),
+                                "type": "Individual"
+                            })
                 
                 grantor_name2 = package.get("grantor_name2", "")
                 if grantor_name2:
-                    parts = grantor_name2.split()
-                    if len(parts) > 1:
+                    # Check if this might be an organization (name starts with "ORG:")
+                    if "last_name2" in package and package["last_name2"].startswith("ORG:"):
                         document["indexingData"]["grantors"].append({
-                            "firstName": parts[0],
-                            "lastName": " ".join(parts[1:]),
-                            "type": "Individual"
+                            "nameUnparsed": grantor_name2,
+                            "type": "Organization"
                         })
+                    elif grantor_name2:
+                        parts = grantor_name2.split()
+                        if len(parts) > 1:
+                            document["indexingData"]["grantors"].append({
+                                "firstName": parts[0],
+                                "lastName": " ".join(parts[1:]),
+                                "type": "Individual"
+                            })
             
             # Add grantees (same for both document types)
             document["indexingData"]["grantees"] = [
                 {"nameUnparsed": "OCEAN CLUB VACATIONS LLC", "type": "Organization"}
             ]
             
-            # Add legal descriptions
+            # Add legal descriptions - UPDATED to append parcelId to description
             legal_desc = doc.get("legal_description", package.get("legal_description", ""))
             parcel_id = doc.get("parcel_id", package.get("tms_number", ""))
+            
+            # Combine description and parcel_id if parcel_id exists
+            combined_description = legal_desc
+            if parcel_id:
+                combined_description = f"{legal_desc} {parcel_id}"
+                
             document["indexingData"]["legalDescriptions"].append({
-                "description": legal_desc,
-                "parcelId": parcel_id
+                "description": combined_description,
+                "parcelId": ""  # Leave parcelId blank as requested
             })
             
             # Add reference information
@@ -494,20 +539,35 @@ class BatchPreviewDialog(QDialog):
         elif doc.get("type") == "Mortgage Satisfaction":
             parent_doc_info = f"Parent Document: Mortgage Satisfactions PDF, Page {doc.get('page_range', '')}"
         
-        # Format grantor list
+        # Format grantor list - UPDATED to show correct grantors
         grantors = [
-            "KING CUNNINGHAM LLC TR (Organization)",
-            "OCEAN CLUB VACATIONS LLC (Organization)"
+            "KING CUNNINGHAM LLC TR (Organization)"
         ]
+        
+        # Add grantor/grantee from package
+        grantor_grantee = package.get('grantor_grantee')
+        grantors.append(f"{grantor_grantee} (Organization)")
         
         # Add individual grantors
         grantor_name1 = package.get('grantor_name1', '')
         if grantor_name1:
-            grantors.append(f"{grantor_name1} (Individual)")
+            # Check if this is an organization
+            is_org = False
+            if "last_name1" in package and package["last_name1"].startswith("ORG:"):
+                is_org = True
+                grantors.append(f"{grantor_name1} (Organization)")
+            else:
+                grantors.append(f"{grantor_name1} (Individual)")
             
         grantor_name2 = package.get('grantor_name2', '')
         if grantor_name2:
-            grantors.append(f"{grantor_name2} (Individual)")
+            # Check if this is an organization
+            is_org = False
+            if "last_name2" in package and package["last_name2"].startswith("ORG:"):
+                is_org = True
+                grantors.append(f"{grantor_name2} (Organization)")
+            else:
+                grantors.append(f"{grantor_name2} (Individual)")
         
         grantor_list = "<br>".join(grantors)
         
@@ -521,6 +581,16 @@ class BatchPreviewDialog(QDialog):
         else:
             ref_info = "Not provided"
         
+        # Format the legal description to show how it will be submitted
+        legal_desc = doc.get('legal_description', 'Not provided')
+        parcel_id = doc.get('parcel_id', '')
+        
+        # UPDATED: Combine legal description and parcel ID
+        if parcel_id:
+            combined_description = f"{legal_desc} {parcel_id}"
+        else:
+            combined_description = legal_desc
+        
         # Create simplified preview content
         html_content = f"""
         <p>Document Name: {doc.get('name', 'Document')}</p>
@@ -528,8 +598,8 @@ class BatchPreviewDialog(QDialog):
         <p>Document Length: {doc.get('page_count', '')} page(s)</p>
         <p>{parent_doc_info}</p>
         <p>Execution Date: {doc.get('execution_date', 'Not provided')}</p>
-        <p>Legal Description: {doc.get('legal_description', 'Not provided')}</p>
-        <p>Parcel ID/TMS: {doc.get('parcel_id', 'Not provided')}</p>
+        <p>Legal Description: {combined_description}</p>
+        <p>Parcel ID/TMS: {parcel_id} (will be included in description field, parcelId will be blank)</p>
         <p>Reference Information: {ref_info}</p>
         <p>Consideration: {doc.get('consideration', 'Not provided')}</p>
         
@@ -628,7 +698,7 @@ class BatchPreviewDialog(QDialog):
             # Legal Description
             legal_desc = doc.get("legal_description", "")
             parcel_id = doc.get("parcel_id", "")
-            combined = f"{legal_desc} ({parcel_id})" if parcel_id else legal_desc
+            combined = f"{legal_desc} {parcel_id}" if parcel_id else legal_desc
             self.details_table.setItem(i, 4, QTableWidgetItem(combined))
             
             # Reference Info
@@ -638,58 +708,100 @@ class BatchPreviewDialog(QDialog):
             self.details_table.setItem(i, 5, QTableWidgetItem(ref_info))
             
             # Parties (would need to extract from actual payload)
-            self.details_table.setItem(i, 6, QTableWidgetItem("Default parties + owners"))
+            grantor_grantee = package.get('grantor_grantee', 'OCEAN CLUB VACATIONS LLC')
+            self.details_table.setItem(i, 6, QTableWidgetItem(f"KING CUNNINGHAM LLC TR, {grantor_grantee}, and owner(s)"))
         
         # Connect row click to show document preview
         self.details_table.cellClicked.connect(self.show_document_preview)
-    
+
     def show_document_preview(self, row, column):
-        """Show document preview when clicked in details table"""
-        if row < 0:
-            return
+            """Show document preview when clicked in details table"""
+            if row < 0:
+                return
+                
+            # Get current package
+            package_index = self.package_selector.currentIndex()
+            packages = self.preview_data.get("packages", [])
             
-        # Get current package
-        package_index = self.package_selector.currentIndex()
-        packages = self.preview_data.get("packages", [])
-        
-        if package_index < 0 or package_index >= len(packages):
-            return
+            if package_index < 0 or package_index >= len(packages):
+                return
+                
+            package = packages[package_index]
+            documents = package.get("documents", [])
             
-        package = packages[package_index]
-        documents = package.get("documents", [])
-        
-        if row >= len(documents):
-            return
+            if row >= len(documents):
+                return
+                
+            doc = documents[row]
             
-        doc = documents[row]
-        
-        # Create formatted preview
-        html_content = f"""
-        <h2>{doc.get('name', 'Document')}</h2>
-        <hr>
-        <p><b>Document ID:</b> {doc.get('document_id', '')}</p>
-        <p><b>Document Type:</b> {doc.get('type', '')}</p>
-        <p><b>Pages:</b> {doc.get('page_range', '')}</p>
-        
-        <h3>Metadata</h3>
-        <p><b>Legal Description:</b> {doc.get('legal_description', '')}</p>
-        <p><b>Parcel ID:</b> {doc.get('parcel_id', '')}</p>
-        <p><b>Consideration:</b> {doc.get('consideration', '')}</p>
-        
-        <h3>Reference Information</h3>
-        <p><b>Book:</b> {doc.get('reference_book', '')}</p>
-        <p><b>Page:</b> {doc.get('reference_page', '')}</p>
-        
-        <h3>Parties</h3>
-        <p>Based on the configuration, this document will include the following parties:</p>
-        <ul>
-            <li><b>Default Grantors:</b> KING CUNNINGHAM LLC TR, OCEAN CLUB VACATIONS LLC</li>
-            <li><b>Individual Grantors:</b> {package.get('grantor_name1', '')}{' & ' + package.get('grantor_name2', '') if package.get('grantor_name2') else ''}</li>
-            <li><b>Grantees:</b> OCEAN CLUB VACATIONS LLC</li>
-        </ul>
-        """
-        
-        self.doc_preview.setHtml(html_content)
+            # Create formatted preview with updated grantor information and legal description handling
+            legal_desc = doc.get('legal_description', '')
+            parcel_id = doc.get('parcel_id', '')
+            
+            # Combine description and parcel_id
+            if parcel_id:
+                combined_description = f"{legal_desc} {parcel_id}"
+            else:
+                combined_description = legal_desc
+                
+            # Get grantor/grantee value from package
+            grantor_grantee = package.get("grantor_grantee", "OCEAN CLUB VACATIONS LLC")
+            
+            html_content = f"""
+            <h2>{doc.get('name', 'Document')}</h2>
+            <hr>
+            <p><b>Document ID:</b> {doc.get('document_id', '')}</p>
+            <p><b>Document Type:</b> {doc.get('type', '')}</p>
+            <p><b>Pages:</b> {doc.get('page_range', '')}</p>
+            
+            <h3>Metadata</h3>
+            <p><b>Legal Description:</b> {combined_description}</p>
+            <p><b>Parcel ID:</b> {parcel_id} (will be included in description field, parcelId will be blank)</p>
+            <p><b>Consideration:</b> {doc.get('consideration', '')}</p>
+            
+            <h3>Reference Information</h3>
+            <p><b>Book:</b> {doc.get('reference_book', '')}</p>
+            <p><b>Page:</b> {doc.get('reference_page', '')}</p>
+            
+            <h3>Parties</h3>
+            <p>Based on the configuration, this document will include the following parties:</p>
+            <ul>
+                <li><b>Default Grantors:</b> KING CUNNINGHAM LLC TR</li>
+                <li><b>Additional Grantor Organization:</b> {grantor_grantee}</li>
+            """
+            
+            # Add individual grantors with ORG: checking
+            grantor_name1 = package.get('grantor_name1', '')
+            last_name1 = package.get('last_name1', '')
+            first_name1 = package.get('first_name1', '')
+
+
+            if grantor_name1:
+                if last_name1.startswith("ORG:"):
+                    # For organizations, display the first name (which contains the org name)
+                    # Don't include "ORG:" in the displayed text
+                    html_content += f"<li><b>Organization Grantor:</b> {first_name1}</li>"
+                else:
+                    html_content += f"<li><b>Individual Grantor:</b> {grantor_name1}</li>"
+
+            grantor_name2 = package.get('grantor_name2', '')
+            last_name2 = package.get('last_name2', '')
+            first_name2 = package.get('first_name2', '')
+
+            if grantor_name2:
+                if last_name2.startswith("ORG:"):
+                    # For organizations, display the first name (which contains the org name)
+                    # Don't include "ORG:" in the displayed text
+                    html_content += f"<li><b>Organization Grantor:</b> {first_name2}</li>"
+                else:
+                    html_content += f"<li><b>Individual Grantor:</b> {grantor_name2}</li>"
+
+            html_content += f"""
+                <li><b>Grantees:</b> OCEAN CLUB VACATIONS LLC</li>
+            </ul>
+            """
+            
+            self.doc_preview.setHtml(html_content)
     
     def show_package_details(self, row):
         """Show package details when a package is double-clicked"""
@@ -734,6 +846,16 @@ class BatchPreviewDialog(QDialog):
                         "check_type": "Name Format",
                         "status": "Warning",
                         "details": f"Name '{grantor_name1}' contains hyphens which should be removed"
+                    })
+                    
+                # Check for ORG: prefix format
+                last_name1 = package.get("last_name1", "")
+                if last_name1.startswith("ORG:") and not grantor_name1:
+                    validation_results.append({
+                        "package": f"{package_id}: {package_name}",
+                        "check_type": "Organization Format",
+                        "status": "Error",
+                        "details": f"Last name has 'ORG:' prefix but first name (organization name) is missing"
                     })
             
             # Validate references if enabled
@@ -797,6 +919,16 @@ class BatchPreviewDialog(QDialog):
                         "check_type": "Grantor",
                         "status": "Error",
                         "details": "Package is missing primary grantor name"
+                    })
+                    
+                # Check if the GRANTOR/GRANTEE field is present
+                grantor_grantee = package.get("grantor_grantee", "")
+                if not grantor_grantee:
+                    validation_results.append({
+                        "package": f"{package_id}: {package_name}",
+                        "check_type": "Grantor/Grantee",
+                        "status": "Warning",
+                        "details": "Missing GRANTOR/GRANTEE value, will use default 'OCEAN CLUB VACATIONS LLC'"
                     })
         
             if "validation" in self.preview_data and "format_issues" in self.preview_data["validation"]:
@@ -880,18 +1012,24 @@ class BatchPreviewDialog(QDialog):
                 data = []
                 for package in self.preview_data.get("packages", []):
                     for doc in package.get("documents", []):
+                        # Prepare legal description with suite combined
+                        legal_desc = doc.get("legal_description", "")
+                        parcel_id = doc.get("parcel_id", "")
+                        combined_desc = f"{legal_desc} {parcel_id}" if parcel_id else legal_desc
+                        
                         data.append({
                             "Package ID": package.get("package_id", ""),
                             "Package Name": package.get("package_name", ""),
                             "Account Number": package.get("account_number", ""),
                             "Grantor Name": package.get("grantor_name1", ""),
                             "Second Grantor": package.get("grantor_name2", ""),
+                            "Grantor/Grantee": package.get("grantor_grantee", "OCEAN CLUB VACATIONS LLC"),
                             "Document ID": doc.get("document_id", ""),
                             "Document Name": doc.get("name", ""),
                             "Document Type": doc.get("type", ""),
                             "Page Range": doc.get("page_range", ""),
-                            "Legal Description": doc.get("legal_description", ""),
-                            "Parcel ID": doc.get("parcel_id", ""),
+                            "Legal Description (Combined)": combined_desc,
+                            "Parcel ID": parcel_id,
                             "Reference Book": doc.get("reference_book", ""),
                             "Reference Page": doc.get("reference_page", ""),
                             "Excel Row": package.get("excel_row", "")
