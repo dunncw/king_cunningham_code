@@ -8,12 +8,7 @@ from typing import Dict, List, Any, Optional, Union
 
 # Default parties that are always added
 DEFAULT_GRANTORS = [
-    {"nameUnparsed": "KING CUNNINGHAM LLC TR", "type": "Organization"},
-    {"nameUnparsed": "OCEAN CLUB VACATIONS LLC", "type": "Organization"}
-]
-
-DEFAULT_GRANTEES = [
-    {"nameUnparsed": "OCEAN CLUB VACATIONS LLC", "type": "Organization"}
+    {"nameUnparsed": "KING CUNNINGHAM LLC TR", "type": "Organization"}
 ]
 
 class SimplifileAPI(QObject):
@@ -82,21 +77,42 @@ class SimplifileAPI(QObject):
         }
 
 
+    # Updated create_document_payload method in api.py
     def create_document_payload(self, doc_data):
         """Create a document entry for the API payload"""
-        # Start with default grantors and grantees
+        # Start with default grantors (now just one)
         grantors = DEFAULT_GRANTORS.copy()
-        grantees = DEFAULT_GRANTEES.copy()
         
-        # Add additional person grantors if provided
+        # Get the GRANTOR/GRANTEE from doc_data if available, otherwise use default
+        if "grantor_grantee" in doc_data and doc_data["grantor_grantee"]:
+            grantors.append({
+                "nameUnparsed": doc_data["grantor_grantee"],
+                "type": "Organization"
+            })
+        
+        # Add additional person grantors if provided, checking for ORG prefix
         if "person_grantors" in doc_data and doc_data["person_grantors"]:
             for person in doc_data["person_grantors"]:
-                grantors.append(self.format_person(person, "Individual"))
+                # Check if last name starts with "ORG:" prefix
+                if "last_name" in person and person["last_name"].startswith("ORG:"):
+                    # This is an organization, add using the first name as organization name
+                    grantors.append({
+                        "nameUnparsed": person["first_name"],
+                        "type": "Organization"
+                    })
+                else:
+                    # This is a person
+                    grantors.append(self.format_person(person, "Individual"))
         
         # Add additional organization grantors if provided
         if "org_grantors" in doc_data and doc_data["org_grantors"]:
             for org in doc_data["org_grantors"]:
                 grantors.append(self.format_person(org, "Organization"))
+        
+        # Default grantees
+        grantees = [
+            {"nameUnparsed": doc_data["grantor_grantee"], "type": "Organization"}
+        ]
         
         # Add additional person grantees if provided
         if "person_grantees" in doc_data and doc_data["person_grantees"]:
@@ -107,19 +123,42 @@ class SimplifileAPI(QObject):
         if "org_grantees" in doc_data and doc_data["org_grantees"]:
             for org in doc_data["org_grantees"]:
                 grantees.append(self.format_person(org, "Organization"))
-        
-        # Format legal descriptions
+
+        # Format legal descriptions - UPDATED to combine description with parcelId
         legal_descriptions = []
         if "legal_descriptions" in doc_data and doc_data["legal_descriptions"]:
             for desc in doc_data["legal_descriptions"]:
-                legal_descriptions.append(self.format_legal_description(desc))
+                # Get description and parcelId
+                description = desc.get("description", "").upper()
+                parcel_id = desc.get("parcelId", "").upper()
+                
+                # Check if parcel_id is already included in description to avoid duplication
+                if parcel_id and parcel_id not in description:
+                    combined_description = f"{description} {parcel_id}"
+                else:
+                    combined_description = description
+                    
+                # Create legal description with combined text and empty parcelId
+                legal_descriptions.append({
+                    "description": combined_description,
+                    "parcelId": ""  # Leave parcelId blank as requested
+                })
         else:
             # Add default legal description
+            description = doc_data.get("legal_description", "").upper()
+            parcel_id = doc_data.get("parcel_id", "").upper()
+            
+            # Check if parcel_id is already included in description to avoid duplication
+            if parcel_id and parcel_id not in description:
+                combined_description = f"{description} {parcel_id}"
+            else:
+                combined_description = description
+                
             legal_descriptions.append({
-                "description": doc_data.get("legal_description", "").upper(),
-                "parcelId": doc_data.get("parcel_id", "").upper()
+                "description": combined_description,
+                "parcelId": ""  # Leave parcelId blank as requested
             })
-        
+
         # Format reference information
         reference_information = []
         if "reference_information" in doc_data and doc_data["reference_information"]:
