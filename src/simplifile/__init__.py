@@ -1,28 +1,38 @@
-# Create or update the __init__.py in the simplifile directory
-from .api import run_simplifile_thread, SimplifileAPI
-from .batch_processor import run_simplifile_batch_thread, SimplifileBatchProcessor, run_simplifile_batch_preview
-from .models import Party, HelperDocument, SimplifilePackage
-from .utils import (
-    validate_package_data, get_document_types, get_helper_document_types,
-    format_date, create_sample_package, save_config, load_config,
-    get_instrument_types
+# __init__.py - Centralized exports for Simplifile module
+from .api import run_simplifile_thread, run_simplifile_connection_test, SimplifileAPI
+from .batch_processor import (
+    run_simplifile_batch_thread, run_simplifile_batch_preview, 
+    run_simplifile_batch_process, SimplifileBatchProcessor, 
+    SimplifileBatchPreview
 )
+from .models import (
+    SimplifilePackage, SimplifileDocument, Party, 
+    LegalDescription, ReferenceInformation
+)
+from .excel_processor import SimplifileExcelProcessor
+from .pdf_processor import SimplifilePDFProcessor
 
 __all__ = [
+    # API
     'run_simplifile_thread',
+    'run_simplifile_connection_test',
+    'SimplifileAPI',
+    
+    # Batch Processing
     'run_simplifile_batch_thread',
     'run_simplifile_batch_preview',
-    'SimplifileAPI',
+    'run_simplifile_batch_process',
     'SimplifileBatchProcessor',
-    'Party',
-    'HelperDocument',
+    'SimplifileBatchPreview',
+    
+    # Models
     'SimplifilePackage',
-    'validate_package_data',
-    'get_document_types',
-    'get_helper_document_types',
-    'get_instrument_types',
-    'format_date',
-    'create_sample_package',
-    'save_config',
-    'load_config'
+    'SimplifileDocument',
+    'Party',
+    'LegalDescription',
+    'ReferenceInformation',
+    
+    # Processors
+    'SimplifileExcelProcessor',
+    'SimplifilePDFProcessor'
 ]

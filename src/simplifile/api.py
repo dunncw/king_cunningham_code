@@ -1,15 +1,13 @@
+# api.py - Updated to use centralized models
 import requests
 import base64
 import json
 import os
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional, Union, Tuple
 
-# Default parties that are always added
-DEFAULT_GRANTORS = [
-    {"nameUnparsed": "KING CUNNINGHAM LLC TR", "type": "Organization"}
-]
+from .models import SimplifilePackage, SimplifileDocument, Party, LegalDescription, ReferenceInformation
 
 class SimplifileAPI(QObject):
     """Class for interacting with the Simplifile API"""
@@ -18,14 +16,12 @@ class SimplifileAPI(QObject):
     error = pyqtSignal(str)
     finished = pyqtSignal(dict)
 
-
     def __init__(self, api_token, submitter_id, recipient_id):
         super().__init__()
         self.api_token = api_token
         self.submitter_id = submitter_id
         self.recipient_id = recipient_id
         self.base_url = f"https://api.simplifile.com/sf/rest/api/erecord/submitters/{submitter_id}/packages/create"
-
 
     def encode_file(self, file_path):
         """Convert a file to base64 encoding"""
@@ -37,214 +33,19 @@ class SimplifileAPI(QObject):
             self.error.emit(f"Error encoding file {os.path.basename(file_path)}: {str(e)}")
             return None
 
-
-    def format_person(self, person_data, entity_type="Individual"):
-        """Format person data according to API requirements"""
-        if entity_type == "Individual":
-            return {
-                "firstName": person_data.get("first_name", "").upper(),
-                "middleName": person_data.get("middle_name", "").upper(),
-                "lastName": person_data.get("last_name", "").upper(),
-                "nameSuffix": person_data.get("suffix", "").upper(),
-                "type": "Individual"
-            }
-        else:
-            return {
-                "nameUnparsed": person_data.get("name", "").upper(),
-                "type": "Organization"
-            }
-
-
-    def format_legal_description(self, description_data):
-        """Format legal description according to API requirements"""
-        result = {
-            "description": description_data.get("description", "").upper(),
-            "parcelId": description_data.get("parcel_id", "").upper()
-        }
-        
-        if "unit_number" in description_data and description_data["unit_number"] is not None:
-            result["unitNumber"] = description_data["unit_number"]
-            
-        return result
-
-
-    def format_reference_information(self, reference_data):
-        """Format reference information according to API requirements"""
-        return {
-            "documentType": reference_data.get("document_type", ""),
-            "book": reference_data.get("book", ""),
-            "page": int(reference_data.get("page", 0))
-        }
-
-
-    # Updated create_document_payload method in api.py
-    def create_document_payload(self, doc_data):
-        """Create a document entry for the API payload"""
-        # Start with default grantors (now just one)
-        grantors = DEFAULT_GRANTORS.copy()
-        
-        # Get the GRANTOR/GRANTEE from doc_data if available, otherwise use default
-        if "grantor_grantee" in doc_data and doc_data["grantor_grantee"]:
-            grantors.append({
-                "nameUnparsed": doc_data["grantor_grantee"],
-                "type": "Organization"
-            })
-        
-        # Add additional person grantors if provided, checking for ORG prefix
-        if "person_grantors" in doc_data and doc_data["person_grantors"]:
-            for person in doc_data["person_grantors"]:
-                # Check if last name starts with "ORG:" prefix
-                if "last_name" in person and person["last_name"].startswith("ORG:"):
-                    # This is an organization, add using the first name as organization name
-                    grantors.append({
-                        "nameUnparsed": person["first_name"],
-                        "type": "Organization"
-                    })
-                else:
-                    # This is a person
-                    grantors.append(self.format_person(person, "Individual"))
-        
-        # Add additional organization grantors if provided
-        if "org_grantors" in doc_data and doc_data["org_grantors"]:
-            for org in doc_data["org_grantors"]:
-                grantors.append(self.format_person(org, "Organization"))
-        
-        # Default grantees
-        grantees = [
-            {"nameUnparsed": doc_data["grantor_grantee"], "type": "Organization"}
-        ]
-        
-        # Add additional person grantees if provided
-        if "person_grantees" in doc_data and doc_data["person_grantees"]:
-            for person in doc_data["person_grantees"]:
-                grantees.append(self.format_person(person, "Individual"))
-        
-        # Add additional organization grantees if provided
-        if "org_grantees" in doc_data and doc_data["org_grantees"]:
-            for org in doc_data["org_grantees"]:
-                grantees.append(self.format_person(org, "Organization"))
-
-        # Format legal descriptions - UPDATED to combine description with parcelId
-        legal_descriptions = []
-        if "legal_descriptions" in doc_data and doc_data["legal_descriptions"]:
-            for desc in doc_data["legal_descriptions"]:
-                # Get description and parcelId
-                description = desc.get("description", "").upper()
-                parcel_id = desc.get("parcelId", "").upper()
-                
-                # Check if parcel_id is already included in description to avoid duplication
-                if parcel_id and parcel_id not in description:
-                    combined_description = f"{description} {parcel_id}"
-                else:
-                    combined_description = description
-                    
-                # Create legal description with combined text and empty parcelId
-                legal_descriptions.append({
-                    "description": combined_description,
-                    "parcelId": ""  # Leave parcelId blank as requested
-                })
-        else:
-            # Add default legal description
-            description = doc_data.get("legal_description", "").upper()
-            parcel_id = doc_data.get("parcel_id", "").upper()
-            
-            # Check if parcel_id is already included in description to avoid duplication
-            if parcel_id and parcel_id not in description:
-                combined_description = f"{description} {parcel_id}"
-            else:
-                combined_description = description
-                
-            legal_descriptions.append({
-                "description": combined_description,
-                "parcelId": ""  # Leave parcelId blank as requested
-            })
-
-        # Format reference information
-        reference_information = []
-        if "reference_information" in doc_data and doc_data["reference_information"]:
-            for ref in doc_data["reference_information"]:
-                reference_information.append(self.format_reference_information(ref))
-        elif "document_type" in doc_data or "book" in doc_data or "page" in doc_data:
-            # Add single reference information entry
-            reference_information.append({
-                "documentType": doc_data.get("document_type", "Deed - Timeshare"),
-                "book": doc_data.get("book", ""),
-                "page": int(doc_data.get("page", 0))
-            })
-        
-        # Encode document
-        encoded_file = self.encode_file(doc_data["file_path"])
-        if not encoded_file:
-            return None
-        
-        # Create document entry
-        document = {
-            "submitterDocumentID": doc_data.get("document_id", f"D-{datetime.now().strftime('%Y%m%d%H%M%S')}"),
-            "name": doc_data.get("name", os.path.basename(doc_data["file_path"])).upper(),
-            "kindOfInstrument": [doc_data.get("type", "Deed - Timeshare")],
-            "indexingData": {
-                "grantors": grantors,
-                "grantees": grantees,
-                "legalDescriptions": legal_descriptions
-            },
-            "fileBytes": [encoded_file]
-        }
-        
-        # Add optional fields
-        if "consideration" in doc_data:
-            document["indexingData"]["consideration"] = float(doc_data.get("consideration", 0.0))
-        
-        # Format execution date in YYYY-MM-DD format
-        if "execution_date" in doc_data:
-            try:
-                # Try to parse and reformat the date
-                date_str = doc_data.get("execution_date")
-                if isinstance(date_str, str):
-                    # Try to parse MM/DD/YYYY first
-                    try:
-                        date_obj = datetime.strptime(date_str, '%m/%d/%Y')
-                        formatted_date = date_obj.strftime('%Y-%m-%d')
-                    except ValueError:
-                        # Try other formats or keep as is
-                        formatted_date = date_str
-                else:
-                    formatted_date = datetime.now().strftime('%Y-%m-%d')
-                
-                document["indexingData"]["executionDate"] = formatted_date
-            except:
-                document["indexingData"]["executionDate"] = datetime.now().strftime('%Y-%m-%d')
-        else:
-            document["indexingData"]["executionDate"] = datetime.now().strftime('%Y-%m-%d')
-        
-        if reference_information:
-            document["indexingData"]["referenceInformation"] = reference_information
-        
-        return document
-
-
-    def get_package_operations(self, package_data):
-        """Get package operations based on package data"""
-        return {
-            "draftOnErrors": package_data.get("draft_on_errors", True),
-            "submitImmediately": package_data.get("submit_immediately", False),
-            "verifyPageMargins": package_data.get("verify_page_margins", True)
-        }
-
-
     def upload_package(self, package_data, document_files):
-        """Upload a package with documents to Simplifile"""
+        """Upload a package with documents to Simplifile, using the new model structure"""
         self.status.emit("Starting upload process...")
         self.progress.emit(10)
         
         try:
-            # Create payload structure
-            payload = {
-                "documents": [],
-                "recipient": self.recipient_id,
-                "submitterPackageID": package_data.get("package_id", f"P-{datetime.now().strftime('%Y%m%d%H%M%S')}"),
-                "name": package_data.get("package_name", f"Package {datetime.now().strftime('%Y%m%d%H%M%S')}"),
-                "operations": self.get_package_operations(package_data)
-            }
+            # Create package object from data
+            package = SimplifilePackage()
+            package.package_id = package_data.get("package_id", f"P-{datetime.now().strftime('%Y%m%d%H%M%S')}")
+            package.package_name = package_data.get("package_name", f"Package {datetime.now().strftime('%Y%m%d%H%M%S')}")
+            package.draft_on_errors = package_data.get("draft_on_errors", True)
+            package.submit_immediately = package_data.get("submit_immediately", False)
+            package.verify_page_margins = package_data.get("verify_page_margins", True)
             
             # Process each document
             total_docs = len(document_files)
@@ -252,13 +53,18 @@ class SimplifileAPI(QObject):
                 self.status.emit(f"Processing document {i+1} of {total_docs}: {os.path.basename(doc_data['file_path'])}")
                 self.progress.emit(10 + (i * 70 // total_docs))
                 
-                document = self.create_document_payload(doc_data)
+                # Create document object
+                document = self.create_document_from_data(doc_data)
                 if document:
-                    payload["documents"].append(document)
+                    package.add_document(document)
             
             # Make API request
             self.status.emit("Sending package to Simplifile...")
             self.progress.emit(80)
+            
+            # Create API payload
+            api_payload = package.to_api_dict()
+            api_payload["recipient"] = self.recipient_id
             
             headers = {
                 "Content-Type": "application/json",
@@ -268,7 +74,7 @@ class SimplifileAPI(QObject):
             response = requests.post(
                 self.base_url,
                 headers=headers,
-                data=json.dumps(payload),
+                data=json.dumps(api_payload),
                 timeout=300  # 5 minute timeout for large packages
             )
             
@@ -303,6 +109,130 @@ class SimplifileAPI(QObject):
             self.finished.emit({"error": str(e)})
             return False
 
+    def create_document_from_data(self, doc_data):
+        """Create a SimplifileDocument from dictionary data"""
+        try:
+            document = SimplifileDocument()
+            
+            # Set basic document info
+            document.document_id = doc_data.get("document_id", f"D-{datetime.now().strftime('%Y%m%d%H%M%S')}")
+            document.name = doc_data.get("name", os.path.basename(doc_data["file_path"])).upper()
+            document.type = doc_data.get("type", "Deed - Timeshare")
+            document.file_path = doc_data.get("file_path", "")
+            document.execution_date = doc_data.get("execution_date", datetime.now().strftime('%m/%d/%Y'))
+            
+            # Set consideration if provided
+            if "consideration" in doc_data:
+                document.consideration = doc_data.get("consideration", "0.00")
+            
+            # Add grantors
+            # First determine which grantors to add based on document type
+            if document.type == "Deed - Timeshare":
+                # For deeds, we need to add the standard organization
+                document.grantors.append(Party(name="KING CUNNINGHAM LLC TR", is_organization=True))
+                
+                # Add grantor/grantee
+                if "grantor_grantee" in doc_data and doc_data["grantor_grantee"]:
+                    document.grantors.append(Party(name=doc_data["grantor_grantee"], is_organization=True))
+            
+            # Add person grantors if provided
+            if "person_grantors" in doc_data and doc_data["person_grantors"]:
+                for person in doc_data["person_grantors"]:
+                    # Check if organization by "ORG:" prefix
+                    if "last_name" in person and person["last_name"].startswith("ORG:"):
+                        document.grantors.append(Party(
+                            name=person["first_name"],
+                            is_organization=True
+                        ))
+                    else:
+                        document.grantors.append(Party(
+                            first_name=person.get("first_name", ""),
+                            middle_name=person.get("middle_name", ""),
+                            last_name=person.get("last_name", ""),
+                            suffix=person.get("suffix", ""),
+                            is_organization=False
+                        ))
+            
+            # Add organization grantors if provided
+            if "org_grantors" in doc_data and doc_data["org_grantors"]:
+                for org in doc_data["org_grantors"]:
+                    document.grantors.append(Party(
+                        name=org.get("name", ""),
+                        is_organization=True
+                    ))
+            
+            # Add grantees - default to grantor_grantee
+            if "grantor_grantee" in doc_data and doc_data["grantor_grantee"]:
+                document.grantees.append(Party(
+                    name=doc_data["grantor_grantee"],
+                    is_organization=True
+                ))
+            
+            # Add person grantees if provided
+            if "person_grantees" in doc_data and doc_data["person_grantees"]:
+                for person in doc_data["person_grantees"]:
+                    # Check if organization by "ORG:" prefix
+                    if "last_name" in person and person["last_name"].startswith("ORG:"):
+                        document.grantees.append(Party(
+                            name=person["first_name"],
+                            is_organization=True
+                        ))
+                    else:
+                        document.grantees.append(Party(
+                            first_name=person.get("first_name", ""),
+                            middle_name=person.get("middle_name", ""),
+                            last_name=person.get("last_name", ""),
+                            suffix=person.get("suffix", ""),
+                            is_organization=False
+                        ))
+            
+            # Add organization grantees if provided
+            if "org_grantees" in doc_data and doc_data["org_grantees"]:
+                for org in doc_data["org_grantees"]:
+                    document.grantees.append(Party(
+                        name=org.get("name", ""),
+                        is_organization=True
+                    ))
+            
+            # Add legal descriptions
+            if "legal_descriptions" in doc_data and doc_data["legal_descriptions"]:
+                for desc in doc_data["legal_descriptions"]:
+                    document.legal_descriptions.append(LegalDescription(
+                        description=desc.get("description", ""),
+                        parcel_id=desc.get("parcelId", ""),
+                        unit_number=desc.get("unitNumber", None)
+                    ))
+            else:
+                # Use simple legal description and parcel_id fields if available
+                document.legal_descriptions.append(LegalDescription(
+                    description=doc_data.get("legal_description", ""),
+                    parcel_id=doc_data.get("parcel_id", "")
+                ))
+            
+            # Add reference information
+            if "reference_information" in doc_data and doc_data["reference_information"]:
+                for ref in doc_data["reference_information"]:
+                    document.reference_information.append(ReferenceInformation(
+                        document_type=ref.get("documentType", document.type),
+                        book=ref.get("book", ""),
+                        page=ref.get("page", "")
+                    ))
+            elif "book" in doc_data or "page" in doc_data or "reference_book" in doc_data or "reference_page" in doc_data:
+                # Use simple book and page fields if available
+                book = doc_data.get("book", doc_data.get("reference_book", ""))
+                page = doc_data.get("page", doc_data.get("reference_page", ""))
+                if book or page:
+                    document.reference_information.append(ReferenceInformation(
+                        document_type=document.type,
+                        book=book,
+                        page=page
+                    ))
+            
+            return document
+            
+        except Exception as e:
+            self.error.emit(f"Error creating document: {str(e)}")
+            return None
 
     def get_recipient_requirements(self):
         """Fetch recipient requirements from Simplifile API"""
@@ -329,25 +259,19 @@ class SimplifileAPI(QObject):
             self.error.emit(f"Error fetching recipient requirements: {str(e)}")
             return None
 
-
-    def validate_document(self, document_data, instrument_type):
+    def validate_document(self, document, instrument_type):
         """Validate document data against recipient requirements for specific instrument type"""
         # Get recipient requirements
         requirements = self.get_recipient_requirements()
         if not requirements:
-            # More informative error about failing to retrieve requirements
             return False, "Could not retrieve county requirements. This could be due to invalid API credentials, network issues, or the selected county not being properly configured."
         
         # Check if the instrument type is recognized by Simplifile
         valid_instruments = [
             "Deed - Timeshare", "Mortgage Satisfaction"
         ]
-        # valid_instruments = [
-        #     "Deed", "Deed - Timeshare", "Mortgage", "Mortgage Satisfaction", 
-        #     "Satisfaction of Mortgage", "Release of Lien", "Assignment of Mortgage"
-        # ]
+        
         if instrument_type not in valid_instruments:
-            # More informative error about instrument type
             return False, f"The instrument type '{instrument_type}' may not be recognized by Simplifile. Valid types include: 'Deed', 'Deed - Timeshare', 'Mortgage Satisfaction', etc. Please check that you're using the correct instrument type."
         
         # Find requirements for the specified instrument type
@@ -368,8 +292,19 @@ class SimplifileAPI(QObject):
             else:
                 return False, f"No requirements found for instrument type: {instrument_type}. This county may not accept electronic recordings for this document type."
         
-        # Check required fields (keeping the existing validation logic)
+        # Now that we have requirements, validate the document against them
         missing_fields = []
+        
+        # Get document data as dictionary for validation
+        doc_data = {}
+        if isinstance(document, SimplifileDocument):
+            # If it's our model object, extract relevant fields
+            doc_data = document.to_api_dict()
+        elif isinstance(document, dict):
+            # If it's already a dictionary, use it directly
+            doc_data = document
+        
+        # Check required fields
         for req in instrument_reqs:
             if req.get("required") == "ALWAYS":
                 path = req.get("path")
@@ -383,12 +318,12 @@ class SimplifileAPI(QObject):
                     field_name_in_array = parts[1]
                     
                     # Check if array exists and has at least one item with the required field
-                    if array_name not in document_data or not document_data[array_name]:
+                    if array_name not in doc_data or not doc_data[array_name]:
                         missing_fields.append(f"{field_name} ({path})")
                     else:
                         # Check if any item in the array has the required field
                         has_field = False
-                        for item in document_data[array_name]:
+                        for item in doc_data[array_name]:
                             if field_name_in_array in item and item[field_name_in_array]:
                                 has_field = True
                                 break
@@ -397,109 +332,13 @@ class SimplifileAPI(QObject):
                             missing_fields.append(f"{field_name} ({path})")
                 else:
                     # Handle simple paths
-                    if path not in document_data or not document_data[path]:
+                    if path not in doc_data or not doc_data[path]:
                         missing_fields.append(f"{field_name} ({path})")
         
         if missing_fields:
             return False, f"Missing required fields: {', '.join(missing_fields)}"
         
         return True, "Document is valid"
-
-
-    def create_document_from_data(self, document_data, file_path, instrument_type):
-        """Create a document payload based on structured data and instrument type"""
-        # Validate document data
-        is_valid, message = self.validate_document(document_data, instrument_type)
-        if not is_valid:
-            self.error.emit(message)
-            return None
-        
-        # Create basic document structure
-        doc = {
-            "file_path": file_path,
-            "type": instrument_type,
-            "name": document_data.get("name", os.path.basename(file_path)).upper()
-        }
-        
-        # Extract grantors and grantees
-        if "grantors" in document_data:
-            person_grantors = []
-            org_grantors = []
-            
-            for grantor in document_data["grantors"]:
-                if grantor.get("type") == "Individual":
-                    person_grantors.append({
-                        "first_name": grantor.get("firstName", ""),
-                        "middle_name": grantor.get("middleName", ""),
-                        "last_name": grantor.get("lastName", ""),
-                        "suffix": grantor.get("nameSuffix", "")
-                    })
-                else:
-                    org_grantors.append({
-                        "name": grantor.get("nameUnparsed", "")
-                    })
-            
-            doc["person_grantors"] = person_grantors
-            doc["org_grantors"] = org_grantors
-        
-        if "grantees" in document_data:
-            person_grantees = []
-            org_grantees = []
-            
-            for grantee in document_data["grantees"]:
-                if grantee.get("type") == "Individual":
-                    person_grantees.append({
-                        "first_name": grantee.get("firstName", ""),
-                        "middle_name": grantee.get("middleName", ""),
-                        "last_name": grantee.get("lastName", ""),
-                        "suffix": grantee.get("nameSuffix", "")
-                    })
-                else:
-                    org_grantees.append({
-                        "name": grantee.get("nameUnparsed", "")
-                    })
-            
-            doc["person_grantees"] = person_grantees
-            doc["org_grantees"] = org_grantees
-        
-        # Extract legal descriptions
-        if "legalDescriptions" in document_data:
-            legal_descriptions = []
-            
-            for desc in document_data["legalDescriptions"]:
-                legal_descriptions.append({
-                    "description": desc.get("description", ""),
-                    "parcel_id": desc.get("parcelId", ""),
-                    "unit_number": desc.get("unitNumber", "")
-                })
-            
-            doc["legal_descriptions"] = legal_descriptions
-        else:
-            doc["legal_description"] = ""
-            doc["parcel_id"] = ""
-        
-        # Extract reference information
-        if "referenceInformation" in document_data:
-            reference_information = []
-            
-            for ref in document_data["referenceInformation"]:
-                reference_information.append({
-                    "document_type": ref.get("documentType", ""),
-                    "book": ref.get("book", ""),
-                    "page": ref.get("page", "")
-                })
-            
-            doc["reference_information"] = reference_information
-        
-        # Extract other fields
-        if "consideration" in document_data:
-            doc["consideration"] = document_data["consideration"]
-        
-        if "executionDate" in document_data:
-            doc["execution_date"] = document_data["executionDate"]
-        
-        return doc
-
 
     def test_connection(self):
         """Test API connection with provided credentials"""
