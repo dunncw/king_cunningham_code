@@ -5,8 +5,8 @@ from datetime import datetime
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
     QPushButton, QComboBox, QFormLayout, QFileDialog, QMessageBox, 
-    QGroupBox, QTableWidget, QTableWidgetItem, QDateEdit, 
-    QTextEdit, QProgressBar, QDialog, QFrame, QTabWidget, QCheckBox
+    QGroupBox, QTableWidget, QTableWidgetItem,
+    QTextEdit, QProgressBar, QFrame, QTabWidget, QCheckBox, QHeaderView
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QDate
 from PyQt6.QtGui import QFont, QColor
@@ -425,8 +425,9 @@ class SimplifileUI(QWidget):
         
         self.single_upload_tab.setLayout(single_layout)
 
+
     def generate_enhanced_batch_preview(self):
-        """Generate enhanced preview of batch processing"""
+        """Generate enhanced preview of batch processing with reduced output messages"""
         # Check if all required files are selected
         if not self.excel_file_path.text():
             QMessageBox.warning(self, "Missing File", "Please select an Excel file.")
@@ -449,8 +450,8 @@ class SimplifileUI(QWidget):
             self.affidavits_file_path.text()
         )
         
-        # Connect signals
-        self.preview_worker.status.connect(self.update_status)
+        # Connect signals - but filter status messages
+        self.preview_worker.status.connect(self.filter_status_updates)
         self.preview_worker.progress.connect(self.update_progress)
         self.preview_worker.error.connect(self.show_error)
         self.preview_worker.preview_ready.connect(self.show_enhanced_preview_dialog)
@@ -461,15 +462,69 @@ class SimplifileUI(QWidget):
         # Start thread
         self.preview_thread.start()
 
+
+    def filter_status_updates(self, status_message):
+        """Filter status updates to reduce verbosity in output window"""
+        # Define messages to ignore (don't output these to the window)
+        ignore_messages = [
+            "Starting preview generation...",
+            "Analyzing deed documents...",
+            "Analyzing affidavit documents...",
+            "Analyzing merged deed and affidavit documents...",
+            "Analyzing mortgage satisfaction documents..."
+        ]
+        
+        # Only update status label for all messages (keep UI responsive)
+        self.status_label.setText(status_message)
+        
+        # But only output to text area if it's not in the ignore list
+        if status_message not in ignore_messages:
+            self.update_output(status_message)
+
+
     def show_enhanced_preview_dialog(self, preview_json):
-        """Show the enhanced preview dialog with the generated data"""
+        """Show the enhanced preview dialog with the generated data and output validation warnings"""
         try:
+            # Convert JSON to Python object if it's a string
+            preview_data = json.loads(preview_json) if isinstance(preview_json, str) else preview_json
+            
+            # Output validation warnings to the output window
+            validation = preview_data.get("validation", {})
+            validation_summary = preview_data.get("validation_summary", {})
+            
+            # Output validation summary
+            total_issues = (
+                validation_summary.get("missing_data_issues", 0) + 
+                validation_summary.get("format_issues", 0) + 
+                validation_summary.get("document_issues", 0)
+            )
+            
+            if total_issues > 0:
+                self.update_output(f"⚠️ Validation found {total_issues} potential issues:")
+                
+                # Output missing data issues
+                for issue in validation.get("missing_data", []):
+                    self.update_output(f"  ❗ Missing data: {issue}")
+                
+                # Output format issues (from Excel validation)
+                for issue in validation.get("format_issues", []):
+                    self.update_output(f"  ⚠️ Format issue: {issue}")
+                
+                # Output document issues
+                for issue in validation.get("document_issues", []):
+                    self.update_output(f"  ❗ Document issue: {issue}")
+                    
+                self.update_output("Review the preview window for more details.")
+            else:
+                self.update_output("✅ Validation complete: No issues found!")
+            
             # Open the enhanced preview dialog with the JSON data
-            dialog = BatchPreviewDialog(preview_json, self)
+            dialog = BatchPreviewDialog(preview_data, self)
             dialog.exec()
             
         except Exception as e:
             self.show_error(f"Error displaying preview: {str(e)}")
+
 
     def browse_excel_file(self):
         """Browse for Excel file for batch processing"""
@@ -507,8 +562,9 @@ class SimplifileUI(QWidget):
             self.mortgage_file_path.setText(file_path)
             self.update_output(f"Selected Mortgage Satisfaction file: {os.path.basename(file_path)}")
 
+
     def process_batch_upload(self):
-        """Process and start the batch upload with actual API calls"""
+        """Process and start the batch upload with actual API calls and reduced verbosity"""
         # Validate API configuration
         api_token = self.api_token.text()
         submitter_id = self.submitter_id.text()
@@ -570,7 +626,8 @@ class SimplifileUI(QWidget):
         preview_mode = (reply == QMessageBox.StandardButton.No)
         
         # Run the batch process
-        self.update_output(f"Starting batch processing in {'preview' if preview_mode else 'API upload'} mode...")
+        mode_text = 'preview' if preview_mode else 'API upload'
+        self.update_output(f"Starting batch processing in {mode_text} mode...")
         self.progress_bar.setValue(5)
         self.batch_upload_btn.setEnabled(False)
         
@@ -586,14 +643,15 @@ class SimplifileUI(QWidget):
             self.affidavits_file_path.text()
         )
         
-        # Connect signals
-        self.batch_worker.status.connect(self.update_status)
+        # Connect signals with filtering for status messages
+        self.batch_worker.status.connect(self.filter_status_updates)
         self.batch_worker.progress.connect(self.update_progress)
         self.batch_worker.error.connect(self.show_error)
         self.batch_worker.finished.connect(self.batch_process_finished)
         
         # Start thread
         self.batch_thread.start()
+
 
     def batch_process_finished(self, result_data):
         """Handle completion of batch processing with detailed error reporting"""

@@ -17,16 +17,19 @@ class SimplifileBatchPreview(QObject):
     status = pyqtSignal(str)
     error = pyqtSignal(str)
     preview_ready = pyqtSignal(str)  # JSON string of preview data
-    
+
+
     def __init__(self):
         super().__init__()
         self.pdf_processor = SimplifilePDFProcessor()
         self.excel_processor = SimplifileExcelProcessor()
-    
+
+
     def generate_preview(self, excel_path, deeds_path, mortgage_path, affidavits_path=None):
-        """Generate an enhanced preview of the batch processing"""
+        """Generate an enhanced preview of the batch processing with reduced verbosity"""
         try:
-            self.status.emit("Starting preview generation...")
+            # Only emit one status message at the start
+            self.status.emit("Processing...")
             self.progress.emit(5)
             
             # Load Excel data
@@ -47,7 +50,7 @@ class SimplifileBatchPreview(QObject):
             has_merged_docs = False
             
             if deeds_path:
-                self.status.emit("Analyzing deed documents...")
+                # Note: Not emitting status for individual steps anymore
                 deed_splits = self.pdf_processor.analyze_deed_pdf(deeds_path)
                 if not deed_splits and deeds_path:
                     self.error.emit("Failed to analyze deed documents")
@@ -56,7 +59,6 @@ class SimplifileBatchPreview(QObject):
             self.progress.emit(30)
             
             if affidavits_path:
-                self.status.emit("Analyzing affidavit documents...")
                 affidavit_splits = self.pdf_processor.analyze_affidavit_pdf(affidavits_path)
                 if not affidavit_splits and affidavits_path:
                     self.error.emit("Failed to analyze affidavit documents")
@@ -64,13 +66,11 @@ class SimplifileBatchPreview(QObject):
                 
                 # Check if we can merge deeds and affidavits
                 if deed_splits and affidavit_splits:
-                    self.status.emit("Analyzing merged deed and affidavit documents...")
                     has_merged_docs = True
             
             self.progress.emit(40)
             
             if mortgage_path:
-                self.status.emit("Analyzing mortgage satisfaction documents...")
                 mortgage_splits = self.pdf_processor.analyze_mortgage_pdf(mortgage_path)
                 if not mortgage_splits and mortgage_path:
                     self.error.emit("Failed to analyze mortgage satisfaction documents")
@@ -83,7 +83,7 @@ class SimplifileBatchPreview(QObject):
             
             # Enhance packages with PDF information
             self.enhance_packages_with_pdf_info(packages, deed_splits, mortgage_splits, 
-                                             affidavit_splits, has_merged_docs)
+                                            affidavit_splits, has_merged_docs)
             
             # Build the preview data structure
             preview_data = self.build_preview_data(packages, excel_data, deed_splits, 
@@ -94,7 +94,8 @@ class SimplifileBatchPreview(QObject):
             # Convert to JSON string
             preview_json = json.dumps(preview_data, default=lambda o: o.__dict__, indent=2)
             
-            self.status.emit("Preview generation completed successfully")
+            # Final status update before completing
+            self.status.emit("Preview completed")
             self.progress.emit(100)
             self.preview_ready.emit(preview_json)
             return True
@@ -105,7 +106,8 @@ class SimplifileBatchPreview(QObject):
         finally:
             # Clean up any temporary files
             self.pdf_processor.cleanup()
-    
+
+
     def enhance_packages_with_pdf_info(self, packages, deed_splits, mortgage_splits, 
                                      affidavit_splits, has_merged_docs):
         """Enhance package objects with PDF file information"""
@@ -131,10 +133,11 @@ class SimplifileBatchPreview(QObject):
                     mortgage_info = mortgage_splits[i]
                     doc.page_range = mortgage_info["page_range"]
                     doc.page_count = mortgage_info["page_count"]
-    
+
+
     def build_preview_data(self, packages, excel_data, deed_splits, mortgage_splits, 
-                         affidavit_splits, has_merged_docs):
-        """Build a comprehensive preview data structure with validation information"""
+                        affidavit_splits, has_merged_docs):
+        """Build a comprehensive preview data structure with enhanced validation information"""
         # Count how many packages will be created
         total_packages = len(packages)
         
@@ -154,7 +157,7 @@ class SimplifileBatchPreview(QObject):
             "packages": [],
             "validation": {
                 "missing_data": [],
-                "format_issues": self.excel_processor.validation_warnings,
+                "format_issues": self.excel_processor.validation_warnings,  # Include all Excel validation warnings
                 "document_issues": []
             }
         }
@@ -236,7 +239,8 @@ class SimplifileBatchProcessor(QObject):
     status = pyqtSignal(str)
     error = pyqtSignal(str)
     finished = pyqtSignal(dict)
-    
+
+
     def __init__(self, api_token=None, submitter_id=None, recipient_id=None):
         super().__init__()
         self.api_token = api_token
@@ -245,12 +249,14 @@ class SimplifileBatchProcessor(QObject):
         self.pdf_processor = SimplifilePDFProcessor()
         self.excel_processor = SimplifileExcelProcessor()
         self.preview_mode = True  # Default to preview mode
-    
+
+
     def process_batch(self, excel_path, deeds_path, mortgage_path, preview_mode=True, affidavits_path=None, skip_validation=True):
-        """Process batch upload"""
+        """Process batch upload with reduced status messages"""
         try:
             self.preview_mode = preview_mode
-            self.status.emit("Starting batch process...")
+            # Only emit a single status message to start
+            self.status.emit("Processing... Please wait")
             self.progress.emit(5)
             
             # Load Excel data
@@ -266,7 +272,6 @@ class SimplifileBatchProcessor(QObject):
             affidavit_files = []
             
             if deeds_path:
-                self.status.emit("Processing deed documents...")
                 deed_files = self.pdf_processor.split_deed_pdf(deeds_path)
                 if not deed_files and deeds_path:
                     self.error.emit("Failed to process deed documents")
@@ -275,7 +280,6 @@ class SimplifileBatchProcessor(QObject):
             self.progress.emit(30)
             
             if affidavits_path:
-                self.status.emit("Processing affidavit documents...")
                 affidavit_files = self.pdf_processor.split_affidavit_pdf(affidavits_path)
                 if not affidavit_files and affidavits_path:
                     self.error.emit("Failed to process affidavit documents")
@@ -283,13 +287,11 @@ class SimplifileBatchProcessor(QObject):
                 
                 # If we have both deed and affidavit files, merge them
                 if deed_files and affidavit_files:
-                    self.status.emit("Merging deed and affidavit documents...")
                     deed_files = self.pdf_processor.merge_deeds_and_affidavits(deed_files, affidavit_files)
             
             self.progress.emit(50)
             
             if mortgage_path:
-                self.status.emit("Processing mortgage satisfaction documents...")
                 mortgage_files = self.pdf_processor.split_mortgage_pdf(mortgage_path)
                 if not mortgage_files and mortgage_path:
                     self.error.emit("Failed to process mortgage satisfaction documents")
@@ -313,7 +315,7 @@ class SimplifileBatchProcessor(QObject):
                     "packages": [p.to_display_dict() for p in packages]
                 }
                     
-                self.status.emit("Batch processing preview completed successfully")
+                self.status.emit("Batch processing preview completed")
                 self.progress.emit(100)
                 self.finished.emit(package_info)
             else:
@@ -322,7 +324,7 @@ class SimplifileBatchProcessor(QObject):
                     self.error.emit("Missing API credentials. Cannot proceed with upload.")
                     return False
                 
-                self.status.emit("Starting actual API upload process...")
+                self.status.emit("Starting API upload...")
                 upload_results = self.upload_packages_to_api(packages)
                 
                 # Report results
@@ -339,7 +341,8 @@ class SimplifileBatchProcessor(QObject):
         finally:
             # Clean up temporary files
             self.pdf_processor.cleanup()
-    
+
+
     def assign_pdf_files_to_packages(self, packages, deed_files, mortgage_files):
         """Assign PDF files to the corresponding packages and documents"""
         for i, package in enumerate(packages):
@@ -357,11 +360,13 @@ class SimplifileBatchProcessor(QObject):
                         doc.file_path = mortgage_files[i]["path"]
                         doc.page_range = mortgage_files[i]["page_range"]
                         doc.page_count = mortgage_files[i]["page_count"]
-    
+
+
     def upload_packages_to_api(self, packages):
-        """Upload packages to Simplifile API with improved error handling"""
+        """Upload packages to Simplifile API with improved error handling and condensed output"""
         try:
-            self.status.emit("Starting API upload process...")
+            # Only emit one initial status message
+            self.status.emit("Uploading packages to API...")
             
             # Prepare results structure
             results = {
@@ -377,19 +382,18 @@ class SimplifileBatchProcessor(QObject):
             
             # Process each package
             for i, package in enumerate(packages):
-                package_name = package.package_name
                 package_id = package.package_id
                 documents = package.documents
                 
-                self.status.emit(f"Uploading package {i+1}/{len(packages)}: {package_name}")
+                # Update status less frequently - only every 5 packages or first/last
+                if i == 0 or i == len(packages)-1 or i % 5 == 0:
+                    self.status.emit(f"Uploading package {i+1}/{len(packages)}...")
+                
                 self.progress.emit(70 + (i * 30 // len(packages)))
                 
                 # Create API payload
                 api_payload = package.to_api_dict()
                 api_payload["recipient"] = self.recipient_id  # Add recipient ID
-                
-                # Log API payload for debugging
-                self.status.emit(f"API payload for {package_id}: {len(api_payload['documents'])} documents")
                 
                 # Make the actual API request
                 try:
@@ -417,11 +421,14 @@ class SimplifileBatchProcessor(QObject):
                                 "package_id": package_id,
                                 "status": "success",
                                 "message": "Package uploaded successfully",
-                                "package_name": package_name,
+                                "package_name": package.package_name,
                                 "document_count": len(documents),
                                 "api_response": response_data
                             })
                             results["summary"]["successful"] += 1
+                            
+                            # Emit a success status message
+                            self.status.emit(f"✅ Package {package.package_name} uploaded successfully")
                         else:
                             error_msg = response_data.get("message", "Unknown API error")
                             error_details = ""
@@ -434,16 +441,15 @@ class SimplifileBatchProcessor(QObject):
                                     error_message = err.get("message", "")
                                     errors_list.append(f"{error_path}: {error_message}")
                                 error_details = "; ".join(errors_list)
-                                
-                            # Log the full response for debugging
-                            detailed_error = f"API Error: {error_msg}\nDetails: {error_details}"
-                            self.status.emit(detailed_error)
-                                
+                            
+                            # Emit a more informative error message with complete details
+                            self.status.emit(f"❌ Package {package.package_name} failed: {error_msg} - {error_details}".strip(" -"))
+                                    
                             results["packages"].append({
                                 "package_id": package_id,
                                 "status": "api_error",
                                 "message": f"{error_msg} - {error_details}".strip(" -"),
-                                "package_name": package_name,
+                                "package_name": package.package_name,
                                 "document_count": len(documents),
                                 "api_response": response_data
                             })
@@ -453,35 +459,37 @@ class SimplifileBatchProcessor(QObject):
                         try:
                             error_data = response.json()
                             error_message = error_data.get("message", "")
-                            error_details = f"API Error: {error_message}"
                             
-                            # Log the full response for debugging
-                            detailed_error = f"HTTP Error {response.status_code}: {error_message}"
-                            self.status.emit(detailed_error)
+                            # Emit the complete error information
+                            self.status.emit(f"❌ Package {package.package_name} failed with HTTP {response.status_code}: {error_message}")
+                            
+                            # Include the raw response for debugging
+                            self.status.emit(f"Raw response: {json.dumps(error_data)}")
                         except:
-                            error_details = response.text[:200] + "..." if len(response.text) > 200 else response.text
-                            self.status.emit(f"HTTP Error {response.status_code}: {error_details}")
-                                
-                        results["packages"].append({
-                            "package_id": package_id,
-                            "status": "http_error",
-                            "message": f"HTTP error {response.status_code}: {error_details}",
-                            "package_name": package_name,
-                            "document_count": len(documents),
-                            "response_text": response.text
-                        })
-                        results["summary"]["failed"] += 1
-                    
+                            error_details = response.text
+                            self.status.emit(f"❌ Package {package.package_name} failed with HTTP {response.status_code}")
+                            self.status.emit(f"Raw response text: {error_details}")
+                                    
+                            results["packages"].append({
+                                "package_id": package_id,
+                                "status": "http_error",
+                                "message": f"HTTP error {response.status_code}",
+                                "package_name": package.package_name,
+                                "document_count": len(documents),
+                                "response_text": response.text
+                            })
+                            results["summary"]["failed"] += 1
+                        
                 except Exception as e:
                     # Get more detailed error information if available
                     error_info = str(e)
-                    self.status.emit(f"Exception during API call: {error_info}")
+                    self.status.emit(f"❌ Package {package.package_name} failed with exception: {error_info}")
                     
                     results["packages"].append({
                         "package_id": package_id,
                         "status": "exception",
                         "message": f"Exception: {error_info}",
-                        "package_name": package_name,
+                        "package_name": package.package_name,
                         "document_count": len(documents)
                     })
                     results["summary"]["failed"] += 1

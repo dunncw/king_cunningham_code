@@ -543,11 +543,62 @@ class BatchPreviewDialog(QDialog):
         """
         
         self.doc_preview.setHtml(html_content)
-        
+
+
     def create_validation_tab(self):
-        """Create the validation tab for data checks"""
+        """Create the validation tab for data checks with enhanced display"""
         widget = QWidget()
         layout = QVBoxLayout()
+        
+        # Add validation summary at the top
+        summary_group = QGroupBox("Validation Summary")
+        summary_layout = QVBoxLayout()
+        
+        # Get validation summary data
+        validation_summary = self.preview_data.get("validation_summary", {})
+        total_packages = validation_summary.get("total_packages", 0)
+        valid_packages = validation_summary.get("valid_packages", 0)
+        invalid_packages = validation_summary.get("invalid_packages", 0)
+        missing_data_issues = validation_summary.get("missing_data_issues", 0)
+        format_issues = validation_summary.get("format_issues", 0)
+        document_issues = validation_summary.get("document_issues", 0)
+        
+        # Create summary text
+        summary_text = QTextEdit()
+        summary_text.setReadOnly(True)
+        summary_text.setMaximumHeight(100)
+        
+        summary_html = f"""
+        <h3>Validation Summary</h3>
+        <table style='width:100%'>
+            <tr>
+                <td width='33%'><b>Total Packages:</b> {total_packages}</td>
+                <td width='33%'><b>Valid Packages:</b> {valid_packages}</td>
+                <td width='33%'><b>Invalid Packages:</b> {invalid_packages}</td>
+            </tr>
+            <tr>
+                <td width='33%'><b>Missing Data Issues:</b> {missing_data_issues}</td>
+                <td width='33%'><b>Format Issues:</b> {format_issues}</td>
+                <td width='33%'><b>Document Issues:</b> {document_issues}</td>
+            </tr>
+        </table>
+        """
+        
+        # Add warning if there are issues
+        if missing_data_issues > 0 or format_issues > 0 or document_issues > 0:
+            summary_html += """
+            <p style='color:orange'><b>Warning:</b> Some validation issues were detected. 
+            Review the issues below before proceeding with upload.</p>
+            """
+        else:
+            summary_html += """
+            <p style='color:green'><b>Success:</b> No validation issues detected.</p>
+            """
+        
+        summary_text.setHtml(summary_html)
+        summary_layout.addWidget(summary_text)
+        summary_group.setLayout(summary_layout)
+        layout.addWidget(summary_group)
         
         # Validation options
         options_group = QGroupBox("Validation Options")
@@ -578,9 +629,9 @@ class BatchPreviewDialog(QDialog):
         options_group.setLayout(options_layout)
         layout.addWidget(options_group)
         
-        # Validation results
-        results_group = QGroupBox("Validation Results")
-        results_layout = QVBoxLayout()
+        # Display validation issues - immediate display of Excel issues
+        issues_group = QGroupBox("Detected Issues")
+        issues_layout = QVBoxLayout()
         
         self.validation_results = QTableWidget()
         self.validation_results.setColumnCount(4)
@@ -592,13 +643,68 @@ class BatchPreviewDialog(QDialog):
         self.validation_results.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.validation_results.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         
-        results_layout.addWidget(self.validation_results)
-        results_group.setLayout(results_layout)
-        layout.addWidget(results_group, 1)
+        # Populate with existing validation issues from excel processing
+        validation_data = self.preview_data.get("validation", {})
+        validation_results = []
+        
+        # Add missing data items from preview
+        for issue in validation_data.get("missing_data", []):
+            validation_results.append({
+                "package": "Data Issue",
+                "check_type": "Missing Data",
+                "status": "Error",
+                "details": issue
+            })
+        
+        # Add format issues from preview - these come from Excel validation
+        for issue in validation_data.get("format_issues", []):
+            validation_results.append({
+                "package": "Format Issue",
+                "check_type": "Data Format",
+                "status": "Warning",
+                "details": issue
+            })
+        
+        # Add document issues from preview
+        for issue in validation_data.get("document_issues", []):
+            validation_results.append({
+                "package": "Document Issue",
+                "check_type": "Document Validation",
+                "status": "Error",
+                "details": issue
+            })
+        
+        # Display validation results
+        self.validation_results.setRowCount(len(validation_results))
+        
+        for i, result in enumerate(validation_results):
+            # Package
+            self.validation_results.setItem(i, 0, QTableWidgetItem(result.get("package", "")))
+            
+            # Check Type
+            self.validation_results.setItem(i, 1, QTableWidgetItem(result.get("check_type", "")))
+            
+            # Status
+            status_item = QTableWidgetItem(result.get("status", ""))
+            if result.get("status") == "Error":
+                status_item.setBackground(QColor(255, 200, 200))
+            elif result.get("status") == "Warning":
+                status_item.setBackground(QColor(255, 255, 200))
+            else:
+                status_item.setBackground(QColor(200, 255, 200))
+            self.validation_results.setItem(i, 2, status_item)
+            
+            # Details
+            self.validation_results.setItem(i, 3, QTableWidgetItem(result.get("details", "")))
+        
+        issues_layout.addWidget(self.validation_results)
+        issues_group.setLayout(issues_layout)
+        layout.addWidget(issues_group, 1)
         
         widget.setLayout(layout)
         return widget
-    
+
+
     def show_package_details(self, row):
         """Show package details when a package is double-clicked"""
         packages = self.preview_data.get("packages", [])
@@ -609,7 +715,8 @@ class BatchPreviewDialog(QDialog):
         # Switch to details tab and select the package
         self.tab_widget.setCurrentIndex(1)
         self.package_selector.setCurrentIndex(row)
-    
+
+
     def run_validation(self):
         """Run validation checks on the batch"""
         # Initialize validation results from preview data
