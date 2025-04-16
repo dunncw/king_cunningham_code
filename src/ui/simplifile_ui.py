@@ -6,18 +6,16 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
     QPushButton, QComboBox, QFormLayout, QFileDialog, QMessageBox, 
     QGroupBox, QTableWidget, QTableWidgetItem,
-    QTextEdit, QProgressBar, QFrame, QTabWidget, QCheckBox, QHeaderView
+    QTextEdit, QProgressBar, QFrame, QTabWidget, QApplication,
 )
-from PyQt6.QtCore import pyqtSignal, Qt, QDate
-from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtCore import (
+    pyqtSignal, Qt, QTimer
+)
 
-from simplifile.batch_processor import (
-    run_simplifile_batch_preview, 
-    run_simplifile_batch_process
-)
+from simplifile.batch_processor import run_simplifile_batch_preview, run_simplifile_batch_process
 from simplifile.api import run_simplifile_connection_test
-from simplifile.models import SimplifilePackage, SimplifileDocument, Party, LegalDescription, ReferenceInformation
 from .batch_preview_dialog import BatchPreviewDialog
+
 
 # County recipient mapping
 RECIPIENT_COUNTIES = [
@@ -464,7 +462,7 @@ class SimplifileUI(QWidget):
 
 
     def filter_status_updates(self, status_message):
-        """Filter status updates to reduce verbosity in output window"""
+        """Filter status updates with rate limiting to prevent UI freezing"""
         # Define messages to ignore (don't output these to the window)
         ignore_messages = [
             "Starting preview generation...",
@@ -479,6 +477,7 @@ class SimplifileUI(QWidget):
         
         # But only output to text area if it's not in the ignore list
         if status_message not in ignore_messages:
+            # Use the asynchronous update method
             self.update_output(status_message)
 
 
@@ -564,7 +563,7 @@ class SimplifileUI(QWidget):
 
 
     def process_batch_upload(self):
-        """Process and start the batch upload with actual API calls and reduced verbosity"""
+        """Process and start the batch upload with non-blocking UI updates"""
         # Validate API configuration
         api_token = self.api_token.text()
         submitter_id = self.submitter_id.text()
@@ -631,143 +630,247 @@ class SimplifileUI(QWidget):
         self.progress_bar.setValue(5)
         self.batch_upload_btn.setEnabled(False)
         
+        # Create a "processing" indicator for the status bar
+        self.show_processing_indicator()
+        
+        # Get file paths before passing to thread
+        excel_path = self.excel_file_path.text()
+        deeds_path = self.deeds_file_path.text()
+        mortgage_path = self.mortgage_file_path.text()
+        affidavits_path = self.affidavits_file_path.text() if hasattr(self, 'affidavits_file_path') else None
+        
         # Use the centralized batch processor to run the operation
         self.batch_thread, self.batch_worker = run_simplifile_batch_process(
-            self.excel_file_path.text(),
-            self.deeds_file_path.text(),
-            self.mortgage_file_path.text(),
+            excel_path,
+            deeds_path,
+            mortgage_path,
             api_token,
             submitter_id,
             recipient_id,
             preview_mode,
-            self.affidavits_file_path.text()
+            affidavits_path
         )
         
         # Connect signals with filtering for status messages
-        self.batch_worker.status.connect(self.filter_status_updates)
-        self.batch_worker.progress.connect(self.update_progress)
-        self.batch_worker.error.connect(self.show_error)
-        self.batch_worker.finished.connect(self.batch_process_finished)
+        # Update with correct PyQt6 connection type
+        self.batch_worker.status.connect(
+            self.filter_status_updates, 
+            type=Qt.ConnectionType.QueuedConnection
+        )
+        self.batch_worker.progress.connect(
+            self.update_progress, 
+            type=Qt.ConnectionType.QueuedConnection
+        )
+        self.batch_worker.error.connect(
+            self.show_error, 
+            type=Qt.ConnectionType.QueuedConnection
+        )
+        self.batch_worker.finished.connect(
+            self.batch_process_finished, 
+            type=Qt.ConnectionType.QueuedConnection
+        )
+        
+        # Connect thread finished to remove processing indicator
+        self.batch_thread.finished.connect(self.hide_processing_indicator)
         
         # Start thread
         self.batch_thread.start()
 
 
+    def show_processing_indicator(self):
+        """Show a processing indicator in the status bar"""
+        self.processing_label = QLabel("⏳ Processing...")
+        self.statusBar().addWidget(self.processing_label)
+        
+        # We can also show a "busy" cursor for the application
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        
+        # Start a timer to animate the indicator
+        self.processing_timer = QTimer()
+        self.processing_timer.timeout.connect(self.update_processing_indicator)
+        self.processing_timer.start(500)  # Update every 500ms
+        
+        # Set window title to indicate processing
+        self.setWindowTitle(f"{self.windowTitle()} - Processing...")
+
+
+    def update_processing_indicator(self):
+        """Animate the processing indicator"""
+        if hasattr(self, 'processing_label') and self.processing_label:
+            current_text = self.processing_label.text()
+            if "⏳ Processing..." == current_text:
+                self.processing_label.setText("⌛ Processing...")
+            else:
+                self.processing_label.setText("⏳ Processing...")
+
+
+    def hide_processing_indicator(self):
+        """Hide the processing indicator when done"""
+        if hasattr(self, 'processing_timer') and self.processing_timer:
+            self.processing_timer.stop()
+            
+        if hasattr(self, 'processing_label') and self.processing_label:
+            self.statusBar().removeWidget(self.processing_label)
+            self.processing_label = None
+        
+        # Restore normal cursor
+        QApplication.restoreOverrideCursor()
+        
+        # Restore original window title
+        if " - Processing..." in self.windowTitle():
+            self.setWindowTitle(self.windowTitle().replace(" - Processing...", ""))
+
+
     def batch_process_finished(self, result_data):
-        """Handle completion of batch processing with detailed error reporting"""
+        """Handle completion of batch processing with improved summary statistics"""
         self.batch_upload_btn.setEnabled(True)
         
-        if result_data.get("resultCode") == "SUCCESS":
-            self.update_output("Batch processing completed successfully.")
-            packages = result_data.get("packages", [])
-            self.update_output(f"Processed {len(packages)} packages.")
+        # Extract summary statistics
+        summary = result_data.get("summary", {})
+        total = summary.get("total", 0)
+        successful = summary.get("successful", 0)
+        failed = summary.get("failed", 0)
+        
+        # Get result status
+        result_code = result_data.get("resultCode", "")
+        
+        # Display clear summary statistics header
+        self.update_output("")  # Add blank line for separation
+        self.update_output("====== BATCH PROCESSING SUMMARY ======")
+        self.update_output(f"📊 Total packages: {total}")
+        self.update_output(f"✅ Successfully uploaded: {successful}")
+        self.update_output(f"❌ Failed to upload: {failed}")
+        
+        # Handle different result scenarios
+        if result_code == "SUCCESS":
+            self.update_output("✨ Status: COMPLETE SUCCESS")
+            self.update_output("======================================")
             
-            # Show details of each package
-            for package in packages:
-                status = package.get("status", "unknown")
-                msg = package.get("message", "")
-                package_id = package.get("package_id", "")
-                package_name = package.get("package_name", "")
+            # Show success message
+            QMessageBox.information(
+                self,
+                "Processing Complete",
+                f"Batch processing completed successfully!\n\n"
+                f"✅ All {successful} packages were uploaded successfully."
+            )
+            
+        elif result_code == "PARTIAL_SUCCESS":
+            self.update_output("⚠️ Status: PARTIAL SUCCESS")
+            self.update_output("======================================")
+            
+            # Only show details for failed packages
+            if failed > 0:
+                self.update_output("\n❌ Failed packages:")
+                packages = result_data.get("packages", [])
                 
-                if status == "success":
-                    self.update_output(f"✓ {package_id}: {package_name} - Uploaded successfully")
-                elif status == "preview_success":
-                    self.update_output(f"✓ {package_id}: {package_name} - Prepared successfully (preview mode)")
-                else:
-                    self.update_output(f"✗ {package_id}: {package_name} - Failed: {msg}")
-                    
-                    # Add detailed error information from API response if available
-                    if "api_response" in package:
-                        api_response = package.get("api_response", {})
-                        errors = api_response.get("errors", [])
-                        if errors:
-                            self.update_output("  Detailed errors:")
-                            for error in errors:
-                                path = error.get("path", "Unknown field")
-                                error_msg = error.get("message", "Unknown error")
-                                self.update_output(f"  • {path}: {error_msg}")
-                    
-                    # Add HTTP error details if available
-                    if "response_text" in package:
-                        self.update_output(f"  Response: {package.get('response_text', '')}")
-            
-            # Show success message with appropriate text based on result
-            if "summary" in result_data:
-                summary = result_data["summary"]
-                total = summary.get("total", len(packages))
-                successful = summary.get("successful", 0)
-                failed = summary.get("failed", 0)
+                # Group failures by error type
+                error_groups = {}
+                for package in packages:
+                    if package.get("status") != "success":
+                        error_type = package.get("status", "unknown")
+                        package_name = package.get("package_name", "")
+                        
+                        if error_type not in error_groups:
+                            error_groups[error_type] = []
+                        
+                        error_groups[error_type].append(package_name)
                 
-                if failed > 0:
-                    error_dialog = QMessageBox(self)
-                    error_dialog.setWindowTitle("Processing Completed with Issues")
-                    error_dialog.setIcon(QMessageBox.Icon.Warning)
-                    
-                    # Create detailed message with package-specific errors
-                    detailed_msg = f"Batch processing completed with {successful} successful and {failed} failed packages.\n\nDetails:\n"
-                    for package in packages:
-                        if package.get("status") != "success" and package.get("status") != "preview_success":
-                            detailed_msg += f"\n{package.get('package_id')}: {package.get('message')}"
-                    
-                    error_dialog.setText(detailed_msg)
-                    error_dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
-                    error_dialog.exec()
-                else:
-                    QMessageBox.information(self, "Processing Complete", 
-                                        f"Batch processing completed successfully. {successful} packages processed.")
-        elif result_data.get("resultCode") == "PARTIAL_SUCCESS":
-            # Handle partial success
-            self.update_output(f"Batch processing completed with partial success: {result_data.get('message', '')}")
+                # Display error summary by group
+                for error_type, package_list in error_groups.items():
+                    self.update_output(f"\n  Error type: {error_type.upper()} ({len(package_list)} packages)")
+                    # Show first 5 packages of this error type
+                    for i, package_name in enumerate(package_list):
+                        if i < 5:
+                            self.update_output(f"    • {package_name}")
+                        elif i == 5:
+                            self.update_output(f"    • ... and {len(package_list) - 5} more")
+                            break
+                
+                # Show detailed warning dialog
+                QMessageBox.warning(
+                    self,
+                    "Partial Success",
+                    f"Batch processing completed with partial success.\n\n"
+                    f"✅ {successful} of {total} packages were uploaded successfully.\n"
+                    f"❌ {failed} of {total} packages failed.\n\n"
+                    f"See the output window for details on failed packages."
+                )
+            else:
+                # This shouldn't happen, but just in case
+                QMessageBox.information(
+                    self,
+                    "Processing Complete",
+                    f"Batch processing completed successfully!"
+                )
+                
+        else:  # FAILED or ERROR
+            self.update_output("🛑 Status: FAILED")
+            self.update_output("======================================")
             
-            # Show detailed warning with all errors
-            packages = result_data.get("packages", [])
-            error_msg = f"Some packages failed to upload:\n\n"
-            
-            for package in packages:
-                if package.get("status") != "success" and package.get("status") != "preview_success":
-                    error_msg += f"{package.get('package_id')}: {package.get('message')}\n"
-            
-            QMessageBox.warning(self, "Processing Completed with Issues", error_msg)
-        else:
-            # Handle failure with more detailed information
+            # Extract main error message
             error_msg = result_data.get("message", "Unknown error")
-            self.update_output(f"Batch processing failed: {error_msg}")
             
-            # Create detailed error report
-            detailed_error = "Batch processing failed\n\n"
-            detailed_error += f"Error: {error_msg}\n\n"
+            # Show error dialog with summary
+            QMessageBox.critical(
+                self,
+                "Processing Failed",
+                f"Batch processing failed.\n\n"
+                f"Error: {error_msg}\n\n"
+                f"See the output window for detailed error information."
+            )
             
-            # Add details for each package if available
+            # If there are packages with specific errors, summarize them
             packages = result_data.get("packages", [])
             if packages:
-                detailed_error += "Package details:\n"
+                # Group failures by error type
+                error_groups = {}
                 for package in packages:
-                    status = package.get("status", "unknown")
-                    msg = package.get("message", "")
-                    package_id = package.get("package_id", "")
-                    detailed_error += f"\n• {package_id} ({status}): {msg}"
-            
-            # Show error message dialog with scroll area for large error reports
-            from PyQt6.QtWidgets import QScrollArea, QDialog, QVBoxLayout, QTextEdit, QPushButton
-            
-            error_dialog = QDialog(self)
-            error_dialog.setWindowTitle("Processing Failed")
-            error_dialog.resize(600, 400)
-            
-            layout = QVBoxLayout()
-            
-            error_text = QTextEdit()
-            error_text.setReadOnly(True)
-            error_text.setText(detailed_error)
-            
-            close_btn = QPushButton("Close")
-            close_btn.clicked.connect(error_dialog.accept)
-            
-            layout.addWidget(error_text)
-            layout.addWidget(close_btn)
-            
-            error_dialog.setLayout(layout)
-            error_dialog.exec()
+                    error_type = package.get("status", "unknown")
+                    error_msg = package.get("message", "Unknown error")
+                    package_name = package.get("package_name", "")
+                    
+                    # Create a key based on both error type and message
+                    # This helps group similar errors together
+                    key = f"{error_type}: {error_msg[:50]}"
+                    
+                    if key not in error_groups:
+                        error_groups[key] = {
+                            "count": 0,
+                            "type": error_type,
+                            "message": error_msg,
+                            "examples": []
+                        }
+                    
+                    error_groups[key]["count"] += 1
+                    if len(error_groups[key]["examples"]) < 3:
+                        error_groups[key]["examples"].append(package_name)
+                
+                # Display error summary by group
+                self.update_output("\n🔍 Error analysis:")
+                for key, info in error_groups.items():
+                    self.update_output(f"\n  {info['type'].upper()} ({info['count']} packages):")
+                    self.update_output(f"    Message: {info['message']}")
+                    if info["examples"]:
+                        self.update_output(f"    Examples: {', '.join(info['examples'])}" + 
+                                        (f" and {info['count'] - len(info['examples'])} more" 
+                                        if info['count'] > len(info['examples']) else ""))
+        
+        # Always produce final outcome statement
+        self.update_output("\n📋 Final outcome:")
+        if successful == total:
+            self.update_output(f"  ✅ All {total} packages were processed successfully.")
+        elif successful > 0:
+            self.update_output(f"  ⚠️ {successful} of {total} packages were successful, {failed} failed.")
+        else:
+            self.update_output(f"  ❌ All {total} packages failed to process.")
+
+
+    def copy_to_clipboard(self, text):
+        """Helper method to copy text to clipboard"""
+        clipboard = QApplication.clipboard()
+        clipboard.setText(text)
+        QMessageBox.information(self, "Copied", "Error report copied to clipboard")
+
 
     def clear_batch(self):
         """Clear batch upload form"""
@@ -992,6 +1095,7 @@ class SimplifileUI(QWidget):
         else:
             self.update_output(f"Upload completed with errors. Result code: {response_data.get('resultCode', 'Unknown')}")
 
+
     def save_api_settings(self):
         """Save API settings to config"""
         self.config["api_token"] = self.api_token.text()
@@ -1003,30 +1107,123 @@ class SimplifileUI(QWidget):
         else:
             self.update_output("Error saving API configuration")
 
+
     def update_progress(self, value):
-        """Update the progress bar"""
-        self.progress_bar.setValue(value)
-    
+        """Update the progress bar with rate limiting to prevent UI freezing"""
+        # Don't update progress bar too frequently - can cause UI freezing
+        current_time = datetime.now()
+        should_update = True
+        
+        # Rate limit updates to reduce UI pressure (only for small increments)
+        if hasattr(self, '_last_progress_update'):
+            time_diff = (current_time - self._last_progress_update).total_seconds()
+            value_diff = abs(value - self._last_progress_value)
+            
+            # Only update if it's been at least 0.1 seconds or the change is significant
+            if time_diff < 0.1 and value_diff < 5:
+                should_update = False
+        
+        if should_update:
+            self.progress_bar.setValue(value)
+            self._last_progress_update = current_time
+            self._last_progress_value = value
+        
+        # Process events occasionally to keep UI responsive
+        QApplication.processEvents()
+
+
     def update_status(self, status):
         """Update the status label"""
         self.status_label.setText(status)
         self.update_output(status)
-    
+
+
     def update_output(self, message):
-        """Add a message to the output text area"""
+        """Add a message to the output text area with enhanced formatting"""
         timestamp = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
-        self.output_text.append(f"{timestamp} {message}")
+        
+        # Check for error/success indicators to add color formatting
+        html_message = message
+        if "❌" in message or "Error:" in message or "Failed:" in message:
+            # Format error messages in red
+            html_message = f'<span style="color: #d9534f;">{message}</span>'
+        elif "✅" in message or "Success" in message:
+            # Format success messages in green
+            html_message = f'<span style="color: #5cb85c;">{message}</span>'
+        elif "⚠️" in message or "Warning:" in message:
+            # Format warning messages in orange
+            html_message = f'<span style="color: #f0ad4e;">{message}</span>'
+        elif "📊" in message:
+            # Format statistics in blue
+            html_message = f'<span style="color: #5bc0de;">{message}</span>'
+        
+        # Enable rich text if we're using HTML formatting
+        if html_message != message:
+            current_format = self.output_text.currentCharFormat()
+            self.output_text.setHtml(self.output_text.toHtml() + f"{timestamp} {html_message}<br>")
+        else:
+            # Plain text append for regular messages
+            self.output_text.append(f"{timestamp} {message}")
+        
+        # Scroll to the bottom
         self.output_text.verticalScrollBar().setValue(
             self.output_text.verticalScrollBar().maximum()
         )
-    
+
+
     def show_error(self, error_message):
-        """Display error message"""
-        self.update_output(f"Error: {error_message}")
+        """Display enhanced error message with better formatting"""
+        self.update_output(f"❌ Error: {error_message}")
+        
+        # Check for common API-related keywords to enhance the message
+        if "API" in error_message and ("token" in error_message.lower() or "unauthorized" in error_message.lower()):
+            error_message += "\n\nThis appears to be an API authentication issue. Please check your API token and submitter ID."
+        elif "connection" in error_message.lower():
+            error_message += "\n\nThis appears to be a network connection issue. Please check your internet connection."
+        elif "timeout" in error_message.lower():
+            error_message += "\n\nThe request timed out. This could be due to large files or server issues."
+        
         QMessageBox.critical(self, "Process Error", error_message)
         self.upload_btn.setEnabled(True)
         self.batch_upload_btn.setEnabled(True)
-    
+
+
+    def update_output(self, message):
+        """Add a message to the output text area with efficient UI updates"""
+        # Use QTimer.singleShot to process UI updates on the main thread without blocking
+        QTimer.singleShot(0, lambda: self._do_update_output(message))
+
+
+    def _do_update_output(self, message):
+        """Actual implementation of update_output to be run in the main thread"""
+        timestamp = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
+        
+        # Check for error/success indicators to add color formatting
+        html_message = message
+        if "❌" in message or "Error:" in message or "Failed:" in message:
+            # Format error messages in red
+            html_message = f'<span style="color: #d9534f;">{message}</span>'
+        elif "✅" in message or "Success" in message:
+            # Format success messages in green
+            html_message = f'<span style="color: #5cb85c;">{message}</span>'
+        elif "⚠️" in message or "Warning:" in message:
+            # Format warning messages in orange
+            html_message = f'<span style="color: #f0ad4e;">{message}</span>'
+        elif "📊" in message:
+            # Format statistics in blue
+            html_message = f'<span style="color: #5bc0de;">{message}</span>'
+        
+        # Enable rich text if we're using HTML formatting
+        if html_message != message:
+            self.output_text.insertHtml(f"{timestamp} {html_message}<br>")
+        else:
+            # Plain text append for regular messages
+            self.output_text.append(f"{timestamp} {message}")
+        
+        # Scroll to the bottom - avoid using full scrollbar calculation which can be expensive
+        self.output_text.ensureCursorVisible()
+
+
     def clear_all(self):
         """Clear all input fields and documents"""
         reply = QMessageBox.question(self, "Confirm Clear", 
@@ -1049,3 +1246,200 @@ class SimplifileUI(QWidget):
         self.status_label.setText("Ready")
         
         self.update_output("All data cleared")
+
+
+    def display_error_summary(self, result_data):
+        """Display a clear, concise summary of error categories"""
+        if "error_categories" not in result_data or not result_data["error_categories"]:
+            return
+        
+        self.update_output("\n🔍 Error Category Summary:")
+        
+        # Sort categories by count (highest first)
+        sorted_categories = sorted(
+            result_data["error_categories"].items(),
+            key=lambda x: x[1]["count"],
+            reverse=True
+        )
+        
+        for category_key, info in sorted_categories:
+            # Create a bar chart-like visualization
+            count = info["count"]
+            description = info["description"]
+            bar_length = min(40, count)  # Limit bar length for very large numbers
+            
+            # Create a simple ASCII bar
+            bar = "█" * bar_length
+            
+            self.update_output(f"  {description}: {count}")
+            self.update_output(f"  {bar}")
+            
+            # Show examples if available
+            if info["examples"]:
+                self.update_output("  Examples:")
+                for i, example in enumerate(info["examples"]):
+                    pkg_id = example.get("package_id", "")
+                    message = example.get("message", "")
+                    
+                    # Truncate very long messages
+                    if len(message) > 100:
+                        message = message[:100] + "..."
+                        
+                    self.update_output(f"    • Package {pkg_id}: {message}")
+
+
+    def batch_process_finished(self, result_data):
+        """Handle completion of batch processing with improved summary statistics and visualization"""
+        self.batch_upload_btn.setEnabled(True)
+    
+        # Process large result data asynchronously
+        QTimer.singleShot(0, lambda: self._process_batch_result(result_data))
+
+
+    def _process_batch_result(self, result_data):
+        """Process batch result data in the main thread without blocking"""
+        # Extract summary statistics
+        summary = result_data.get("summary", {})
+        total = summary.get("total", 0)
+        successful = summary.get("successful", 0)
+        failed = summary.get("failed", 0)
+        
+        # Get result status
+        result_code = result_data.get("resultCode", "")
+        
+        # Display clear summary statistics header
+        self.update_output("")  # Add blank line for separation
+        self.update_output("====== BATCH PROCESSING SUMMARY ======")
+        self.update_output(f"📊 Total packages: {total}")
+        self.update_output(f"✅ Successfully uploaded: {successful}")
+        self.update_output(f"❌ Failed to upload: {failed}")
+        
+        # Add a visual representation of success/failure ratio
+        if total > 0:
+            success_ratio = successful / total
+            bar_length = 30  # Total bar length
+            success_bar = "█" * int(bar_length * success_ratio)
+            fail_bar = "▒" * (bar_length - int(bar_length * success_ratio))
+            
+            # Colorize if possible with HTML formatting
+            success_percent = int(success_ratio * 100)
+            self.update_output(f"📈 Success rate: {success_percent}%")
+            self.update_output(f"  {success_bar}{fail_bar}")
+        
+        # Handle different result scenarios - use QTimer to avoid blocking
+        if result_code == "SUCCESS":
+            self.update_output("✨ Status: COMPLETE SUCCESS")
+            self.update_output("======================================")
+            
+            # Show success message using a timer to avoid blocking
+            QTimer.singleShot(100, lambda: QMessageBox.information(
+                self,
+                "Processing Complete",
+                f"Batch processing completed successfully!\n\n"
+                f"✅ All {successful} packages were uploaded successfully."
+            ))
+            
+        elif result_code == "PARTIAL_SUCCESS":
+            self.update_output("⚠️ Status: PARTIAL SUCCESS")
+            self.update_output("======================================")
+            
+            # Display error category summary - limit to most common errors
+            self._display_error_summary_limited(result_data)
+            
+            # Show detailed warning dialog after a short delay
+            QTimer.singleShot(100, lambda: QMessageBox.warning(
+                self,
+                "Partial Success",
+                f"Batch processing completed with partial success.\n\n"
+                f"✅ {successful} of {total} packages were uploaded successfully.\n"
+                f"❌ {failed} of {total} packages failed.\n\n"
+                f"See the output window for details on failed packages."
+            ))
+                
+        else:  # FAILED or ERROR
+            self.update_output("🛑 Status: FAILED")
+            self.update_output("======================================")
+            
+            # Display error category summary - limit to most common errors
+            self._display_error_summary_limited(result_data)
+            
+            # Extract main error message
+            error_msg = result_data.get("message", "Unknown error")
+            error_summary = result_data.get("error_summary", "")
+            
+            # Show error dialog with summary after a short delay
+            error_details = f"Error: {error_msg}"
+            if error_summary:
+                error_details += f"\n\nError summary: {error_summary}"
+                
+            QTimer.singleShot(100, lambda: QMessageBox.critical(
+                self,
+                "Processing Failed",
+                f"Batch processing failed.\n\n{error_details}\n\n"
+                f"See the output window for detailed error information."
+            ))
+        
+        # Always produce final outcome statement
+        self.update_output("\n📋 Final outcome:")
+        if successful == total:
+            self.update_output(f"  ✅ All {total} packages were processed successfully.")
+        elif successful > 0:
+            self.update_output(f"  ⚠️ {successful} of {total} packages were successful, {failed} failed.")
+        else:
+            self.update_output(f"  ❌ All {total} packages failed to process.")
+            
+        # Add timestamp
+        self.update_output(f"\n⏱️ Process completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+
+    def _display_error_summary_limited(self, result_data):
+        """Display a clear, concise summary of error categories with limits to prevent UI freezing"""
+        if "error_categories" not in result_data or not result_data["error_categories"]:
+            return
+        
+        self.update_output("\n🔍 Error Category Summary:")
+        
+        # Sort categories by count (highest first)
+        sorted_categories = sorted(
+            result_data["error_categories"].items(),
+            key=lambda x: x[1]["count"],
+            reverse=True
+        )
+        
+        # Limit to top 5 categories to prevent UI overload
+        for i, (category_key, info) in enumerate(sorted_categories):
+            if i >= 5:  # Only show top 5 categories
+                remaining = len(sorted_categories) - 5
+                if remaining > 0:
+                    self.update_output(f"  ... and {remaining} more error categories")
+                break
+                
+            # Create a bar chart-like visualization
+            count = info["count"]
+            description = info["description"]
+            bar_length = min(20, count)  # Limit bar length for very large numbers
+            
+            # Create a simple ASCII bar
+            bar = "█" * bar_length
+            
+            self.update_output(f"  {description}: {count}")
+            self.update_output(f"  {bar}")
+            
+            # Show examples if available - limit to 2 examples max
+            if info["examples"]:
+                self.update_output("  Examples:")
+                for i, example in enumerate(info["examples"]):
+                    if i >= 2:  # Only show 2 examples max
+                        remaining = len(info["examples"]) - 2
+                        if remaining > 0:
+                            self.update_output(f"    • ... and {remaining} more similar errors")
+                        break
+                        
+                    pkg_id = example.get("package_id", "")
+                    message = example.get("message", "")
+                    
+                    # Truncate very long messages
+                    if len(message) > 80:
+                        message = message[:80] + "..."
+                        
+                    self.update_output(f"    • Package {pkg_id}: {message}")
