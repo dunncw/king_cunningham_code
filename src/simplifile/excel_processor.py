@@ -6,14 +6,16 @@ from .models import SimplifilePackage, SimplifileDocument, Party, LegalDescripti
 
 class SimplifileExcelProcessor:
     """Handles all Excel data processing for Simplifile"""
-    
+
+
     def __init__(self):
         self.missing_required_columns = []
         self.missing_recommended_columns = []
         self.validation_warnings = []
-    
+
+
     def load_excel_file(self, excel_path: str) -> Optional[pd.DataFrame]:
-        """Load and validate Excel file for Simplifile processing"""
+        """Load and validate Excel file for Simplifile processing with enhanced validation"""
         try:
             if not os.path.exists(excel_path):
                 raise FileNotFoundError(f"Excel file not found: {excel_path}")
@@ -53,18 +55,59 @@ class SimplifileExcelProcessor:
                     if isinstance(value, str) and value != value.upper():
                         self.validation_warnings.append(f"Row {idx+2}: First name '{value}' is not in ALL CAPS")
             
-            # Check for empty cells in required columns
-            empty_accounts = data[data['Account'].isna()].index.tolist()
-            if empty_accounts:
-                self.validation_warnings.append(
-                    f"Empty account numbers in rows: {', '.join(map(str, [i+2 for i in empty_accounts]))}"
-                )
+            # Check for empty cells in required fields
+            for col in required_columns:
+                if col in data.columns:
+                    empty_cells = data[data[col].isna()].index.tolist()
+                    if empty_cells:
+                        self.validation_warnings.append(
+                            f"Empty {col} in rows: {', '.join(map(str, [i+2 for i in empty_cells]))}"
+                        )
+            
+            # Check for empty cells in important recommended columns
+            important_fields = ['Deed Book', 'Deed Page', 'Mortgage Book', 'Mortgage Page', 
+                            'GRANTOR/GRANTEE', 'LEGAL DESCRIPTION']
+            for col in important_fields:
+                if col in data.columns:
+                    empty_cells = data[data[col].isna()].index.tolist()
+                    if empty_cells:
+                        self.validation_warnings.append(
+                            f"Empty {col} in rows: {', '.join(map(str, [i+2 for i in empty_cells]))}"
+                        )
+            
+            # Special check for '&' indicator and matching Last Name #2/First Name #2
+            if '&' in data.columns and 'Last Name #2' in data.columns and 'First Name #2' in data.columns:
+                for idx, row in data.iterrows():
+                    # Check if & field indicates a second owner but Last Name #2 is missing
+                    if pd.notna(row['&']) and row['&'] == '&' and (pd.isna(row['Last Name #2']) or pd.isna(row['First Name #2'])):
+                        self.validation_warnings.append(
+                            f"Row {idx+2}: Has '&' indicator but missing second owner information"
+                        )
+                    # Check if Last Name #2 is provided but & indicator is missing
+                    elif (pd.notna(row['Last Name #2']) or pd.notna(row['First Name #2'])) and (pd.isna(row['&']) or row['&'] != '&'):
+                        self.validation_warnings.append(
+                            f"Row {idx+2}: Has second owner information but missing '&' indicator"
+                        )
+            
+            # Check for malformed organization entries (should use ORG: prefix)
+            if 'Last Name #1' in data.columns and 'First Name #1' in data.columns:
+                for idx, row in data.iterrows():
+                    name = str(row['Last Name #1']).strip() if pd.notna(row['Last Name #1']) else ""
+                    
+                    # Check for organizations that might not be correctly formatted
+                    if len(name.split()) > 2 and not name.startswith('ORG:'):
+                        if pd.isna(row['First Name #1']) or str(row['First Name #1']).strip() == "":
+                            # This is likely an organization name that should use the ORG: prefix
+                            self.validation_warnings.append(
+                                f"Row {idx+2}: '{name}' appears to be an organization but doesn't use 'ORG:' prefix"
+                            )
             
             return data
             
         except Exception as e:
             raise Exception(f"Error loading Excel file: {str(e)}")
-    
+
+
     def get_cell_value(self, row: pd.Series, column: str, default: str = "") -> str:
         """Safely extract cell value from Excel row"""
         try:
@@ -73,7 +116,8 @@ class SimplifileExcelProcessor:
             return default
         except:
             return default
-    
+
+
     def create_package_from_row(self, row: pd.Series, row_index: int) -> SimplifilePackage:
         """Create a SimplifilePackage from an Excel row"""
         # First create the package with basic information
@@ -188,7 +232,8 @@ class SimplifileExcelProcessor:
         self.validate_package(package)
         
         return package
-    
+
+
     def process_excel_data(self, excel_data: pd.DataFrame) -> List[SimplifilePackage]:
         """Process Excel data into SimplifilePackage objects"""
         packages = []
@@ -202,9 +247,10 @@ class SimplifileExcelProcessor:
                 print(f"Error processing row {i+2}: {str(e)}")
         
         return packages
-    
+
+
     def validate_package(self, package: SimplifilePackage) -> None:
-        """Validate a package and set validation status"""
+        """Validate a package with enhanced checks and set validation status"""
         package.is_valid = True
         package.validation_issues = []
         
@@ -217,10 +263,21 @@ class SimplifileExcelProcessor:
             package.is_valid = False
             package.validation_issues.append("Missing KC File No.")
         
+        # Check for organization name formatting issues
+        if package.grantor_grantee and not package.grantor_grantee.strip().isupper():
+            package.validation_issues.append(f"GRANTOR/GRANTEE '{package.grantor_grantee}' should be in ALL CAPS")
+            package.is_valid = False
+        
         # Validate documents
         for doc in package.documents:
             doc.is_valid = True
             doc.validation_issues = []
+            
+            # Check document name is in UPPERCASE
+            if doc.name and not doc.name.strip().isupper():
+                doc.is_valid = False
+                doc.validation_issues.append("Document name should be in ALL CAPS")
+                package.is_valid = False
             
             # Check required fields based on document type
             if doc.type == "Deed - Timeshare":
@@ -228,12 +285,32 @@ class SimplifileExcelProcessor:
                     doc.is_valid = False
                     doc.validation_issues.append("Missing deed book/page reference")
                     package.is_valid = False
+                
+                # Check for KING CUNNINGHAM LLC TR as grantor
+                has_king_cunningham = False
+                for grantor in doc.grantors:
+                    if grantor.is_organization and "KING CUNNINGHAM LLC TR" in grantor.name:
+                        has_king_cunningham = True
+                        break
+                        
+                if not has_king_cunningham:
+                    doc.is_valid = False
+                    doc.validation_issues.append("Missing required grantor: KING CUNNINGHAM LLC TR")
+                    package.is_valid = False
             
             elif doc.type == "Mortgage Satisfaction":
                 if not doc.reference_information or not doc.reference_information[0].book or not doc.reference_information[0].page:
                     doc.is_valid = False
                     doc.validation_issues.append("Missing mortgage book/page reference")
                     package.is_valid = False
+                
+                # Check that KING CUNNINGHAM LLC TR is NOT a grantor for mortgage satisfaction
+                for grantor in doc.grantors:
+                    if grantor.is_organization and "KING CUNNINGHAM LLC TR" in grantor.name:
+                        doc.is_valid = False
+                        doc.validation_issues.append("KING CUNNINGHAM LLC TR should not be a grantor for Mortgage Satisfaction")
+                        package.is_valid = False
+                        break
             
             # Check required parties
             if not doc.grantors:
@@ -244,4 +321,10 @@ class SimplifileExcelProcessor:
             if not doc.grantees:
                 doc.is_valid = False
                 doc.validation_issues.append("Missing grantees")
+                package.is_valid = False
+            
+            # Check legal descriptions
+            if not doc.legal_descriptions or not doc.legal_descriptions[0].description.strip():
+                doc.is_valid = False
+                doc.validation_issues.append("Missing legal description")
                 package.is_valid = False
