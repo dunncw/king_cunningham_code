@@ -4,6 +4,7 @@ import json
 import requests
 import base64
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
+from PyQt6.QtWidgets import QApplication
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -380,286 +381,303 @@ class SimplifileBatchProcessor(QObject):
                 "error_categories": {}  # Add categorized errors for better summary
             }
             
-            # Process each package
-            for i, package in enumerate(packages):
-                package_name = package.package_name
-                package_id = package.package_id
-                documents = package.documents
+            # Process packages in smaller batches
+            batch_size = 5  # Process 5 packages before yielding control
+            for batch_idx in range(0, len(packages), batch_size):
+                batch_end = min(batch_idx + batch_size, len(packages))
+                batch = packages[batch_idx:batch_end]
                 
-                # Update progress
-                if i == 0 or i == len(packages)-1 or i % 5 == 0:
-                    self.status.emit(f"Uploading package {i+1}/{len(packages)}...")
+                # Update status for this batch
+                self.status.emit(f"Processing packages {batch_idx+1}-{batch_end} of {len(packages)}...")
+                self.progress.emit(70 + (batch_idx * 30 // len(packages)))
                 
-                self.progress.emit(70 + (i * 30 // len(packages)))
-                
-                # Create API payload
-                api_payload = package.to_api_dict()
-                api_payload["recipient"] = self.recipient_id  # Add recipient ID
-                
-                # Make the actual API request
-                try:
-                    # Build API URL
-                    base_url = f"https://api.simplifile.com/sf/rest/api/erecord/submitters/{self.submitter_id}/packages/create"
+                # Process each package in the batch
+                for i, package in enumerate(batch):
+                    package_name = package.package_name
+                    package_id = package.package_id
+                    documents = package.documents
                     
-                    headers = {
-                        "Content-Type": "application/json",
-                        "api_token": self.api_token
-                    }
+                    # Update progress
+                    if i == 0 or i == len(batch)-1 or i % 2 == 0:
+                        self.status.emit(f"Uploading package {batch_idx+i+1}/{len(packages)}...")
                     
-                    # Post to API
-                    response = requests.post(
-                        base_url,
-                        headers=headers,
-                        data=json.dumps(api_payload),
-                        timeout=300  # 5 minute timeout for large packages
-                    )
+                    # Process UI events frequently to keep UI responsive
+                    QApplication.processEvents()
                     
-                    # Process response
-                    if response.status_code == 200:
-                        response_data = response.json()
-                        if response_data.get("resultCode") == "SUCCESS":
-                            results["packages"].append({
-                                "package_id": package_id,
-                                "status": "success",
-                                "message": "Package uploaded successfully",
-                                "package_name": package_name,
-                                "document_count": len(documents),
-                                "api_response": response_data
-                            })
-                            results["summary"]["successful"] += 1
-                        else:
-                            # Enhanced error categorization
-                            error_msg = response_data.get("message", "Unknown API error")
-                            error_details = []
-                            
-                            # Extract all error information available
-                            if "errors" in response_data:
-                                for err in response_data.get("errors", []):
-                                    error_path = err.get("path", "Unknown field")
-                                    error_message = err.get("message", "Unknown error")
-                                    error_details.append(f"{error_path}: {error_message}")
-                            
-                            # If we have specific errors, join them into a single string
-                            error_details_str = "; ".join(error_details) if error_details else ""
-                            
-                            # Create error category for grouping similar errors
-                            error_category = "api_error"
-                            error_subcategory = "unknown"
-                            
-                            # Try to detect common error patterns for categorization
-                            if "validation" in error_msg.lower() or "required" in error_msg.lower():
-                                error_subcategory = "validation"
-                            elif "unauthorized" in error_msg.lower() or "authentication" in error_msg.lower():
-                                error_subcategory = "auth"
-                            elif "not found" in error_msg.lower():
-                                error_subcategory = "not_found"
-                            
-                            # Create composite category
-                            category_key = f"{error_category}_{error_subcategory}"
-                            
-                            # Update error categories count
-                            if category_key not in results["error_categories"]:
-                                results["error_categories"][category_key] = {
-                                    "count": 0,
-                                    "description": f"API {error_subcategory} error",
-                                    "examples": []
-                                }
-                            
-                            results["error_categories"][category_key]["count"] += 1
-                            
-                            # Add to examples if we have room
-                            if len(results["error_categories"][category_key]["examples"]) < 3:
-                                example = {
+                    # Create API payload
+                    api_payload = package.to_api_dict()
+                    api_payload["recipient"] = self.recipient_id  # Add recipient ID
+                    
+                    # Make the actual API request
+                    try:
+                        # Build API URL
+                        base_url = f"https://api.simplifile.com/sf/rest/api/erecord/submitters/{self.submitter_id}/packages/create"
+                        
+                        headers = {
+                            "Content-Type": "application/json",
+                            "api_token": self.api_token
+                        }
+                        
+                        # Post to API
+                        response = requests.post(
+                            base_url,
+                            headers=headers,
+                            data=json.dumps(api_payload),
+                            timeout=300  # 5 minute timeout for large packages
+                        )
+                        
+                        # Process response
+                        if response.status_code == 200:
+                            response_data = response.json()
+                            if response_data.get("resultCode") == "SUCCESS":
+                                results["packages"].append({
                                     "package_id": package_id,
-                                    "message": error_msg
-                                }
-                                results["error_categories"][category_key]["examples"].append(example)
+                                    "status": "success",
+                                    "message": "Package uploaded successfully",
+                                    "package_name": package_name,
+                                    "document_count": len(documents),
+                                    "api_response": response_data
+                                })
+                                results["summary"]["successful"] += 1
+                            else:
+                                # Enhanced error categorization
+                                error_msg = response_data.get("message", "Unknown API error")
+                                error_details = []
                                 
-                            detailed_error = f"{error_msg} {error_details_str}".strip()
-                            if not detailed_error:
-                                detailed_error = f"API returned error with no message details"
+                                # Extract all error information available
+                                if "errors" in response_data:
+                                    for err in response_data.get("errors", []):
+                                        error_path = err.get("path", "Unknown field")
+                                        error_message = err.get("message", "Unknown error")
+                                        error_details.append(f"{error_path}: {error_message}")
                                 
-                            self.status.emit(f"❌ Package {package_name} failed: {detailed_error}")
+                                # If we have specific errors, join them into a single string
+                                error_details_str = "; ".join(error_details) if error_details else ""
+                                
+                                # Create error category for grouping similar errors
+                                error_category = "api_error"
+                                error_subcategory = "unknown"
+                                
+                                # Try to detect common error patterns for categorization
+                                if "validation" in error_msg.lower() or "required" in error_msg.lower():
+                                    error_subcategory = "validation"
+                                elif "unauthorized" in error_msg.lower() or "authentication" in error_msg.lower():
+                                    error_subcategory = "auth"
+                                elif "not found" in error_msg.lower():
+                                    error_subcategory = "not_found"
+                                
+                                # Create composite category
+                                category_key = f"{error_category}_{error_subcategory}"
+                                
+                                # Update error categories count
+                                if category_key not in results["error_categories"]:
+                                    results["error_categories"][category_key] = {
+                                        "count": 0,
+                                        "description": f"API {error_subcategory} error",
+                                        "examples": []
+                                    }
+                                
+                                results["error_categories"][category_key]["count"] += 1
+                                
+                                # Add to examples if we have room
+                                if len(results["error_categories"][category_key]["examples"]) < 3:
+                                    example = {
+                                        "package_id": package_id,
+                                        "message": error_msg
+                                    }
+                                    results["error_categories"][category_key]["examples"].append(example)
                                     
-                            results["packages"].append({
-                                "package_id": package_id,
-                                "status": error_category,
-                                "status_subcategory": error_subcategory,
-                                "message": detailed_error,
-                                "package_name": package_name,
-                                "document_count": len(documents),
-                                "api_response": response_data,
-                                "raw_response": json.dumps(response_data)
-                            })
+                                detailed_error = f"{error_msg} {error_details_str}".strip()
+                                if not detailed_error:
+                                    detailed_error = f"API returned error with no message details"
+                                    
+                                self.status.emit(f"❌ Package {package_name} failed: {detailed_error}")
+                                        
+                                results["packages"].append({
+                                    "package_id": package_id,
+                                    "status": error_category,
+                                    "status_subcategory": error_subcategory,
+                                    "message": detailed_error,
+                                    "package_name": package_name,
+                                    "document_count": len(documents),
+                                    "api_response": response_data,
+                                    "raw_response": json.dumps(response_data)
+                                })
+                                
+                                results["summary"]["failed"] += 1
+                        else:
+                            # Enhanced HTTP error categorization
+                            error_category = "http_error"
+                            error_subcategory = str(response.status_code)
+                            
+                            try:
+                                # Try to parse as JSON first
+                                error_data = response.json()
+                                error_message = error_data.get("message", f"HTTP Error {response.status_code}")
+                                
+                                # Update error categories count
+                                category_key = f"{error_category}_{error_subcategory}"
+                                if category_key not in results["error_categories"]:
+                                    results["error_categories"][category_key] = {
+                                        "count": 0,
+                                        "description": f"HTTP {response.status_code} error",
+                                        "examples": []
+                                    }
+                                
+                                results["error_categories"][category_key]["count"] += 1
+                                
+                                # Add to examples if we have room
+                                if len(results["error_categories"][category_key]["examples"]) < 3:
+                                    example = {
+                                        "package_id": package_id,
+                                        "message": error_message
+                                    }
+                                    results["error_categories"][category_key]["examples"].append(example)
+                                
+                                self.status.emit(f"❌ Package {package_name} failed: HTTP Error {response.status_code}: {error_message}")
+                                
+                                results["packages"].append({
+                                    "package_id": package_id,
+                                    "status": error_category,
+                                    "status_subcategory": error_subcategory,
+                                    "message": f"HTTP Error {response.status_code}: {error_message}",
+                                    "package_name": package_name,
+                                    "document_count": len(documents),
+                                    "response_json": error_data,
+                                    "raw_response": json.dumps(error_data)
+                                })
+                            except json.JSONDecodeError:
+                                # If not JSON, use text response
+                                error_text = response.text
+                                
+                                # Update error categories count
+                                category_key = f"{error_category}_{error_subcategory}"
+                                if category_key not in results["error_categories"]:
+                                    results["error_categories"][category_key] = {
+                                        "count": 0,
+                                        "description": f"HTTP {response.status_code} error",
+                                        "examples": []
+                                    }
+                                
+                                results["error_categories"][category_key]["count"] += 1
+                                
+                                # Add to examples if we have room
+                                if len(results["error_categories"][category_key]["examples"]) < 3:
+                                    example = {
+                                        "package_id": package_id,
+                                        "message": error_text[:100] + ("..." if len(error_text) > 100 else "")
+                                    }
+                                    results["error_categories"][category_key]["examples"].append(example)
+                                
+                                self.status.emit(f"❌ Package {package_name} failed: HTTP Error {response.status_code}")
+                                
+                                results["packages"].append({
+                                    "package_id": package_id,
+                                    "status": error_category,
+                                    "status_subcategory": error_subcategory,
+                                    "message": f"HTTP Error {response.status_code}",
+                                    "package_name": package_name,
+                                    "document_count": len(documents),
+                                    "response_text": error_text
+                                })
                             
                             results["summary"]["failed"] += 1
-                    else:
-                        # Enhanced HTTP error categorization
-                        error_category = "http_error"
-                        error_subcategory = str(response.status_code)
+                            
+                    except requests.RequestException as req_err:
+                        # Enhanced request exception categorization
+                        error_category = "request_error"
+                        error_subcategory = "general"
                         
-                        try:
-                            # Try to parse as JSON first
-                            error_data = response.json()
-                            error_message = error_data.get("message", f"HTTP Error {response.status_code}")
-                            
-                            # Update error categories count
-                            category_key = f"{error_category}_{error_subcategory}"
-                            if category_key not in results["error_categories"]:
-                                results["error_categories"][category_key] = {
-                                    "count": 0,
-                                    "description": f"HTTP {response.status_code} error",
-                                    "examples": []
-                                }
-                            
-                            results["error_categories"][category_key]["count"] += 1
-                            
-                            # Add to examples if we have room
-                            if len(results["error_categories"][category_key]["examples"]) < 3:
-                                example = {
-                                    "package_id": package_id,
-                                    "message": error_message
-                                }
-                                results["error_categories"][category_key]["examples"].append(example)
-                            
-                            self.status.emit(f"❌ Package {package_name} failed: HTTP Error {response.status_code}: {error_message}")
-                            
-                            results["packages"].append({
+                        # Determine more specific subcategory
+                        if isinstance(req_err, requests.ConnectionError):
+                            error_subcategory = "connection"
+                            error_message = f"Connection error: Failed to connect to Simplifile API"
+                        elif isinstance(req_err, requests.Timeout):
+                            error_subcategory = "timeout"
+                            error_message = f"Timeout error: The request took too long to complete"
+                        elif isinstance(req_err, requests.TooManyRedirects):
+                            error_subcategory = "redirect"
+                            error_message = f"Redirect error: Too many redirects"
+                        else:
+                            error_message = f"Request error: {str(req_err)}"
+                        
+                        # Update error categories count
+                        category_key = f"{error_category}_{error_subcategory}"
+                        if category_key not in results["error_categories"]:
+                            results["error_categories"][category_key] = {
+                                "count": 0,
+                                "description": f"{error_subcategory.capitalize()} error",
+                                "examples": []
+                            }
+                        
+                        results["error_categories"][category_key]["count"] += 1
+                        
+                        # Add to examples if we have room
+                        if len(results["error_categories"][category_key]["examples"]) < 3:
+                            example = {
                                 "package_id": package_id,
-                                "status": error_category,
-                                "status_subcategory": error_subcategory,
-                                "message": f"HTTP Error {response.status_code}: {error_message}",
-                                "package_name": package_name,
-                                "document_count": len(documents),
-                                "response_json": error_data,
-                                "raw_response": json.dumps(error_data)
-                            })
-                        except json.JSONDecodeError:
-                            # If not JSON, use text response
-                            error_text = response.text
-                            
-                            # Update error categories count
-                            category_key = f"{error_category}_{error_subcategory}"
-                            if category_key not in results["error_categories"]:
-                                results["error_categories"][category_key] = {
-                                    "count": 0,
-                                    "description": f"HTTP {response.status_code} error",
-                                    "examples": []
-                                }
-                            
-                            results["error_categories"][category_key]["count"] += 1
-                            
-                            # Add to examples if we have room
-                            if len(results["error_categories"][category_key]["examples"]) < 3:
-                                example = {
-                                    "package_id": package_id,
-                                    "message": error_text[:100] + ("..." if len(error_text) > 100 else "")
-                                }
-                                results["error_categories"][category_key]["examples"].append(example)
-                            
-                            self.status.emit(f"❌ Package {package_name} failed: HTTP Error {response.status_code}")
-                            
-                            results["packages"].append({
-                                "package_id": package_id,
-                                "status": error_category,
-                                "status_subcategory": error_subcategory,
-                                "message": f"HTTP Error {response.status_code}",
-                                "package_name": package_name,
-                                "document_count": len(documents),
-                                "response_text": error_text
-                            })
+                                "message": error_message
+                            }
+                            results["error_categories"][category_key]["examples"].append(example)
+                        
+                        self.status.emit(f"❌ Package {package_name} failed: {error_message}")
+                        
+                        results["packages"].append({
+                            "package_id": package_id,
+                            "status": error_category,
+                            "status_subcategory": error_subcategory,
+                            "message": error_message,
+                            "package_name": package_name,
+                            "document_count": len(documents),
+                            "error_details": str(req_err)
+                        })
                         
                         results["summary"]["failed"] += 1
                         
-                except requests.RequestException as req_err:
-                    # Enhanced request exception categorization
-                    error_category = "request_error"
-                    error_subcategory = "general"
-                    
-                    # Determine more specific subcategory
-                    if isinstance(req_err, requests.ConnectionError):
-                        error_subcategory = "connection"
-                        error_message = f"Connection error: Failed to connect to Simplifile API"
-                    elif isinstance(req_err, requests.Timeout):
-                        error_subcategory = "timeout"
-                        error_message = f"Timeout error: The request took too long to complete"
-                    elif isinstance(req_err, requests.TooManyRedirects):
-                        error_subcategory = "redirect"
-                        error_message = f"Redirect error: Too many redirects"
-                    else:
-                        error_message = f"Request error: {str(req_err)}"
-                    
-                    # Update error categories count
-                    category_key = f"{error_category}_{error_subcategory}"
-                    if category_key not in results["error_categories"]:
-                        results["error_categories"][category_key] = {
-                            "count": 0,
-                            "description": f"{error_subcategory.capitalize()} error",
-                            "examples": []
-                        }
-                    
-                    results["error_categories"][category_key]["count"] += 1
-                    
-                    # Add to examples if we have room
-                    if len(results["error_categories"][category_key]["examples"]) < 3:
-                        example = {
+                    except Exception as e:
+                        # General exception categorization
+                        error_category = "exception"
+                        error_subcategory = type(e).__name__
+                        error_message = f"Exception ({error_subcategory}): {str(e)}"
+                        
+                        # Update error categories count
+                        category_key = f"{error_category}_{error_subcategory}"
+                        if category_key not in results["error_categories"]:
+                            results["error_categories"][category_key] = {
+                                "count": 0,
+                                "description": f"{error_subcategory} exception",
+                                "examples": []
+                            }
+                        
+                        results["error_categories"][category_key]["count"] += 1
+                        
+                        # Add to examples if we have room
+                        if len(results["error_categories"][category_key]["examples"]) < 3:
+                            example = {
+                                "package_id": package_id,
+                                "message": str(e)
+                            }
+                            results["error_categories"][category_key]["examples"].append(example)
+                        
+                        self.status.emit(f"❌ Package {package_name} failed: {error_message}")
+                        
+                        results["packages"].append({
                             "package_id": package_id,
-                            "message": error_message
-                        }
-                        results["error_categories"][category_key]["examples"].append(example)
+                            "status": error_category,
+                            "status_subcategory": error_subcategory,
+                            "message": error_message,
+                            "package_name": package_name,
+                            "document_count": len(documents),
+                            "error_details": str(e)
+                        })
+                        
+                        results["summary"]["failed"] += 1
                     
-                    self.status.emit(f"❌ Package {package_name} failed: {error_message}")
-                    
-                    results["packages"].append({
-                        "package_id": package_id,
-                        "status": error_category,
-                        "status_subcategory": error_subcategory,
-                        "message": error_message,
-                        "package_name": package_name,
-                        "document_count": len(documents),
-                        "error_details": str(req_err)
-                    })
-                    
-                    results["summary"]["failed"] += 1
-                    
-                except Exception as e:
-                    # General exception categorization
-                    error_category = "exception"
-                    error_subcategory = type(e).__name__
-                    error_message = f"Exception ({error_subcategory}): {str(e)}"
-                    
-                    # Update error categories count
-                    category_key = f"{error_category}_{error_subcategory}"
-                    if category_key not in results["error_categories"]:
-                        results["error_categories"][category_key] = {
-                            "count": 0,
-                            "description": f"{error_subcategory} exception",
-                            "examples": []
-                        }
-                    
-                    results["error_categories"][category_key]["count"] += 1
-                    
-                    # Add to examples if we have room
-                    if len(results["error_categories"][category_key]["examples"]) < 3:
-                        example = {
-                            "package_id": package_id,
-                            "message": str(e)
-                        }
-                        results["error_categories"][category_key]["examples"].append(example)
-                    
-                    self.status.emit(f"❌ Package {package_name} failed: {error_message}")
-                    
-                    results["packages"].append({
-                        "package_id": package_id,
-                        "status": error_category,
-                        "status_subcategory": error_subcategory,
-                        "message": error_message,
-                        "package_name": package_name,
-                        "document_count": len(documents),
-                        "error_details": str(e)
-                    })
-                    
-                    results["summary"]["failed"] += 1
+                    # Process UI events after each package to keep UI responsive
+                    QApplication.processEvents()
+                
+                # Process events after each batch to ensure UI responsiveness
+                QApplication.processEvents()
             
             # Update final result code based on summary
             if results["summary"]["failed"] > 0:
@@ -682,6 +700,9 @@ class SimplifileBatchProcessor(QObject):
             # Post-processing: Add timing information
             results["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
+            # Final UI update
+            QApplication.processEvents()
+            
             return results
                 
         except Exception as e:
@@ -692,6 +713,9 @@ class SimplifileBatchProcessor(QObject):
             error_message = f"Error in API upload process: {str(e)}"
             self.error.emit(error_message)
             self.status.emit(f"Error traceback: {tb}")
+            
+            # Process UI events to ensure error message is shown
+            QApplication.processEvents()
             
             return {
                 "resultCode": "ERROR",
