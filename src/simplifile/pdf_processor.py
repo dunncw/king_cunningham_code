@@ -1,5 +1,6 @@
 import os
 import tempfile
+from PyQt6.QtWidgets import QApplication
 from PyPDF2 import PdfReader, PdfWriter
 from typing import List, Dict, Any, Optional, Tuple
 import shutil
@@ -54,6 +55,9 @@ class SimplifilePDFProcessor:
                     "page_range": f"{start_page+1}-{end_page}",
                     "page_count": end_page - start_page
                 })
+
+                if i % 5 == 0:
+                    QApplication.processEvents()
             
             return deed_files
             

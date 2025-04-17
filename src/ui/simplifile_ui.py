@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
     QPushButton, QComboBox, QFormLayout, QFileDialog, QMessageBox, 
     QGroupBox, QTableWidget, QTableWidgetItem,
-    QTextEdit, QProgressBar, QFrame, QTabWidget, QApplication,
+    QTextEdit, QProgressBar, QFrame, QTabWidget, QApplication
 )
 from PyQt6.QtCore import (
     pyqtSignal, Qt, QTimer
@@ -630,16 +630,20 @@ class SimplifileUI(QWidget):
         self.progress_bar.setValue(5)
         self.batch_upload_btn.setEnabled(False)
         
-        # Create a "processing" indicator for the status bar
+        # Show processing indicator and disable buttons
         self.show_processing_indicator()
+        self.batch_upload_btn.setEnabled(False)
         
-        # Get file paths before passing to thread
+        # Give UI time to update before starting the heavy work
+        QApplication.processEvents()
+        
+        # Get file paths
         excel_path = self.excel_file_path.text()
         deeds_path = self.deeds_file_path.text()
         mortgage_path = self.mortgage_file_path.text()
         affidavits_path = self.affidavits_file_path.text() if hasattr(self, 'affidavits_file_path') else None
         
-        # Use the centralized batch processor to run the operation
+        # Use the batch processor to run the operation
         self.batch_thread, self.batch_worker = run_simplifile_batch_process(
             excel_path,
             deeds_path,
@@ -651,8 +655,7 @@ class SimplifileUI(QWidget):
             affidavits_path
         )
         
-        # Connect signals with filtering for status messages
-        # Update with correct PyQt6 connection type
+        # Connect signals with QueuedConnection type to ensure they're processed correctly
         self.batch_worker.status.connect(
             self.filter_status_updates, 
             type=Qt.ConnectionType.QueuedConnection
@@ -670,17 +673,32 @@ class SimplifileUI(QWidget):
             type=Qt.ConnectionType.QueuedConnection
         )
         
-        # Connect thread finished to remove processing indicator
+        # Connect thread finished signal
         self.batch_thread.finished.connect(self.hide_processing_indicator)
         
         # Start thread
         self.batch_thread.start()
+        
+        # Process events again to ensure UI updates
+        QApplication.processEvents()
 
 
     def show_processing_indicator(self):
-        """Show a processing indicator in the status bar"""
-        self.processing_label = QLabel("⏳ Processing...")
-        self.statusBar().addWidget(self.processing_label)
+        """Show a processing indicator without using status bar"""
+        # Create a processing label in the UI itself instead of using status bar
+        if not hasattr(self, 'processing_indicator_layout'):
+            # Create a layout for the indicator if it doesn't exist
+            self.processing_indicator_layout = QHBoxLayout()
+            self.processing_label = QLabel("⏳ Processing...")
+            self.processing_indicator_layout.addWidget(self.processing_label)
+            
+            # Add to the main layout, just above the output area
+            main_layout = self.layout()
+            main_layout.insertLayout(main_layout.count()-1, self.processing_indicator_layout)
+        else:
+            # If layout exists, just update and show the label
+            self.processing_label.setText("⏳ Processing...")
+            self.processing_label.setVisible(True)
         
         # We can also show a "busy" cursor for the application
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -689,9 +707,6 @@ class SimplifileUI(QWidget):
         self.processing_timer = QTimer()
         self.processing_timer.timeout.connect(self.update_processing_indicator)
         self.processing_timer.start(500)  # Update every 500ms
-        
-        # Set window title to indicate processing
-        self.setWindowTitle(f"{self.windowTitle()} - Processing...")
 
 
     def update_processing_indicator(self):
@@ -710,15 +725,10 @@ class SimplifileUI(QWidget):
             self.processing_timer.stop()
             
         if hasattr(self, 'processing_label') and self.processing_label:
-            self.statusBar().removeWidget(self.processing_label)
-            self.processing_label = None
+            self.processing_label.setVisible(False)
         
         # Restore normal cursor
         QApplication.restoreOverrideCursor()
-        
-        # Restore original window title
-        if " - Processing..." in self.windowTitle():
-            self.setWindowTitle(self.windowTitle().replace(" - Processing...", ""))
 
 
     def batch_process_finished(self, result_data):
