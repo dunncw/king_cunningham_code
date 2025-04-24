@@ -5,11 +5,11 @@ Folder PATH listing for volume New Volume
 Volume serial number is 48F9-E785
 D:.
 │   main.py
-│
+│   
 ├───crg_automation
 │   │   crg.py
 │   │   excel_processor.py
-│   │
+│   │   
 │   └───__pycache__
 │           crg.cpython-312.pyc
 │           excel_processor.cpython-312.pyc
@@ -210,4 +210,49 @@ For each row in the spreadsheet:
 3. All packages should be created as drafts (not auto-submitted)
 4. Name formatting rules must be applied programmatically
 5. All text fields must be converted to uppercase before submission
+'''
+
+---
+
+However now i need to alter it to upload differently for different counties. I Still want to build a central data model and alter it based on the county we are uploading for. So adding or dropping fields as need. All of these per county changes should be made in a central area for the given county so tracking changes to the data model is easy and not distributed. Assume everything in 'Simplifile Batch Upload Process Guide' is in regards to Horry County, SC. and not I want to build out the ability to upload to Beaufort Count, GA. 
+
+here is how the uploads to Beaufort Count, GA should differ. And these changes should be enacted based on what the county selector is set to. 
+
+'''
+Beaufort Count, GA
+
+2. Upload and configure Deed document:
+   - Document type: 'DEED - HILTON HEAD TIMESHARE'
+   - Document name: "{Account} {Last Name #1} TD"
+   - Grantors (add all that apply):
+     * Always add "KING CUNNINGHAM LLC TR" as an orginization.
+     * Add value from GRANTOR/GRANTEE column
+     * Add owners from spreadsheet:
+       - First owner: {First Name #1} + {Last Name #1}
+       - Second owner (if "&" is present): {First Name #2} + {Last Name #2}
+         * if either owner name is org the upload value of just first name as an orginizaiton. 
+   - Grantee: Add owners from spreadsheet
+   - Consideration: Value from Consideration column (typically "0.00")
+   *Not Needed for Beaufort Count, GA Deeds*:
+   - Execution date: Value from Execution Date column
+   - Legal description: Value from LEGAL DESCRIPTION column append the parcelid to the end of it.
+   - Reference information:
+     * Type: "Deed - Timeshare"
+     * Book: Value from Deed Book column
+     * Page: Value from Deed Page column
+
+3. Add Mortgage Satisfaction document:
+   - Document type: 'MORT - SATISFACTION'
+   - Document name: "{Account} {Last Name #1} SAT"
+   - Grantors (owners from spreadsheet):
+     * First owner: {First Name #1} + {Last Name #1}
+     * Second owner (if "&" is present): {First Name #2} + {Last Name #2}
+   - Grantee: Value from GRANTOR/GRANTEE column
+   *Not Needed for Beaufort Count, GA Mortgage Satisfactions*:
+   - Execution date: Value from Execution Date column
+   - Legal description: Same as used for deed document
+   - Reference information:
+     * Type: "Mortgage Satisfaction"
+     * Book: Value from Mortgage Book column
+     * Page: Value from Mortgage Page column
 '''

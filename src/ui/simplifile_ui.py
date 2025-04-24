@@ -15,16 +15,17 @@ from PyQt6.QtCore import (
 from simplifile.batch_processor import run_simplifile_batch_preview, run_simplifile_batch_process
 from simplifile.api import run_simplifile_connection_test
 from .batch_preview_dialog import BatchPreviewDialog
+from simplifile.county_config import COUNTY_CONFIGS, get_county_config
 
 
-# County recipient mapping
-RECIPIENT_COUNTIES = [
-    {"id": "SCCE6P", "name": "Williamsburg County, SC"},
-    {"id": "GAC3TH", "name": "Fulton County, GA"},
-    {"id": "NCCHLB", "name": "Forsyth County, NC"},
-    {"id": "SCCY4G", "name": "Beaufort County, SC"},
-    {"id": "SCCP49", "name": "Horry County, SC"}
-]
+# # County recipient mapping
+# RECIPIENT_COUNTIES = [
+#     {"id": "SCCE6P", "name": "Williamsburg County, SC"},
+#     {"id": "GAC3TH", "name": "Fulton County, GA"},
+#     {"id": "NCCHLB", "name": "Forsyth County, NC"},
+#     {"id": "SCCY4G", "name": "Beaufort County, SC"},
+#     {"id": "SCCP49", "name": "Horry County, SC"}
+# ]
 
 class SimplifileUI(QWidget):
     start_simplifile_upload = pyqtSignal(str, str, str, dict, list)
@@ -150,27 +151,21 @@ class SimplifileUI(QWidget):
         # Add an empty/initial option
         self.recipient_combo.addItem("-- Select County --", "")
         
-        # Add all county options
-        for county in RECIPIENT_COUNTIES:
-            self.recipient_combo.addItem(county["name"], county["id"])
+        # Add all county options from config
+        for county_id, county_config in COUNTY_CONFIGS.items():
+            self.recipient_combo.addItem(county_config.COUNTY_NAME, county_id)
         
         # Set default from config if exists
         if self.config.get("recipient_id"):
-            # If we have a config value, find and select that county
-            county_found = False
-            for i, county in enumerate(RECIPIENT_COUNTIES, 1):  # Start from 1 because of empty item
-                if county["id"] == self.config["recipient_id"]:
+            for i in range(self.recipient_combo.count()):
+                if self.recipient_combo.itemData(i) == self.config["recipient_id"]:
                     self.recipient_combo.setCurrentIndex(i)
-                    county_found = True
                     break
-            
-            # If county wasn't found, default to the empty selection
-            if not county_found:
-                self.recipient_combo.setCurrentIndex(0)
-        else:
-            # No config value, default to the empty selection
-            self.recipient_combo.setCurrentIndex(0)
+
+        # Connect change signal to update county-specific UI elements
+        self.recipient_combo.currentIndexChanged.connect(self.update_county_specific_ui)
         
+        # Add to form layout
         api_layout.addRow("County:", self.recipient_combo)
         
         # Add buttons in a horizontal layout
@@ -190,6 +185,49 @@ class SimplifileUI(QWidget):
         
         api_group.setLayout(api_layout)
         return api_group
+
+
+    # Add a new method to update UI based on selected county
+    def update_county_specific_ui(self, index):
+        """Update UI elements based on selected county"""
+        county_id = self.recipient_combo.currentData()
+        if not county_id:
+            return
+            
+        # Get county configuration
+        county_config = get_county_config(county_id)
+        
+        # Update county-specific labels and hints in the UI
+        self.update_output(f"Selected county: {county_config.COUNTY_NAME}")
+        
+        # Update document type labels
+        if hasattr(self, 'deed_document_label'):
+            self.deed_document_label.setText(f"Deed Documents ({county_config.DEED_DOCUMENT_TYPE}):")
+            
+        if hasattr(self, 'mortgage_document_label'):
+            self.mortgage_document_label.setText(f"Mortgage Documents ({county_config.MORTGAGE_DOCUMENT_TYPE}):")
+        
+        # Update upload button text to include county name
+        if hasattr(self, 'batch_upload_btn'):
+            self.batch_upload_btn.setText(f"Process Batch Upload to {county_config.COUNTY_NAME}")
+        
+        # Show or hide fields based on county requirements
+        if hasattr(self, 'execution_date_field'):
+            self.execution_date_field.setVisible(county_config.DEED_REQUIRES_EXECUTION_DATE)
+            self.execution_date_label.setVisible(county_config.DEED_REQUIRES_EXECUTION_DATE)
+            
+        if hasattr(self, 'legal_desc_field'):
+            self.legal_desc_field.setVisible(county_config.DEED_REQUIRES_LEGAL_DESCRIPTION)
+            self.legal_desc_label.setVisible(county_config.DEED_REQUIRES_LEGAL_DESCRIPTION)
+            
+        # Update preview button to reflect county
+        if hasattr(self, 'preview_btn'):
+            self.preview_btn.setText(f"Generate Preview for {county_config.COUNTY_NAME}")
+            
+        # Save the selected county to config
+        self.config["recipient_id"] = county_id
+        self.save_config()
+
 
     def test_api_connection(self):
         """Test connection to Simplifile API with current credentials"""
@@ -223,6 +261,7 @@ class SimplifileUI(QWidget):
         # Start thread
         self.test_thread.start()
 
+
     def connection_test_finished(self, result):
         """Handle connection test completion"""
         # Extract test result from the dictionary
@@ -246,11 +285,13 @@ class SimplifileUI(QWidget):
             self.progress_bar.setValue(0)
             self.update_output("Connection test completed with unknown result")
 
+
     def show_connection_error(self, error_message):
         """Display connection error message"""
         self.update_output(f"Connection Error: {error_message}")
         QMessageBox.critical(self, "Connection Failed", error_message)
         self.progress_bar.setValue(0)
+
 
     def toggle_api_token_visibility(self):
         """Toggle the visibility of the API token"""
@@ -261,8 +302,9 @@ class SimplifileUI(QWidget):
             self.api_token.setEchoMode(QLineEdit.EchoMode.Password)
             self.toggle_api_token_btn.setText("Show")
 
+
     def setup_batch_upload_tab(self):
-        """Setup the batch upload tab (primary functionality)"""
+        """Setup the batch upload tab with county-specific labels"""
         batch_layout = QVBoxLayout()
         
         # File Selection Section
@@ -285,7 +327,7 @@ class SimplifileUI(QWidget):
         excel_layout.addWidget(excel_template_btn)
         files_layout.addRow("Excel File:", excel_layout)
         
-        # Deed Documents PDF Selection
+        # Deed Documents PDF Selection with county-specific label
         deeds_layout = QHBoxLayout()
         self.deeds_file_path = QLineEdit()
         self.deeds_file_path.setReadOnly(True)
@@ -293,7 +335,8 @@ class SimplifileUI(QWidget):
         deeds_browse_btn.clicked.connect(self.browse_deeds_file)
         deeds_layout.addWidget(self.deeds_file_path)
         deeds_layout.addWidget(deeds_browse_btn)
-        files_layout.addRow("Deed Documents (PDF):", deeds_layout)
+        self.deed_document_label = QLabel("Deed Documents (PDF):")
+        files_layout.addRow(self.deed_document_label, deeds_layout)
         
         # Affidavit Documents PDF Selection
         affidavits_layout = QHBoxLayout()
@@ -305,7 +348,7 @@ class SimplifileUI(QWidget):
         affidavits_layout.addWidget(affidavits_browse_btn)
         files_layout.addRow("Affidavits (PDF):", affidavits_layout)
         
-        # Mortgage Satisfaction PDF Selection
+        # Mortgage Satisfaction PDF Selection with county-specific label
         mortgage_layout = QHBoxLayout()
         self.mortgage_file_path = QLineEdit()
         self.mortgage_file_path.setReadOnly(True)
@@ -313,7 +356,8 @@ class SimplifileUI(QWidget):
         mortgage_browse_btn.clicked.connect(self.browse_mortgage_file)
         mortgage_layout.addWidget(self.mortgage_file_path)
         mortgage_layout.addWidget(mortgage_browse_btn)
-        files_layout.addRow("Mortgage Satisfactions (PDF):", mortgage_layout)
+        self.mortgage_document_label = QLabel("Mortgage Satisfactions (PDF):")
+        files_layout.addRow(self.mortgage_document_label, mortgage_layout)
         
         # Add files layout directly to batch layout
         batch_layout.addLayout(files_layout)
@@ -364,6 +408,10 @@ class SimplifileUI(QWidget):
         batch_layout.addStretch()
         
         self.batch_upload_tab.setLayout(batch_layout)
+        
+        # Update UI for initial county selection
+        self.update_county_specific_ui(self.recipient_combo.currentIndex())
+
 
     def setup_single_upload_tab(self):
         """Setup the single upload tab (existing simplified functionality)"""
@@ -425,7 +473,7 @@ class SimplifileUI(QWidget):
 
 
     def generate_enhanced_batch_preview(self):
-        """Generate enhanced preview of batch processing with reduced output messages"""
+        """Generate enhanced preview of batch processing with county-specific configuration"""
         # Check if all required files are selected
         if not self.excel_file_path.text():
             QMessageBox.warning(self, "Missing File", "Please select an Excel file.")
@@ -436,8 +484,14 @@ class SimplifileUI(QWidget):
                             "Please select at least one PDF file (Deeds or Mortgage Satisfactions).")
             return
         
-        # Run the enhanced preview generation
-        self.update_output("Generating enhanced batch preview...")
+        # Get selected county
+        county_id = self.recipient_combo.currentData()
+        if not county_id:
+            QMessageBox.warning(self, "County Not Selected", "Please select a county before generating preview.")
+            return
+        
+        # Run the enhanced preview generation with county ID
+        self.update_output(f"Generating batch preview for {get_county_config(county_id).COUNTY_NAME}...")
         self.progress_bar.setValue(5)
         self.preview_btn.setEnabled(False)
         
@@ -445,7 +499,8 @@ class SimplifileUI(QWidget):
             self.excel_file_path.text(),
             self.deeds_file_path.text(),
             self.mortgage_file_path.text(),
-            self.affidavits_file_path.text()
+            self.affidavits_file_path.text(),
+            county_id
         )
         
         # Connect signals - but filter status messages
@@ -584,6 +639,9 @@ class SimplifileUI(QWidget):
                             "Please select at least one PDF file (Deeds or Mortgage Satisfactions).")
             return
         
+        # Get county configuration
+        county_config = get_county_config(recipient_id)
+        
         # Validate deed and affidavit files if deeds are provided
         if self.deeds_file_path.text() and not self.affidavits_file_path.text():
             reply = QMessageBox.question(
@@ -595,17 +653,37 @@ class SimplifileUI(QWidget):
             if reply == QMessageBox.StandardButton.No:
                 return
         
-        # Confirm batch upload
-        recipient_name = self.recipient_combo.currentText()
+        # Confirm batch upload with county-specific information
+        recipient_name = county_config.COUNTY_NAME
         message = f"Process batch upload to {recipient_name}?\n\n"
         
         if self.deeds_file_path.text():
-            message += f"- Deed Documents: {os.path.basename(self.deeds_file_path.text())}\n"
+            message += f"- Deed Documents ({county_config.DEED_DOCUMENT_TYPE}): {os.path.basename(self.deeds_file_path.text())}\n"
         if self.affidavits_file_path.text():
             message += f"- Affidavit Documents: {os.path.basename(self.affidavits_file_path.text())}\n"
         if self.mortgage_file_path.text():
-            message += f"- Mortgage Satisfactions: {os.path.basename(self.mortgage_file_path.text())}\n"
+            message += f"- Mortgage Documents ({county_config.MORTGAGE_DOCUMENT_TYPE}): {os.path.basename(self.mortgage_file_path.text())}\n"
         message += f"- Excel Data: {os.path.basename(self.excel_file_path.text())}\n\n"
+        
+        # Add county-specific requirements info to the confirmation dialog
+        message += f"County-specific requirements for {county_config.COUNTY_NAME}:\n"
+        
+        if county_config.DEED_REQUIRES_EXECUTION_DATE:
+            message += "- Deed requires execution date\n"
+        else:
+            message += "- Deed does NOT require execution date\n"
+            
+        if county_config.DEED_REQUIRES_LEGAL_DESCRIPTION:
+            message += "- Deed requires legal description\n"
+        else:
+            message += "- Deed does NOT require legal description\n"
+            
+        if county_config.DEED_REQUIRES_REFERENCE_INFO:
+            message += "- Deed requires reference information\n"
+        else:
+            message += "- Deed does NOT require reference information\n"
+        
+        message += "\n"
         
         # Ask if this should be an actual upload or preview
         message += "Do you want to perform an actual API upload?\n"
@@ -613,7 +691,7 @@ class SimplifileUI(QWidget):
         message += "- Click 'No' to run in preview mode (no API calls)\n"
         message += "- Click 'Cancel' to abort"
         
-        reply = QMessageBox.question(self, "Confirm Batch Processing", message,
+        reply = QMessageBox.question(self, f"Confirm Batch Processing for {county_config.COUNTY_NAME}", message,
                                 QMessageBox.StandardButton.Yes | 
                                 QMessageBox.StandardButton.No | 
                                 QMessageBox.StandardButton.Cancel)
@@ -626,7 +704,7 @@ class SimplifileUI(QWidget):
         
         # Run the batch process
         mode_text = 'preview' if preview_mode else 'API upload'
-        self.update_output(f"Starting batch processing in {mode_text} mode...")
+        self.update_output(f"Starting batch processing for {county_config.COUNTY_NAME} in {mode_text} mode...")
         self.progress_bar.setValue(5)
         self.batch_upload_btn.setEnabled(False)
         
