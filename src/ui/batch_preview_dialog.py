@@ -718,10 +718,23 @@ class BatchPreviewDialog(QDialog):
 
 
     def run_validation(self):
-        """Run validation checks on the batch"""
+        """Run validation checks on the batch with county-specific document types and requirements"""
         # Initialize validation results from preview data
         validation_results = []
         validation_data = self.preview_data.get("validation", {})
+        
+        # Get county information from preview data
+        county_info = self.preview_data.get("county", {})
+        deed_doc_type = county_info.get("deed_document_type", "Deed - Timeshare")
+        mortgage_doc_type = county_info.get("mortgage_document_type", "Mortgage Satisfaction")
+        
+        # Get county configuration details
+        county_config = county_info.get("config", {})
+        deed_requires_reference = county_config.get("deed_requires_reference_info", True)
+        mortgage_requires_reference = county_config.get("mortgage_requires_reference_info", True)
+        deed_requires_legal_description = county_config.get("deed_requires_legal_description", True)
+        mortgage_requires_legal_description = county_config.get("mortgage_requires_legal_description", True)
+        king_cunningham_required = county_config.get("king_cunningham_required_for_deed", True)
         
         # Add missing data items from preview
         for issue in validation_data.get("missing_data", []):
@@ -771,16 +784,16 @@ class BatchPreviewDialog(QDialog):
         
         if self.validate_refs.isChecked():
             for package in packages:
-                for doc in package.get("documents", []):
-                    # Check for missing references
-                    if doc.get("type") == "Deed - Timeshare" and not doc.get("reference_information"):
+                for doc in package.get("documents", []):                
+                    # Check for missing references using county-specific document types and requirements
+                    if doc.get("type") == deed_doc_type and deed_requires_reference and not doc.get("reference_information"):
                         validation_results.append({
                             "package": f"{package.get('package_id', '')}: {package.get('package_name', '')}",
                             "check_type": "Reference Info",
                             "status": "Error",
                             "details": f"Deed document {doc.get('document_id', '')} is missing book/page reference"
                         })
-                    elif doc.get("type") == "Mortgage Satisfaction" and not doc.get("reference_information"):
+                    elif doc.get("type") == mortgage_doc_type and mortgage_requires_reference and not doc.get("reference_information"):
                         validation_results.append({
                             "package": f"{package.get('package_id', '')}: {package.get('package_name', '')}",
                             "check_type": "Reference Info",
@@ -791,16 +804,16 @@ class BatchPreviewDialog(QDialog):
         if self.validate_docs.isChecked():
             for package in packages:
                 docs = package.get("documents", [])
-                # Check document types
-                has_deed = any(doc.get("type") == "Deed - Timeshare" for doc in docs)
-                has_mortgage = any(doc.get("type") == "Mortgage Satisfaction" for doc in docs)
+                # Check document types using county-specific types
+                has_deed = any(doc.get("type") == deed_doc_type for doc in docs)
+                has_mortgage = any(doc.get("type") == mortgage_doc_type for doc in docs)
                 
                 if not has_deed:
                     validation_results.append({
                         "package": f"{package.get('package_id', '')}: {package.get('package_name', '')}",
                         "check_type": "Document Set",
                         "status": "Warning",
-                        "details": "Package is missing a Deed document"
+                        "details": f"Package is missing a {deed_doc_type} document"
                     })
                 
                 if not has_mortgage:
@@ -808,32 +821,33 @@ class BatchPreviewDialog(QDialog):
                         "package": f"{package.get('package_id', '')}: {package.get('package_name', '')}",
                         "check_type": "Document Set",
                         "status": "Warning",
-                        "details": "Package is missing a Mortgage Satisfaction document"
+                        "details": f"Package is missing a {mortgage_doc_type} document"
                     })
         
         if self.validate_grantor.isChecked():
             for package in packages:
                 for doc in package.get("documents", []):
-                    # Check for proper grantors
+                    # Check for proper grantors - adjust based on county-specific types
                     grantors = doc.get("grantors", [])
                     
-                    if doc.get("type") == "Deed - Timeshare":
-                        # Check if KING CUNNINGHAM LLC TR is present
-                        has_king_cunningham = any(
-                            g.get("type") == "Organization" and 
-                            g.get("name", "").upper() == "KING CUNNINGHAM LLC TR" 
-                            for g in grantors
-                        )
-                        
-                        if not has_king_cunningham:
-                            validation_results.append({
-                                "package": f"{package.get('package_id', '')}: {package.get('package_name', '')}",
-                                "check_type": "Grantor",
-                                "status": "Error",
-                                "details": "Deed is missing KING CUNNINGHAM LLC TR as grantor"
-                            })
+                    if doc.get("type") == deed_doc_type:
+                        # Check if KING CUNNINGHAM LLC TR is present only if required by county
+                        if king_cunningham_required:
+                            has_king_cunningham = any(
+                                g.get("type") == "Organization" and 
+                                g.get("name", "").upper() == "KING CUNNINGHAM LLC TR" 
+                                for g in grantors
+                            )
+                            
+                            if not has_king_cunningham:
+                                validation_results.append({
+                                    "package": f"{package.get('package_id', '')}: {package.get('package_name', '')}",
+                                    "check_type": "Grantor",
+                                    "status": "Error",
+                                    "details": f"{deed_doc_type} is missing KING CUNNINGHAM LLC TR as grantor"
+                                })
                     
-                    elif doc.get("type") == "Mortgage Satisfaction":
+                    elif doc.get("type") == mortgage_doc_type:
                         # Check that KING CUNNINGHAM LLC TR is NOT present
                         has_king_cunningham = any(
                             g.get("type") == "Organization" and 
@@ -846,7 +860,7 @@ class BatchPreviewDialog(QDialog):
                                 "package": f"{package.get('package_id', '')}: {package.get('package_name', '')}",
                                 "check_type": "Grantor",
                                 "status": "Warning",
-                                "details": "Mortgage Satisfaction should not have KING CUNNINGHAM LLC TR as grantor"
+                                "details": f"{mortgage_doc_type} should not have KING CUNNINGHAM LLC TR as grantor"
                             })
                     
                     # Check if the document has any grantors
@@ -866,6 +880,27 @@ class BatchPreviewDialog(QDialog):
                             "status": "Error",
                             "details": f"{doc.get('type')} has no grantees"
                         })
+                    
+                    # Check legal description if required by county
+                    if doc.get("type") == deed_doc_type and deed_requires_legal_description:
+                        legal_descriptions = doc.get("legal_descriptions", [])
+                        if not legal_descriptions or not legal_descriptions[0].get("description", "").strip():
+                            validation_results.append({
+                                "package": f"{package.get('package_id', '')}: {package.get('package_name', '')}",
+                                "check_type": "Legal Description",
+                                "status": "Error",
+                                "details": f"{deed_doc_type} is missing legal description"
+                            })
+                    
+                    if doc.get("type") == mortgage_doc_type and mortgage_requires_legal_description:
+                        legal_descriptions = doc.get("legal_descriptions", [])
+                        if not legal_descriptions or not legal_descriptions[0].get("description", "").strip():
+                            validation_results.append({
+                                "package": f"{package.get('package_id', '')}: {package.get('package_name', '')}",
+                                "check_type": "Legal Description",
+                                "status": "Error",
+                                "details": f"{mortgage_doc_type} is missing legal description"
+                            })
         
         # Display validation results
         self.validation_results.setRowCount(len(validation_results))
@@ -905,9 +940,10 @@ class BatchPreviewDialog(QDialog):
             QMessageBox.information(
                 self,
                 "Validation Complete",
-                "No issues found! The batch is ready for upload."
+                f"No issues found! The batch is ready for upload to {county_info.get('name', 'the selected county')}."
             )
-    
+
+
     def export_preview(self):
         """Export preview data to CSV and JSON"""
         # Ask for save location

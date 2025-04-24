@@ -1,4 +1,4 @@
-# __init__.py - Centralized exports for Simplifile module
+# __init__.py - Updated exports for Simplifile module with county configuration support
 from .api import run_simplifile_thread, run_simplifile_connection_test, SimplifileAPI
 from .batch_processor import (
     run_simplifile_batch_thread, run_simplifile_batch_preview, 
@@ -11,6 +11,11 @@ from .models import (
 )
 from .excel_processor import SimplifileExcelProcessor
 from .pdf_processor import SimplifilePDFProcessor
+from .county_config import (
+    CountyConfig, HorryCountyConfig, BeaufortCountyConfig,
+    WilliamsburgCountyConfig, FultonCountyConfig, ForsythCountyConfig,
+    get_county_config, COUNTY_CONFIGS
+)
 
 __all__ = [
     # API
@@ -34,5 +39,15 @@ __all__ = [
     
     # Processors
     'SimplifileExcelProcessor',
-    'SimplifilePDFProcessor'
+    'SimplifilePDFProcessor',
+    
+    # County Configurations
+    'CountyConfig',
+    'HorryCountyConfig',
+    'BeaufortCountyConfig',
+    'WilliamsburgCountyConfig',
+    'FultonCountyConfig',
+    'ForsythCountyConfig',
+    'get_county_config',
+    'COUNTY_CONFIGS'
 ]

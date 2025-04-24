@@ -1,4 +1,4 @@
-# batch_processor.py - Updated to use centralized models and processors
+# batch_processor.py - Updates to support county-specific configurations
 import os
 import json
 import requests
@@ -11,6 +11,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from .models import SimplifilePackage, SimplifileDocument, Party
 from .pdf_processor import SimplifilePDFProcessor
 from .excel_processor import SimplifileExcelProcessor
+from .county_config import get_county_config
 
 class SimplifileBatchPreview(QObject):
     """Generate a comprehensive preview of batch processing without hitting the API"""
@@ -20,17 +21,19 @@ class SimplifileBatchPreview(QObject):
     preview_ready = pyqtSignal(str)  # JSON string of preview data
 
 
-    def __init__(self):
+    def __init__(self, county_id="SCCP49"):
         super().__init__()
         self.pdf_processor = SimplifilePDFProcessor()
-        self.excel_processor = SimplifileExcelProcessor()
+        self.excel_processor = SimplifileExcelProcessor(county_id)
+        self.county_id = county_id
+        self.county_config = get_county_config(county_id)
 
 
     def generate_preview(self, excel_path, deeds_path, mortgage_path, affidavits_path=None):
-        """Generate an enhanced preview of the batch processing with reduced verbosity"""
+        """Generate an enhanced preview of the batch processing with county-specific configurations"""
         try:
             # Only emit one status message at the start
-            self.status.emit("Processing...")
+            self.status.emit(f"Processing for {self.county_config.COUNTY_NAME}...")
             self.progress.emit(5)
             
             # Load Excel data
@@ -79,7 +82,7 @@ class SimplifileBatchPreview(QObject):
             
             self.progress.emit(60)
             
-            # Create preview packages from Excel data
+            # Create preview packages from Excel data with county configuration
             packages = self.excel_processor.process_excel_data(excel_data)
             
             # Enhance packages with PDF information
@@ -90,13 +93,22 @@ class SimplifileBatchPreview(QObject):
             preview_data = self.build_preview_data(packages, excel_data, deed_splits, 
                                                 mortgage_splits, affidavit_splits, has_merged_docs)
             
+            # Add county-specific information to the preview data
+            preview_data["county"] = {
+                "id": self.county_id,
+                "name": self.county_config.COUNTY_NAME,
+                "deed_document_type": self.county_config.DEED_DOCUMENT_TYPE,
+                "mortgage_document_type": self.county_config.MORTGAGE_DOCUMENT_TYPE,
+                "config": self.county_config.get_config_dict()
+            }
+            
             self.progress.emit(90)
             
             # Convert to JSON string
             preview_json = json.dumps(preview_data, default=lambda o: o.__dict__, indent=2)
             
             # Final status update before completing
-            self.status.emit("Preview completed")
+            self.status.emit(f"Preview completed for {self.county_config.COUNTY_NAME}")
             self.progress.emit(100)
             self.preview_ready.emit(preview_json)
             return True
@@ -117,8 +129,8 @@ class SimplifileBatchPreview(QObject):
         for i, package in enumerate(packages):
             # Update documents with PDF info
             for doc in package.documents:
-                # For deed documents
-                if doc.type == "Deed - Timeshare" and i < len(deed_splits):
+                # Check document type against county-specific types
+                if doc.type == self.county_config.DEED_DOCUMENT_TYPE and i < len(deed_splits):
                     deed_info = deed_splits[i]
                     doc.page_range = deed_info["page_range"]
                     doc.page_count = deed_info["page_count"]
@@ -130,7 +142,7 @@ class SimplifileBatchPreview(QObject):
                         doc.page_count = deed_info["page_count"] + affidavit_info["page_count"]
                 
                 # For mortgage documents
-                elif doc.type == "Mortgage Satisfaction" and i < len(mortgage_splits):
+                elif doc.type == self.county_config.MORTGAGE_DOCUMENT_TYPE and i < len(mortgage_splits):
                     mortgage_info = mortgage_splits[i]
                     doc.page_range = mortgage_info["page_range"]
                     doc.page_count = mortgage_info["page_count"]
@@ -248,16 +260,19 @@ class SimplifileBatchProcessor(QObject):
         self.submitter_id = submitter_id
         self.recipient_id = recipient_id
         self.pdf_processor = SimplifilePDFProcessor()
-        self.excel_processor = SimplifileExcelProcessor()
+        self.excel_processor = SimplifileExcelProcessor(recipient_id)
         self.preview_mode = True  # Default to preview mode
+        # Get county configuration
+        self.county_config = get_county_config(recipient_id) if recipient_id else None
 
 
     def process_batch(self, excel_path, deeds_path, mortgage_path, preview_mode=True, affidavits_path=None, skip_validation=True):
-        """Process batch upload with reduced status messages"""
+        """Process batch upload with reduced status messages and county-specific handling"""
         try:
             self.preview_mode = preview_mode
             # Only emit a single status message to start
-            self.status.emit("Processing... Please wait")
+            county_name = self.county_config.COUNTY_NAME if self.county_config else "default county"
+            self.status.emit(f"Processing for {county_name}... Please wait")
             self.progress.emit(5)
             
             # Load Excel data
@@ -300,7 +315,7 @@ class SimplifileBatchProcessor(QObject):
             
             self.progress.emit(60)
             
-            # Create packages from Excel data
+            # Create packages from Excel data with county-specific processing
             packages = self.excel_processor.process_excel_data(excel_data)
             
             # Assign PDF files to packages
@@ -313,10 +328,15 @@ class SimplifileBatchProcessor(QObject):
                 package_info = {
                     "resultCode": "SUCCESS",
                     "message": "Batch processing preview completed",
-                    "packages": [p.to_display_dict() for p in packages]
+                    "packages": [p.to_display_dict() for p in packages],
+                    "county": {
+                        "id": self.recipient_id,
+                        "name": self.county_config.COUNTY_NAME if self.county_config else "Unknown County",
+                        "config": self.county_config.get_config_dict() if self.county_config else {}
+                    }
                 }
                     
-                self.status.emit("Batch processing preview completed")
+                self.status.emit(f"Batch processing preview completed for {county_name}")
                 self.progress.emit(100)
                 self.finished.emit(package_info)
             else:
@@ -325,11 +345,11 @@ class SimplifileBatchProcessor(QObject):
                     self.error.emit("Missing API credentials. Cannot proceed with upload.")
                     return False
                 
-                self.status.emit("Starting API upload...")
+                self.status.emit(f"Starting API upload to {county_name}...")
                 upload_results = self.upload_packages_to_api(packages)
                 
                 # Report results
-                self.status.emit("API upload process completed")
+                self.status.emit(f"API upload process completed for {county_name}")
                 self.progress.emit(100)
                 self.finished.emit(upload_results)
             
@@ -346,17 +366,20 @@ class SimplifileBatchProcessor(QObject):
 
     def assign_pdf_files_to_packages(self, packages, deed_files, mortgage_files):
         """Assign PDF files to the corresponding packages and documents"""
+        county_config = self.county_config
+        
         for i, package in enumerate(packages):
             if i < len(deed_files):
                 # For each document in the package
                 for doc in package.documents:
-                    if doc.type == "Deed - Timeshare" and i < len(deed_files):
+                    # Use county-specific document types for matching
+                    if doc.type == county_config.DEED_DOCUMENT_TYPE and i < len(deed_files):
                         # Assign deed file
                         doc.file_path = deed_files[i]["path"]
                         doc.page_range = deed_files[i]["page_range"]
                         doc.page_count = deed_files[i]["page_count"]
                     
-                    elif doc.type == "Mortgage Satisfaction" and i < len(mortgage_files):
+                    elif doc.type == county_config.MORTGAGE_DOCUMENT_TYPE and i < len(mortgage_files):
                         # Assign mortgage file
                         doc.file_path = mortgage_files[i]["path"]
                         doc.page_range = mortgage_files[i]["page_range"]
@@ -366,19 +389,24 @@ class SimplifileBatchProcessor(QObject):
     def upload_packages_to_api(self, packages):
         """Upload packages to Simplifile API with improved error categorization and summary"""
         try:
-            self.status.emit("Uploading packages to API...")
+            county_name = self.county_config.COUNTY_NAME if self.county_config else "default county"
+            self.status.emit(f"Uploading packages to {county_name}...")
             
             # Prepare enhanced results structure with better error categorization
             results = {
                 "resultCode": "SUCCESS",
-                "message": "Packages uploaded to Simplifile API",
+                "message": f"Packages uploaded to Simplifile API ({county_name})",
                 "packages": [],
                 "summary": {
                     "total": len(packages),
                     "successful": 0,
                     "failed": 0
                 },
-                "error_categories": {}  # Add categorized errors for better summary
+                "error_categories": {},  # Add categorized errors for better summary
+                "county": {
+                    "id": self.recipient_id,
+                    "name": self.county_config.COUNTY_NAME if self.county_config else "Unknown County"
+                }
             }
             
             # Process packages in smaller batches
@@ -404,9 +432,9 @@ class SimplifileBatchProcessor(QObject):
                     # Process UI events frequently to keep UI responsive
                     QApplication.processEvents()
                     
-                    # Create API payload
+                    # Create API payload - ensure county config is set
+                    package.set_county_config(self.recipient_id)
                     api_payload = package.to_api_dict()
-                    api_payload["recipient"] = self.recipient_id  # Add recipient ID
                     
                     # Make the actual API request
                     try:
@@ -727,15 +755,19 @@ class SimplifileBatchProcessor(QObject):
                     "total": len(packages),
                     "successful": 0,
                     "failed": len(packages)
+                },
+                "county": {
+                    "id": self.recipient_id,
+                    "name": self.county_config.COUNTY_NAME if self.county_config else "Unknown County"
                 }
             }
 
 
 # Helper functions to create threads for batch operations
-def run_simplifile_batch_preview(excel_path, deeds_path, mortgage_path, affidavits_path=None):
+def run_simplifile_batch_preview(excel_path, deeds_path, mortgage_path, affidavits_path=None, county_id="SCCP49"):
     """Create and run a thread for Simplifile batch preview"""
     thread = QThread()
-    worker = SimplifileBatchPreview()
+    worker = SimplifileBatchPreview(county_id)
     worker.moveToThread(thread)
     
     # Connect signals

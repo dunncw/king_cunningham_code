@@ -1,6 +1,7 @@
-# models.py - Updated with centralized data models for Simplifile
+# models.py - Updated with centralized data models and county-specific behavior for Simplifile
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Union
+from .county_config import CountyConfig, get_county_config
 
 class Party:
     """Represents a party (grantor or grantee) in a Simplifile document"""
@@ -141,7 +142,7 @@ class ReferenceInformation:
 class SimplifileDocument:
     """Represents a document in a Simplifile package"""
     
-    def __init__(self):
+    def __init__(self, county_config: Optional[CountyConfig] = None):
         # Document identification
         self.document_id = ""
         self.name = ""
@@ -167,9 +168,22 @@ class SimplifileDocument:
         # For preview/validation
         self.validation_issues = []
         self.is_valid = True
+        
+        # County configuration
+        self.county_config = county_config or get_county_config("SCCP49")  # Default to Horry County
+    
+    def set_county_config(self, county_id: str):
+        """Set the county configuration for this document"""
+        self.county_config = get_county_config(county_id)
+        
+        # Update document type based on county requirements if this is a known document type
+        if self.type == "Deed - Timeshare" or self.type.startswith("DEED"):
+            self.type = self.county_config.DEED_DOCUMENT_TYPE
+        elif self.type == "Mortgage Satisfaction" or self.type.startswith("MORT"):
+            self.type = self.county_config.MORTGAGE_DOCUMENT_TYPE
     
     def to_api_dict(self) -> Dict[str, Any]:
-        """Convert document to dictionary for API request"""
+        """Convert document to dictionary for API request based on county configuration"""
         # Encode file if it exists
         file_bytes = []
         if self.file_path:
@@ -189,21 +203,36 @@ class SimplifileDocument:
             "indexingData": {
                 "grantors": [grantor.to_api_dict() for grantor in self.grantors],
                 "grantees": [grantee.to_api_dict() for grantee in self.grantees],
-                "legalDescriptions": [desc.to_api_dict() for desc in self.legal_descriptions],
-                "executionDate": self.format_date_for_api(self.execution_date)
             },
             "fileBytes": file_bytes
         }
         
-        # Add consideration if present
-        if self.consideration:
+        # Apply county-specific rules for document fields
+        is_deed = self.type == self.county_config.DEED_DOCUMENT_TYPE
+        is_mortgage = self.type == self.county_config.MORTGAGE_DOCUMENT_TYPE
+        
+        # Add execution date based on county requirements
+        if ((is_deed and self.county_config.DEED_REQUIRES_EXECUTION_DATE) or 
+            (is_mortgage and self.county_config.MORTGAGE_REQUIRES_EXECUTION_DATE)) and self.execution_date:
+            document["indexingData"]["executionDate"] = self.format_date_for_api(self.execution_date)
+        
+        # Add consideration if present for deed documents
+        if is_deed and self.consideration:
             try:
                 document["indexingData"]["consideration"] = float(self.consideration)
             except (ValueError, TypeError):
                 document["indexingData"]["consideration"] = 0.0
         
-        # Add reference information if present
-        if self.reference_information:
+        # Add legal descriptions based on county requirements
+        if ((is_deed and self.county_config.DEED_REQUIRES_LEGAL_DESCRIPTION) or 
+            (is_mortgage and self.county_config.MORTGAGE_REQUIRES_LEGAL_DESCRIPTION)) and self.legal_descriptions:
+            document["indexingData"]["legalDescriptions"] = [
+                desc.to_api_dict() for desc in self.legal_descriptions
+            ]
+        
+        # Add reference information based on county requirements
+        if ((is_deed and self.county_config.DEED_REQUIRES_REFERENCE_INFO) or 
+            (is_mortgage and self.county_config.MORTGAGE_REQUIRES_REFERENCE_INFO)) and self.reference_information:
             document["indexingData"]["referenceInformation"] = [
                 ref.to_api_dict() for ref in self.reference_information
             ]
@@ -225,7 +254,8 @@ class SimplifileDocument:
             "legal_descriptions": [desc.to_display_dict() for desc in self.legal_descriptions],
             "reference_information": [ref.to_display_dict() for ref in self.reference_information],
             "is_valid": self.is_valid,
-            "validation_issues": self.validation_issues
+            "validation_issues": self.validation_issues,
+            "county_config": self.county_config.COUNTY_NAME
         }
     
     def format_date_for_api(self, date_str: str) -> str:
@@ -250,7 +280,7 @@ class SimplifileDocument:
 class SimplifilePackage:
     """Represents a complete package for Simplifile submission"""
     
-    def __init__(self):
+    def __init__(self, county_id: str = "SCCP49"):
         # Package identification
         self.package_id = ""
         self.package_name = ""
@@ -272,12 +302,25 @@ class SimplifilePackage:
         # For preview/validation
         self.validation_issues = []
         self.is_valid = True
+        
+        # County configuration
+        self.county_id = county_id
+        self.county_config = get_county_config(county_id)
+    
+    def set_county_config(self, county_id: str):
+        """Set the county configuration for this package and all its documents"""
+        self.county_id = county_id
+        self.county_config = get_county_config(county_id)
+        
+        # Update all documents
+        for doc in self.documents:
+            doc.set_county_config(county_id)
     
     def to_api_dict(self) -> Dict[str, Any]:
         """Convert package to dictionary for API request"""
         return {
             "documents": [doc.to_api_dict() for doc in self.documents],
-            "recipient": "",  # This should be provided separately
+            "recipient": self.county_id,  # Use county ID as recipient
             "submitterPackageID": self.package_id,
             "name": self.package_name.upper(),
             "operations": {
@@ -301,17 +344,20 @@ class SimplifilePackage:
             "submit_immediately": self.submit_immediately,
             "verify_page_margins": self.verify_page_margins,
             "is_valid": self.is_valid,
-            "validation_issues": self.validation_issues
+            "validation_issues": self.validation_issues,
+            "county": self.county_config.COUNTY_NAME
         }
     
     def add_document(self, document: SimplifileDocument) -> None:
-        """Add a document to the package"""
+        """Add a document to the package and apply county configuration"""
+        # Ensure document has the same county configuration
+        document.set_county_config(self.county_id)
         self.documents.append(document)
     
     @staticmethod
-    def from_excel_row(row_data: Dict[str, Any], row_index: int) -> 'SimplifilePackage':
-        """Create a package from Excel row data"""
-        package = SimplifilePackage()
+    def from_excel_row(row_data: Dict[str, Any], row_index: int, county_id: str = "SCCP49") -> 'SimplifilePackage':
+        """Create a package from Excel row data with county-specific configuration"""
+        package = SimplifilePackage(county_id)
         
         # Extract essential data
         package.account_number = str(row_data.get('Account', ''))
