@@ -125,7 +125,29 @@ class SCRAAutomationUI(QWidget):
         self.progress_bar.setValue(value)
 
     def update_output(self, text):
-        self.output_text.append(text)
+        # Process text with multiple lines
+        if '\n' in text:
+            lines = text.split('\n')
+            for line in lines:
+                if line.strip():  # Skip empty lines
+                    self.update_output(line)  # Process each line separately
+            return
+            
+        # Format and display a single line
+        if "⚠️ DROPPED" in text:
+            # Format dropped records in bold red
+            formatted_text = f'<span style="color: red; font-weight: bold;">{text}</span>'
+            self.output_text.append(formatted_text)
+        elif "⚠️ MODIFIED" in text:
+            # Format modified records in orange
+            formatted_text = f'<span style="color: orange;">{text}</span>'
+            self.output_text.append(formatted_text)
+        elif "⚠️" in text:
+            # Format warning messages in red
+            formatted_text = f'<span style="color: red;">{text}</span>'
+            self.output_text.append(formatted_text)
+        else:
+            self.output_text.append(text)
 
     def processing_finished(self):
         self.process_button.setEnabled(True)
@@ -134,7 +156,7 @@ class SCRAAutomationUI(QWidget):
 
     def show_error(self, error_message):
         self.status_label.setText(f"Error: {error_message}")
-        self.output_text.append(f"Error: {error_message}")
+        self.output_text.append(f'<span style="color: red;">Error: {error_message}</span>')
         self.process_button.setEnabled(True)
 
 class SCRAFormatWorker(QThread):
@@ -161,8 +183,79 @@ class SCRAFormatWorker(QThread):
             success, message = formatter.process_excel()
 
             if success:
-                self.message.emit("File processing completed successfully")
-                self.message.emit(f"Output file created at: {self.output_path}")
+                # Split the message into sections
+                sections = message.split('\n')
+                
+                # Process each line
+                summary_section = []
+                modified_section = []
+                dropped_section = []
+                warnings_section = []
+                current_section = None
+                
+                for line in sections:
+                    # Skip empty lines
+                    if not line.strip():
+                        continue
+                    
+                    # Determine section
+                    if line.startswith("SCRA Batch Processing Summary:") or "Total records processed" in line:
+                        current_section = "summary"
+                        summary_section.append(line)
+                    elif "MODIFIED RECORDS" in line:
+                        current_section = "modified"
+                        modified_section.append(line)
+                    elif "DROPPED RECORDS" in line:
+                        current_section = "dropped"
+                        dropped_section.append(line)
+                    elif "Other Validation Warnings" in line:
+                        current_section = "warnings"
+                        warnings_section.append(line)
+                    # Add content to proper section
+                    elif line.startswith("⚠️ MODIFIED") and current_section == "modified":
+                        modified_section.append(line)
+                    elif line.startswith("⚠️ DROPPED") and current_section == "dropped":
+                        dropped_section.append(line)
+                    elif line.startswith("⚠️") and current_section == "warnings":
+                        warnings_section.append(line)
+                    else:
+                        # Other lines go to current section
+                        if current_section == "summary":
+                            summary_section.append(line)
+                        elif current_section == "modified":
+                            modified_section.append(line)
+                        elif current_section == "dropped":
+                            dropped_section.append(line)
+                        elif current_section == "warnings":
+                            warnings_section.append(line)
+                
+                # Emit each section with proper spacing
+                if summary_section:
+                    self.message.emit("\n".join(summary_section))
+                
+                if modified_section:
+                    # Make sure each modified record gets its own line
+                    header = modified_section[0]
+                    self.message.emit("\n" + header)
+                    for item in modified_section[1:]:
+                        self.message.emit(item)
+                
+                if dropped_section:
+                    # Make sure each dropped record gets its own line
+                    header = dropped_section[0]
+                    self.message.emit("\n" + header)
+                    for item in dropped_section[1:]:
+                        self.message.emit(item)
+                
+                if warnings_section:
+                    # Make sure each warning gets its own line
+                    header = warnings_section[0]
+                    self.message.emit("\n" + header)
+                    for item in warnings_section[1:]:
+                        self.message.emit(item)
+                
+                # Emit the output file location
+                self.message.emit("\nOutput file created at: " + self.output_path)
                 self.progress.emit(100)
             else:
                 self.error.emit(message)
