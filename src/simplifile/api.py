@@ -91,18 +91,21 @@ class SimplifileAPI(QObject):
                     self.finished.emit(response_data)
                     return True
                 else:
-                    error_msg = response_data.get("message", "Unknown API error")
-                    self.error.emit(f"API Error: {error_msg}")
+                    # Just show the complete raw response when there's an error
+                    raw_response = json.dumps(response_data, indent=2)
+                    self.error.emit(f"API Error - Raw Response: {raw_response}")
                     self.finished.emit(response_data)
                     return False
             else:
-                self.error.emit(f"API request failed with status code: {response.status_code}")
+                # For non-200 status codes, show the complete raw response
                 try:
                     error_data = response.json()
-                    self.status.emit(f"Error details: {json.dumps(error_data, indent=2)}")
+                    raw_response = json.dumps(error_data, indent=2)
+                    self.error.emit(f"API request failed with status code {response.status_code} - Raw Response: {raw_response}")
                     self.finished.emit(error_data)
                 except:
-                    self.status.emit(f"Response text: {response.text}")
+                    # If not JSON, show the full text response
+                    self.error.emit(f"API request failed with status code {response.status_code} - Response: {response.text}")
                     self.finished.emit({"error": response.text})
                 return False
         

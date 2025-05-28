@@ -468,68 +468,19 @@ class SimplifileBatchProcessor(QObject):
                                 })
                                 results["summary"]["successful"] += 1
                             else:
-                                # Enhanced error categorization
-                                error_msg = response_data.get("message", "Unknown API error")
-                                error_details = []
+                                # Show the complete raw response when there's an error
+                                raw_response = json.dumps(response_data, indent=2)
+                                error_msg = f"Raw API Response: {raw_response}"
                                 
-                                # Extract all error information available
-                                if "errors" in response_data:
-                                    for err in response_data.get("errors", []):
-                                        error_path = err.get("path", "Unknown field")
-                                        error_message = err.get("message", "Unknown error")
-                                        error_details.append(f"{error_path}: {error_message}")
+                                self.status.emit(f"❌ Package {package_name} failed: {error_msg}")
                                 
-                                # If we have specific errors, join them into a single string
-                                error_details_str = "; ".join(error_details) if error_details else ""
-                                
-                                # Create error category for grouping similar errors
-                                error_category = "api_error"
-                                error_subcategory = "unknown"
-                                
-                                # Try to detect common error patterns for categorization
-                                if "validation" in error_msg.lower() or "required" in error_msg.lower():
-                                    error_subcategory = "validation"
-                                elif "unauthorized" in error_msg.lower() or "authentication" in error_msg.lower():
-                                    error_subcategory = "auth"
-                                elif "not found" in error_msg.lower():
-                                    error_subcategory = "not_found"
-                                
-                                # Create composite category
-                                category_key = f"{error_category}_{error_subcategory}"
-                                
-                                # Update error categories count
-                                if category_key not in results["error_categories"]:
-                                    results["error_categories"][category_key] = {
-                                        "count": 0,
-                                        "description": f"API {error_subcategory} error",
-                                        "examples": []
-                                    }
-                                
-                                results["error_categories"][category_key]["count"] += 1
-                                
-                                # Add to examples if we have room
-                                if len(results["error_categories"][category_key]["examples"]) < 3:
-                                    example = {
-                                        "package_id": package_id,
-                                        "message": error_msg
-                                    }
-                                    results["error_categories"][category_key]["examples"].append(example)
-                                    
-                                detailed_error = f"{error_msg} {error_details_str}".strip()
-                                if not detailed_error:
-                                    detailed_error = f"API returned error with no message details"
-                                    
-                                self.status.emit(f"❌ Package {package_name} failed: {detailed_error}")
-                                        
                                 results["packages"].append({
                                     "package_id": package_id,
-                                    "status": error_category,
-                                    "status_subcategory": error_subcategory,
-                                    "message": detailed_error,
+                                    "status": "api_error",
+                                    "message": error_msg,
                                     "package_name": package_name,
                                     "document_count": len(documents),
-                                    "api_response": response_data,
-                                    "raw_response": json.dumps(response_data)
+                                    "raw_response": raw_response
                                 })
                                 
                                 results["summary"]["failed"] += 1
