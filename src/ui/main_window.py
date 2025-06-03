@@ -423,37 +423,39 @@ class MainWindow(QMainWindow):
         # Start thread
         self.simplifile_thread.start()
 
+
     def start_simplifile_batch_process(self, excel_path, deeds_path, mortgage_path):
-        """Start Simplifile batch processing with API support"""
-        # Get API credentials
-        api_token = self.simplifile_ui.api_token.text()
-        submitter_id = self.simplifile_ui.submitter_id.text()
-        recipient_id = self.simplifile_ui.recipient_combo.currentData()
-        
-        # Get affidavits path if available
-        affidavits_path = self.simplifile_ui.affidavits_file_path.text() if hasattr(self.simplifile_ui, 'affidavits_file_path') else None
-        
-        # Determine if this is preview mode (default to True for safety)
-        preview_mode = True  # This could be passed from the UI if we had a checkbox
-        
-        self.batch_thread, self.batch_worker = run_simplifile_batch_thread(
-            api_token, 
-            submitter_id,
-            recipient_id,
-            excel_path, 
-            deeds_path, 
-            mortgage_path,
-            affidavits_path
-        )
-        
-        # Connect signals
-        self.batch_worker.status.connect(self.simplifile_ui.update_status)
-        self.batch_worker.progress.connect(self.simplifile_ui.update_progress)
-        self.batch_worker.error.connect(self.simplifile_ui.show_error)
-        self.batch_worker.finished.connect(self.simplifile_ui.batch_process_finished)
-        
-        # Start thread
-        self.batch_thread.start()
+            """Start Simplifile batch processing with API support"""
+            # Get API credentials
+            api_token = self.simplifile_ui.api_token.text()
+            submitter_id = "SCTP3G"  # Hardcoded submitter ID
+            recipient_id = self.simplifile_ui.recipient_combo.currentData()
+            
+            # Get affidavits path if available
+            affidavits_path = self.simplifile_ui.affidavits_file_path.text() if hasattr(self.simplifile_ui, 'affidavits_file_path') else None
+            
+            # Determine if this is preview mode (default to True for safety)
+            preview_mode = True  # This could be passed from the UI if we had a checkbox
+            
+            self.batch_thread, self.batch_worker = run_simplifile_batch_thread(
+                api_token, 
+                submitter_id,
+                recipient_id,
+                excel_path, 
+                deeds_path, 
+                mortgage_path,
+                affidavits_path
+            )
+            
+            # Connect signals
+            self.batch_worker.status.connect(self.simplifile_ui.update_status)
+            self.batch_worker.progress.connect(self.simplifile_ui.update_progress)
+            self.batch_worker.error.connect(self.simplifile_ui.show_error)
+            self.batch_worker.finished.connect(self.simplifile_ui.batch_process_finished)
+            
+            # Start thread
+            self.batch_thread.start()
+
 
     def show_simplifile_error(self, error_message):
         """Show error message from Simplifile process"""
