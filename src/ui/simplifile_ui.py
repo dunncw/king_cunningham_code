@@ -18,15 +18,6 @@ from .batch_preview_dialog import BatchPreviewDialog
 from simplifile.county_config import COUNTY_CONFIGS, get_county_config
 
 
-# # County recipient mapping
-# RECIPIENT_COUNTIES = [
-#     {"id": "SCCE6P", "name": "Williamsburg County, SC"},
-#     {"id": "GAC3TH", "name": "Fulton County, GA"},
-#     {"id": "NCCHLB", "name": "Forsyth County, NC"},
-#     {"id": "SCCY4G", "name": "Beaufort County, SC"},
-#     {"id": "SCCP49", "name": "Horry County, SC"}
-# ]
-
 class SimplifileUI(QWidget):
     start_simplifile_upload = pyqtSignal(str, str, str, dict, list)
     start_simplifile_batch_upload = pyqtSignal(str, str, str, str, str, str)

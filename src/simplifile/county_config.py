@@ -73,10 +73,10 @@ class HorryCountyConfig(CountyConfig):
 
 
 class BeaufortCountyConfig(CountyConfig):
-    """Beaufort County, GA configuration"""
+    """Beaufort County, SC configuration"""
     
     COUNTY_ID = "SCCY4G"
-    COUNTY_NAME = "Beaufort County, GA"
+    COUNTY_NAME = "Beaufort County, SC"
     
     DEED_DOCUMENT_TYPE = "DEED - HILTON HEAD TIMESHARE"
     MORTGAGE_DOCUMENT_TYPE = "MORT - SATISFACTION"
@@ -89,8 +89,8 @@ class BeaufortCountyConfig(CountyConfig):
     MORTGAGE_REQUIRES_LEGAL_DESCRIPTION = False
     MORTGAGE_REQUIRES_REFERENCE_INFO = False
     
-    DEED_GRANTEES_USE_GRANTOR_GRANTEE = False
-    DEED_GRANTEES_USE_OWNERS = True
+    DEED_GRANTEES_USE_GRANTOR_GRANTEE = True
+    DEED_GRANTEES_USE_OWNERS = False
     
     KING_CUNNINGHAM_REQUIRED_FOR_DEED = True
 
