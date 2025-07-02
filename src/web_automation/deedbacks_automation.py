@@ -16,9 +16,49 @@ class DeedbacksAutomation(BasePT61Automation):
         _, self.config = get_version_config(version)
         self.constants = self.config["constants"]
 
+    def process_person(self, person_data, index, total_count):
+        """Process a single person through the form - deedbacks specific flow"""
+        self.status.emit(f"Processing person {index} of {total_count} - Deedbacks Version")
+
+        # Navigate to form
+        self.navigate_to_form()
+
+        # DEVELOPMENT PAUSE: Now we'll fill seller section and move to buyer section
+        self.status.emit("🚀 DEV: Filling seller section...")
+        self.fill_seller_section(person_data)
+        
+        self.status.emit("🚀 DEV: Clicking Next Step to move to buyer section...")
+        self.click_next_step()
+        
+        self.status.emit("🛑 DEV: Reached buyer section - ready for HTML collection")
+        self.status.emit("Please inspect the buyer section HTML and press Enter to continue...")
+        input("Press Enter after collecting buyer section HTML structure to continue...")
+
+        # Future implementation will go here:
+        # self.fill_seller_section(person_data)
+        # self.click_next_step()
+        # self.fill_buyer_section(person_data)
+        # self.click_next_step()
+        # self.fill_property_section(person_data)
+        # self.click_next_step()
+        # self.handle_alert_if_present()
+        # self.fill_financial_section(person_data)
+        # self.click_next_step()
+        # self.submit_form()
+        # filename = self.generate_filename(person_data)
+        # self.save_pdf(filename)
+
+        # Update progress
+        progress = int((index / total_count) * 100)
+        self.progress.emit(progress)
+        
+        self.status.emit(f"✅ DEV: Completed development pause for person {index}")
+
     def fill_seller_section(self, person_data):
-        """Fill seller section for Deedbacks version"""
-        # Fill individual name fields
+        """Fill seller section for Deedbacks version - Individual seller"""
+        self.status.emit("Filling seller section - Individual seller")
+        
+        # Fill individual name fields (Individual radio button is pre-selected)
         first_name_field = WebDriverWait(self.driver, 10).until(
             EC.presence_of_element_located((By.ID, "firstName"))
         )
@@ -27,14 +67,17 @@ class DeedbacksAutomation(BasePT61Automation):
 
         middle_name_field = self.driver.find_element(By.ID, "middleName")
         middle_name_field.send_keys(person_data['individual_name']['middle'])
+        self.status.emit(f"Filled out middle name: {person_data['individual_name']['middle']}")
 
         last_name_field = self.driver.find_element(By.ID, "lastName")
         last_name_field.send_keys(person_data['individual_name']['last'])
+        self.status.emit(f"Filled out last name: {person_data['individual_name']['last']}")
 
-        # Fill address from constants
+        # Fill address from constants (same as new batch address handling)
         address_field = self.driver.find_element(By.ID, "street1")
         address_line = self.constants["seller_section"]["address"]["line1"]
         address_field.send_keys(address_line)
+        self.status.emit(f"Filled address: {address_line}")
 
         city_field = self.driver.find_element(By.ID, "city")
         city = self.constants["seller_section"]["address"]["city"]
@@ -45,72 +88,22 @@ class DeedbacksAutomation(BasePT61Automation):
         zip_field.send_keys(zip_code)
 
     def fill_buyer_section(self, person_data):
-        """Fill buyer section for Deedbacks version"""
-        # Click business radio button
-        business_radio = WebDriverWait(self.driver, 10).until(
-            EC.element_to_be_clickable((By.XPATH, "//input[@name='businessFlag' and @value='1']"))
-        )
-        business_radio.click()
-
-        # Determine buyer based on DB To field
-        db_to_value = person_data.get('db_to', '').upper()
-        buyer_options = self.constants["buyer_section"]["options"]
-        
-        # Default to CENTENNIAL if not found
-        if db_to_value in buyer_options:
-            buyer_name = buyer_options[db_to_value]
-        else:
-            buyer_name = buyer_options.get("CENTENNIAL", "CENTENNIAL PARK DEVELOPMENT LLC")
-            self.status.emit(f"Unknown DB To value '{db_to_value}', defaulting to CENTENNIAL")
-
-        # Fill business name
-        business_name_field = WebDriverWait(self.driver, 10).until(
-            EC.presence_of_element_located((By.ID, "businessName"))
-        )
-        business_name_field.send_keys(buyer_name)
-        self.status.emit(f"Filled buyer: {buyer_name}")
-
-        # Fill address (same as seller)
-        address_field = self.driver.find_element(By.ID, "street1")
-        address_line = self.constants["seller_section"]["address"]["line1"]
-        address_field.send_keys(address_line)
-
-        city_field = self.driver.find_element(By.ID, "city")
-        city = self.constants["seller_section"]["address"]["city"]
-        city_field.send_keys(city)
-
-        zip_field = self.driver.find_element(By.ID, "zip")
-        zip_code = self.constants["seller_section"]["address"]["zip"]
-        zip_field.send_keys(zip_code)
+        """Fill buyer section for Deedbacks version - Dynamic business buyer"""
+        # TODO: Implement after seller section is complete
+        self.status.emit("🚧 Buyer section implementation pending...")
+        pass
 
     def fill_property_section(self, person_data):
         """Fill property section for Deedbacks version"""
-        # Fill date of sale
-        sale_date_field = WebDriverWait(self.driver, 10).until(
-            EC.presence_of_element_located((By.ID, "saleDate"))
-        )
-        sale_date_field.send_keys(person_data['date_on_deed'])
-        self.status.emit(f"Filled out date of sale: {person_data['date_on_deed']}")
-
-        # Fill standard property fields using constants
-        property_config = self.constants["property_section"]
-        self.fill_standard_property_fields(
-            street_number=property_config["street_number"],
-            street_name=property_config["street_name"],
-            street_type_value=property_config["street_type_value"],
-            post_direction=property_config["post_direction"],
-            county_value=property_config["county_value"],
-            map_parcel=property_config["map_parcel"]
-        )
+        # TODO: Implement after buyer section is complete
+        self.status.emit("🚧 Property section implementation pending...")
+        pass
 
     def fill_financial_section(self, person_data):
         """Fill financial section for Deedbacks version"""
-        financial_config = self.constants["financial_section"]
-        self.fill_standard_financial_fields(
-            sales_price=person_data['sales_price'],
-            fair_market_value=financial_config["fair_market_value"],
-            liens_value=financial_config["liens_encumbrances"]
-        )
+        # TODO: Implement after property section is complete
+        self.status.emit("🚧 Financial section implementation pending...")
+        pass
 
     def generate_filename(self, person_data):
         """Generate filename for Deedbacks version"""
