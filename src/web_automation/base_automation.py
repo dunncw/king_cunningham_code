@@ -161,8 +161,54 @@ class BasePT61Automation(QObject):
             self.status.emit(f"Error filling address: {str(e)}")
             raise
 
+    def fill_property_section_standard(self, person_data, property_config):
+        """
+        Generic function to fill property section fields using config
+        
+        Args:
+            person_data (dict): Person data with date_on_deed
+            property_config (dict): Property configuration from version config
+        """
+        try:
+            # Fill date of sale
+            sale_date_field = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.ID, "saleDate"))
+            )
+            sale_date_field.send_keys(person_data['date_on_deed'])
+            self.status.emit(f"Filled out date of sale: {person_data['date_on_deed']}")
+
+            # Fill street number
+            street_number_field = self.driver.find_element(By.ID, "houseNumber")
+            street_number_field.send_keys(property_config["street_number"])
+
+            # Fill street name
+            street_name_field = self.driver.find_element(By.ID, "houseStreetName")
+            street_name_field.send_keys(property_config["street_name"])
+
+            # Select street type from dropdown
+            street_type_dropdown = Select(self.driver.find_element(By.ID, "houseStreetType"))
+            street_type_dropdown.select_by_value(property_config["street_type_value"])
+
+            # Select post direction
+            post_dir_dropdown = Select(self.driver.find_element(By.ID, "housePostDirection"))
+            post_dir_dropdown.select_by_value(property_config["post_direction"])
+
+            # Select county
+            county_dropdown = Select(self.driver.find_element(By.ID, "county"))
+            county_dropdown.select_by_value(property_config["county_value"])
+
+            # Fill map/parcel number
+            map_number_field = self.driver.find_element(By.ID, "mapNumber")
+            map_number_field.send_keys(property_config["map_parcel"])
+            
+            self.status.emit("Completed property section with config data")
+            
+        except Exception as e:
+            self.status.emit(f"Error filling property section: {str(e)}")
+            raise
+
     def fill_standard_property_fields(self, street_number, street_name, street_type_value, post_direction, county_value, map_parcel):
-        """Fill standard property fields that are the same across versions"""
+        """Fill standard property fields that are the same across versions - DEPRECATED, use fill_property_section_standard"""
         # Fill out street number
         street_number_field = self.driver.find_element(By.ID, "houseNumber")
         street_number_field.send_keys(street_number)
@@ -187,8 +233,47 @@ class BasePT61Automation(QObject):
         map_number_field = self.driver.find_element(By.ID, "mapNumber")
         map_number_field.send_keys(map_parcel)
 
+    def fill_tax_computation_section(self, person_data, tax_config):
+        """
+        Generic function to fill tax computation (financial) section using config
+        
+        Args:
+            person_data (dict): Person data with sales_price
+            tax_config (dict): Tax computation configuration from version config
+        """
+        try:
+            # Set exempt code if specified
+            if "exempt_code" in tax_config and tax_config["exempt_code"] != "None":
+                try:
+                    exempt_dropdown = Select(self.driver.find_element(By.ID, "exemptCode"))
+                    exempt_dropdown.select_by_visible_text(tax_config["exempt_code"])
+                    self.status.emit(f"Selected exempt code: {tax_config['exempt_code']}")
+                except Exception as e:
+                    self.status.emit(f"Could not set exempt code: {str(e)}")
+            
+            # Fill actual value (sales price) from Excel data
+            sales_price_field = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.ID, "actualValue"))
+            )
+            sales_price_field.send_keys(person_data['sales_price'])
+            self.status.emit(f"Filled actual value (sales price): {person_data['sales_price']}")
+
+            # Fill fair market value from config
+            fair_market_value_field = self.driver.find_element(By.ID, "fairMarketValue")
+            fair_market_value_field.send_keys(tax_config["fair_market_value"])
+
+            # Fill liens and encumbrances from config
+            liens_field = self.driver.find_element(By.ID, "liensAndEncumberances")
+            liens_field.send_keys(tax_config["liens_encumbrances"])
+            
+            self.status.emit("Completed tax computation section with config data")
+            
+        except Exception as e:
+            self.status.emit(f"Error filling tax computation section: {str(e)}")
+            raise
+
     def fill_standard_financial_fields(self, sales_price, fair_market_value="0", liens_value="0"):
-        """Fill standard financial fields"""
+        """Fill standard financial fields - DEPRECATED, use fill_tax_computation_section"""
         # Wait for the sales price field to be present
         sales_price_field = WebDriverWait(self.driver, 10).until(
             EC.presence_of_element_located((By.ID, "actualValue"))
