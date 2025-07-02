@@ -49,6 +49,9 @@ def extract_person_data(row, version_key, required_columns):
     Returns:
         dict: Person data dictionary
     """
+    # Import here to avoid circular imports
+    from .pt61_config import get_version_by_key
+    
     # Base structure that all versions need
     person = {
         "individual_name": {
@@ -60,25 +63,49 @@ def extract_person_data(row, version_key, required_columns):
         "sales_price": format_sales_price(safe_get_cell_value(row, "Sales Price"))
     }
     
-    # Version-specific data extraction
-    if version_key == "new_batch":
-        person.update(extract_new_batch_data(row))
-    elif version_key == "deedbacks":
-        person.update(extract_deedbacks_data(row))
-    elif version_key == "foreclosures":
-        person.update(extract_foreclosures_data(row))
+    # Get version config for dynamic extraction
+    try:
+        config = get_version_by_key(version_key)
+        
+        # Version-specific data extraction based on config
+        if version_key == "new_batch":
+            person.update(extract_new_batch_data(row, config))
+        elif version_key == "deedbacks":
+            person.update(extract_deedbacks_data(row, config))
+        elif version_key == "foreclosures":
+            person.update(extract_foreclosures_data(row, config))
+            
+    except Exception:
+        # Fallback to hardcoded extraction if config fails
+        if version_key == "new_batch":
+            person.update(extract_new_batch_data(row))
+        elif version_key == "deedbacks":
+            person.update(extract_deedbacks_data(row))
+        elif version_key == "foreclosures":
+            person.update(extract_foreclosures_data(row))
     
     return person
 
-def extract_new_batch_data(row):
+def extract_new_batch_data(row, config=None):
     """Extract data specific to new_batch version"""
     data = {}
     
-    # Date field (note: different column name than other versions)
-    date_value = safe_get_cell_value(row, "date on deed")
+    # Date field - get column name from config if available
+    date_column = "date on deed"  # Default
+    if config:
+        try:
+            # Look for date column in required columns
+            required_cols = config.get("required_columns", [])
+            date_columns = [col for col in required_cols if "date" in col.lower() and "deed" in col.lower()]
+            if date_columns:
+                date_column = date_columns[0]
+        except:
+            pass
+    
+    date_value = safe_get_cell_value(row, date_column)
     data["date_on_deed"] = format_date(date_value)
     
-    # Additional sellers (optional)
+    # Additional sellers (optional) - always check for these in new_batch
     additional_name = {
         "first": safe_get_cell_value(row, "First 2"),
         "middle": safe_get_cell_value(row, "Middle 2"),
@@ -93,28 +120,57 @@ def extract_new_batch_data(row):
     
     return data
 
-def extract_deedbacks_data(row):
+def extract_deedbacks_data(row, config=None):
     """Extract data specific to deedbacks version"""
     data = {}
     
-    # Date field (note: different column name)
-    date_value = safe_get_cell_value(row, "Date on Deed")  # Capital D
+    # Date field - get column name from config if available
+    date_column = "Date on Deed"  # Default with capital D
+    if config:
+        try:
+            required_cols = config.get("required_columns", [])
+            date_columns = [col for col in required_cols if "date" in col.lower() and "deed" in col.lower()]
+            if date_columns:
+                date_column = date_columns[0]
+        except:
+            pass
+    
+    date_value = safe_get_cell_value(row, date_column)
     data["date_on_deed"] = format_date(date_value)
     
-    # DB To field for buyer determination
-    data["db_to"] = safe_get_cell_value(row, "DB To")
+    # DB To field for buyer determination - get field name from config if available
+    db_to_column = "DB To"  # Default
+    if config:
+        try:
+            buyer_config = config["constants"]["buyer_section"]
+            if "conditional_field" in buyer_config:
+                db_to_column = buyer_config["conditional_field"]
+        except:
+            pass
+    
+    data["db_to"] = safe_get_cell_value(row, db_to_column)
     
     # No additional sellers for deedbacks version
     data["additional_name"] = {"first": "", "middle": "", "last": ""}
     
     return data
 
-def extract_foreclosures_data(row):
+def extract_foreclosures_data(row, config=None):
     """Extract data specific to foreclosures version"""
     data = {}
     
-    # Date field 
-    date_value = safe_get_cell_value(row, "date on deed")  # lowercase
+    # Date field - get column name from config if available
+    date_column = "date on deed"  # Default lowercase
+    if config:
+        try:
+            required_cols = config.get("required_columns", [])
+            date_columns = [col for col in required_cols if "date" in col.lower() and "deed" in col.lower()]
+            if date_columns:
+                date_column = date_columns[0]
+        except:
+            pass
+    
+    date_value = safe_get_cell_value(row, date_column)
     data["date_on_deed"] = format_date(date_value)
     
     # No additional sellers for foreclosures version
@@ -164,10 +220,19 @@ def format_date(date_value):
         if hasattr(date_value, 'strftime'):
             return date_value.strftime('%m/%d/%Y')
         
-        # If it's a string, try to parse it
+        # If it's a string that looks like datetime output
         if isinstance(date_value, str):
+            # Handle pandas datetime string format like "2024-01-04 00:00:00"
+            if " 00:00:00" in date_value:
+                date_part = date_value.split(" ")[0]  # Get just the date part
+                try:
+                    parsed_date = datetime.strptime(date_part, '%Y-%m-%d')
+                    return parsed_date.strftime('%m/%d/%Y')
+                except ValueError:
+                    pass
+            
             # Try common date formats
-            for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%m-%d-%Y', '%d/%m/%Y']:
+            for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%m-%d-%Y', '%d/%m/%Y', '%Y/%m/%d']:
                 try:
                     parsed_date = datetime.strptime(date_value, fmt)
                     return parsed_date.strftime('%m/%d/%Y')

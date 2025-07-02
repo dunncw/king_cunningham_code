@@ -1,14 +1,23 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QFileDialog, QProgressBar, QTextEdit, QComboBox, QFrame
+    QFileDialog, QProgressBar, QTextEdit, QComboBox, QFrame, QScrollArea
 )
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import pyqtSignal, QTimer
+from PyQt6.QtGui import QFont
+import sys
+import os
+
+# Add the parent directory to the Python path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 class WebAutomationUI(QWidget):
     start_automation = pyqtSignal(str, str, str, str, str, str)  # Added version parameter
 
     def __init__(self):
         super().__init__()
+        self.validation_timer = QTimer()
+        self.validation_timer.setSingleShot(True)
+        self.validation_timer.timeout.connect(self.validate_current_selection)
         self.init_ui()
 
     def init_ui(self):
@@ -19,27 +28,115 @@ class WebAutomationUI(QWidget):
         title_label.setStyleSheet("font-size: 18px; font-weight: bold;")
         layout.addWidget(title_label)
 
-        # Version selection
+        # Version selection - Using config as single source of truth
         version_layout = QHBoxLayout()
         self.version_combo = QComboBox()
-        self.version_combo.addItems([
-            "PT-61 New Batch",
-            "PT-61 Deedbacks", 
-            "PT61 Foreclosures"
-        ])
+        
+        # Load version names from config
+        try:
+            from web_automation.pt61_config import get_all_version_display_names
+            version_names = get_all_version_display_names()
+            self.version_combo.addItems(version_names)
+        except ImportError as e:
+            # Fallback if import fails
+            self.version_combo.addItems([
+                "PT-61 New Batch",
+                "PT-61 Deedbacks", 
+                "PT61 Foreclosures"
+            ])
+            print(f"Warning: Could not import PT61 config, using fallback: {e}")
+        
+        self.version_combo.currentTextChanged.connect(self.on_version_changed)
         version_layout.addWidget(QLabel("Version:"))
         version_layout.addWidget(self.version_combo)
         layout.addLayout(version_layout)
 
+        # Version info panel - Two column layout
+        self.version_info_frame = QFrame()
+        self.version_info_layout = QVBoxLayout(self.version_info_frame)
+        
+        self.version_description = QLabel()
+        self.version_description.setWordWrap(True)
+        self.version_info_layout.addWidget(self.version_description)
+        
+        # Two column layout for requirements and constants
+        columns_layout = QHBoxLayout()
+        
+        # Left column - Excel Requirements
+        excel_column = QWidget()
+        excel_layout = QVBoxLayout(excel_column)
+        
+        self.required_columns_label = QLabel("Required Excel Columns:")
+        self.required_columns_label.setFont(QFont("", 9, QFont.Weight.Bold))
+        excel_layout.addWidget(self.required_columns_label)
+        
+        # Scrollable area for required columns
+        excel_scroll = QScrollArea()
+        excel_scroll.setMaximumHeight(200)
+        excel_scroll.setWidgetResizable(True)
+        
+        self.required_columns_list = QLabel()
+        self.required_columns_list.setWordWrap(True)
+        excel_scroll.setWidget(self.required_columns_list)
+        excel_layout.addWidget(excel_scroll)
+        
+        # Right column - Constants
+        constants_column = QWidget()
+        constants_layout = QVBoxLayout(constants_column)
+        
+        self.constants_label = QLabel("Version Constants:")
+        self.constants_label.setFont(QFont("", 9, QFont.Weight.Bold))
+        constants_layout.addWidget(self.constants_label)
+        
+        # Scrollable area for constants
+        constants_scroll = QScrollArea()
+        constants_scroll.setMaximumHeight(200)
+        constants_scroll.setWidgetResizable(True)
+        
+        self.constants_display = QLabel()
+        self.constants_display.setWordWrap(True)
+        self.constants_display.setFont(QFont("Courier", 8))  # Monospace for JSON
+        constants_scroll.setWidget(self.constants_display)
+        constants_layout.addWidget(constants_scroll)
+        
+        # Add columns to layout
+        columns_layout.addWidget(excel_column)
+        columns_layout.addWidget(constants_column)
+        
+        self.version_info_layout.addLayout(columns_layout)
+        layout.addWidget(self.version_info_frame)
+
         # Excel file selection
         excel_layout = QHBoxLayout()
         self.excel_edit = QLineEdit()
+        self.excel_edit.textChanged.connect(self.on_excel_path_changed)
         excel_button = QPushButton("Select Excel File")
         excel_button.clicked.connect(self.select_excel_file)
         excel_layout.addWidget(QLabel("Excel File:"))
         excel_layout.addWidget(self.excel_edit)
         excel_layout.addWidget(excel_button)
         layout.addLayout(excel_layout)
+
+        # Validation status
+        self.validation_frame = QFrame()
+        self.validation_frame.setVisible(False)
+        self.validation_layout = QVBoxLayout(self.validation_frame)
+        
+        self.validation_status = QLabel()
+        self.validation_status.setFont(QFont("", 9, QFont.Weight.Bold))
+        self.validation_layout.addWidget(self.validation_status)
+        
+        # Scrollable area for validation details
+        scroll_area = QScrollArea()
+        scroll_area.setMaximumHeight(150)
+        scroll_area.setWidgetResizable(True)
+        
+        self.validation_details = QLabel()
+        self.validation_details.setWordWrap(True)
+        scroll_area.setWidget(self.validation_details)
+        self.validation_layout.addWidget(scroll_area)
+        
+        layout.addWidget(self.validation_frame)
 
         # Browser selection
         browser_layout = QHBoxLayout()
@@ -77,6 +174,7 @@ class WebAutomationUI(QWidget):
         # Start button
         self.start_button = QPushButton("Start PT-61 Automation")
         self.start_button.clicked.connect(self.on_start_clicked)
+        self.start_button.setEnabled(False)  # Disabled until validation passes
         layout.addWidget(self.start_button)
 
         # Status and progress
@@ -118,6 +216,111 @@ class WebAutomationUI(QWidget):
         layout.addWidget(self.save_button)
 
         self.setLayout(layout)
+        
+        # Initialize version info
+        self.on_version_changed()
+
+    def on_version_changed(self):
+        """Handle version selection change"""
+        try:
+            from web_automation.pt61_config import get_version_config, is_valid_version_name
+            import json
+            
+            version_name = self.version_combo.currentText()
+            
+            # Validate version name exists in config
+            if not is_valid_version_name(version_name):
+                self.version_description.setText(f"Error: Unknown version '{version_name}'")
+                return
+            
+            _, config = get_version_config(version_name)
+            
+            # Update version description
+            description = config.get("description", "No description available")
+            self.version_description.setText(f"Description: {description}")
+            
+            # Update required columns list
+            required_cols = config["required_columns"]
+            cols_text = "• " + "\n• ".join(required_cols)
+            self.required_columns_list.setText(cols_text)
+            
+            # Update constants display with formatted JSON
+            constants = config.get("constants", {})
+            try:
+                constants_json = json.dumps(constants, indent=2)
+                self.constants_display.setText(constants_json)
+            except Exception as e:
+                self.constants_display.setText(f"Error formatting constants: {str(e)}")
+            
+            # Trigger validation if Excel file is selected
+            if self.excel_edit.text():
+                self.validation_timer.start(500)  # Delay to avoid too frequent validation
+                
+        except Exception as e:
+            self.version_description.setText(f"Error loading version info: {str(e)}")
+            self.constants_display.setText("Error loading constants")
+
+    def on_excel_path_changed(self):
+        """Handle Excel file path change"""
+        if self.excel_edit.text():
+            self.validation_timer.start(500)  # Delay validation by 500ms
+        else:
+            self.validation_frame.setVisible(False)
+            self.start_button.setEnabled(False)
+
+    def validate_current_selection(self):
+        """Validate current Excel file against selected version"""
+        excel_path = self.excel_edit.text()
+        version_name = self.version_combo.currentText()
+        
+        if not excel_path:
+            self.validation_frame.setVisible(False)
+            self.start_button.setEnabled(False)
+            return
+        
+        try:
+            from web_automation.version_validator import validate_excel_for_version
+            from web_automation.pt61_config import is_valid_version_name
+            
+            # Validate version name first
+            if not is_valid_version_name(version_name):
+                self.validation_status.setText(f"❌ Invalid version: {version_name}")
+                self.validation_details.setText("Please select a valid version from the dropdown.")
+                self.start_button.setEnabled(False)
+                return
+            
+            result = validate_excel_for_version(excel_path, version_name)
+            
+            # Show validation frame
+            self.validation_frame.setVisible(True)
+            
+            if result.is_valid:
+                self.validation_status.setText("✅ Excel file is valid for this version")
+                self.start_button.setEnabled(True)
+            else:
+                self.validation_status.setText("❌ Excel file validation failed")
+                self.start_button.setEnabled(False)
+            
+            # Show detailed validation info
+            details = []
+            
+            if result.errors:
+                details.append("ERRORS:")
+                for error in result.errors:
+                    details.append(f"  • {error}")
+                details.append("")
+            
+            if result.warnings:
+                details.append("WARNINGS:")
+                for warning in result.warnings:
+                    details.append(f"  • {warning}")
+            
+            self.validation_details.setText("\n".join(details))
+            
+        except Exception as e:
+            self.validation_status.setText(f"❌ Validation error: {str(e)}")
+            self.validation_details.setText("")
+            self.start_button.setEnabled(False)
 
     def select_excel_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
