@@ -30,9 +30,16 @@ class DeedbacksAutomation(BasePT61Automation):
         self.status.emit("🚀 DEV: Clicking Next Step to move to buyer section...")
         self.click_next_step()
         
-        self.status.emit("🛑 DEV: Reached buyer section - ready for HTML collection")
-        self.status.emit("Please inspect the buyer section HTML and press Enter to continue...")
-        input("Press Enter after collecting buyer section HTML structure to continue...")
+        # DEVELOPMENT: Now we'll fill buyer section and move to property section
+        self.status.emit("🚀 DEV: Filling buyer section...")
+        self.fill_buyer_section(person_data)
+        
+        self.status.emit("🚀 DEV: Clicking Next Step to move to property section...")
+        self.click_next_step()
+        
+        self.status.emit("🛑 DEV: Reached property section - ready for HTML collection")
+        self.status.emit("Please inspect the property section HTML and press Enter to continue...")
+        input("Press Enter after collecting property section HTML structure to continue...")
 
         # Future implementation will go here:
         # self.fill_seller_section(person_data)
@@ -89,9 +96,42 @@ class DeedbacksAutomation(BasePT61Automation):
 
     def fill_buyer_section(self, person_data):
         """Fill buyer section for Deedbacks version - Dynamic business buyer"""
-        # TODO: Implement after seller section is complete
-        self.status.emit("🚧 Buyer section implementation pending...")
-        pass
+        self.status.emit("Filling buyer section - Business buyer")
+        
+        # Click business radio button
+        business_radio = WebDriverWait(self.driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//input[@name='businessFlag' and @value='1']"))
+        )
+        business_radio.click()
+        self.status.emit("Selected Business radio button")
+
+        # Determine buyer based on DB To field from Excel
+        db_to_value = person_data.get('db_to', '').upper().strip()
+        self.status.emit(f"DB To value from Excel: '{db_to_value}'")
+        
+        # Dynamic buyer selection based on DB To column
+        if 'CENTENNIAL' in db_to_value:
+            buyer_name = "CENTENNIAL PARK DEVELOPMENT LLC"
+        elif 'WYNDHAM' in db_to_value:
+            buyer_name = "WYNDHAM VACATION RESORTS, INC."
+        else:
+            # Default to CENTENNIAL if not found or unclear
+            buyer_name = "CENTENNIAL PARK DEVELOPMENT LLC"
+            self.status.emit(f"Unknown DB To value '{db_to_value}', defaulting to CENTENNIAL")
+
+        # Fill business name
+        business_name_field = WebDriverWait(self.driver, 10).until(
+            EC.presence_of_element_located((By.ID, "businessName"))
+        )
+        business_name_field.send_keys(buyer_name)
+        self.status.emit(f"Filled buyer business name: {buyer_name}")
+
+        # Fill address using the new generic function
+        buyer_address = self.constants["buyer_section"]["address"]
+        self.fill_primary_mailing_address(buyer_address)
+        self.status.emit("Filled buyer mailing address")
+        
+        # Note: No additional buyers to fill for deedbacks version
 
     def fill_property_section(self, person_data):
         """Fill property section for Deedbacks version"""

@@ -122,6 +122,45 @@ class BasePT61Automation(QObject):
         except NoAlertPresentException:
             return False
 
+    def fill_primary_mailing_address(self, address_config):
+        """
+        Generic function to fill primary mailing address fields
+        
+        Args:
+            address_config (dict): Address configuration with keys:
+                - line1: Street address line 1
+                - city: City name
+                - state: State abbreviation  
+                - zip: ZIP code
+        """
+        try:
+            # Fill address line 1
+            address_field = self.driver.find_element(By.ID, "street1")
+            address_field.send_keys(address_config["line1"])
+            self.status.emit(f"Filled address line 1: {address_config['line1']}")
+
+            # Fill city
+            city_field = self.driver.find_element(By.ID, "city")
+            city_field.send_keys(address_config["city"])
+
+            # Fill state (if there's a state field)
+            try:
+                state_field = self.driver.find_element(By.ID, "state")
+                state_field.send_keys(address_config["state"])
+            except:
+                # State field might not exist on all forms
+                pass
+
+            # Fill ZIP code
+            zip_field = self.driver.find_element(By.ID, "zip")
+            zip_field.send_keys(address_config["zip"])
+            
+            self.status.emit(f"Completed address: {address_config['city']}, {address_config['state']} {address_config['zip']}")
+            
+        except Exception as e:
+            self.status.emit(f"Error filling address: {str(e)}")
+            raise
+
     def fill_standard_property_fields(self, street_number, street_name, street_type_value, post_direction, county_value, map_parcel):
         """Fill standard property fields that are the same across versions"""
         # Fill out street number
