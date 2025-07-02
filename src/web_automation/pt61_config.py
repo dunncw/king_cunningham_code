@@ -2,7 +2,7 @@
 
 PT61_VERSIONS = {
     "new_batch": {
-        "display_name": "PT-61 New Batch",
+        "display_name": "New Batch",
         "description": "Current version for new Wyndham batch processing",
         "required_columns": [
             "Contract Num",
@@ -59,7 +59,7 @@ PT61_VERSIONS = {
     },
     
     "deedbacks": {
-        "display_name": "PT-61 Deedbacks", 
+        "display_name": "Deedbacks", 
         "description": "For Wyndham deedback processing (Brittany's version)",
         "required_columns": [
             "Contract Num",
@@ -117,7 +117,7 @@ PT61_VERSIONS = {
     },
     
     "foreclosures": {
-        "display_name": "PT61 Foreclosures",
+        "display_name": "Foreclosures",
         "description": "For foreclosure processing (Shannon's version)",
         "required_columns": [
             "Contract Num",
