@@ -37,9 +37,30 @@ class DeedbacksAutomation(BasePT61Automation):
         self.status.emit("🚀 DEV: Clicking Next Step to move to property section...")
         self.click_next_step()
         
-        self.status.emit("🛑 DEV: Reached property section - ready for HTML collection")
-        self.status.emit("Please inspect the property section HTML and press Enter to continue...")
-        input("Press Enter after collecting property section HTML structure to continue...")
+        # DEVELOPMENT: Now we'll complete the full flow
+        self.status.emit("🚀 DEV: Filling property section...")
+        self.fill_property_section(person_data)
+        
+        self.status.emit("🚀 DEV: Clicking Next Step to move to tax computation section...")
+        self.click_next_step()
+        
+        self.status.emit("🚀 DEV: Handling any alerts...")
+        self.handle_alert_if_present()
+        
+        self.status.emit("🚀 DEV: Filling tax computation section...")
+        self.fill_financial_section(person_data)
+        
+        self.status.emit("🚀 DEV: Clicking Next Step to move to submission...")
+        self.click_next_step()
+        
+        self.status.emit("🚀 DEV: Submitting form...")
+        self.submit_form()
+        
+        self.status.emit("🚀 DEV: Generating filename and saving PDF...")
+        filename = self.generate_filename(person_data)
+        self.save_pdf(filename)
+        
+        self.status.emit("🎉 DEV: Completed full deedbacks automation flow!")
 
         # Future implementation will go here:
         # self.fill_seller_section(person_data)
@@ -135,15 +156,19 @@ class DeedbacksAutomation(BasePT61Automation):
 
     def fill_property_section(self, person_data):
         """Fill property section for Deedbacks version"""
-        # TODO: Implement after buyer section is complete
-        self.status.emit("🚧 Property section implementation pending...")
-        pass
+        self.status.emit("Filling property section - Using config data")
+        
+        # Use the generic property section method with config data
+        property_config = self.constants["property_section"]
+        self.fill_property_section_standard(person_data, property_config)
 
     def fill_financial_section(self, person_data):
-        """Fill financial section for Deedbacks version"""
-        # TODO: Implement after property section is complete
-        self.status.emit("🚧 Financial section implementation pending...")
-        pass
+        """Fill financial section (tax computation) for Deedbacks version"""
+        self.status.emit("Filling tax computation section - Using config data")
+        
+        # Use the generic tax computation method with config data
+        tax_config = self.constants["tax_computation"]
+        self.fill_tax_computation_section(person_data, tax_config)
 
     def generate_filename(self, person_data):
         """Generate filename for Deedbacks version"""

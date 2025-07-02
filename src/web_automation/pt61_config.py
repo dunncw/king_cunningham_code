@@ -46,7 +46,7 @@ PT61_VERSIONS = {
                 "county_value": "60",  # Form value
                 "map_parcel": "14-0078-0007-096-9"
             },
-            "financial_section": {
+            "tax_computation": {
                 "exempt_code": "None",
                 "fair_market_value": "0",
                 "liens_encumbrances": "0"
@@ -59,7 +59,7 @@ PT61_VERSIONS = {
     },
     
     "deedbacks": {
-        "display_name": "Deedbacks", 
+        "display_name": "PT-61 Deedbacks", 
         "description": "For Wyndham deedback processing (Brittany's version)",
         "required_columns": [
             "Contract Num",
@@ -96,7 +96,7 @@ PT61_VERSIONS = {
             },
             "property_section": {
                 "street_number": "155", 
-                "street_name": "CENTENNIAL OLYMPIC PARK",
+                "street_name": "Centennial Olympic Park",
                 "street_type": "Drive",
                 "street_type_value": "DR",
                 "post_direction": "NW",
@@ -104,7 +104,7 @@ PT61_VERSIONS = {
                 "county_value": "60",
                 "map_parcel": "14-0078-0007-096-9"
             },
-            "tax computation": {
+            "tax_computation": {
                 "exempt_code": "None",
                 "fair_market_value": "0",
                 "liens_encumbrances": "0"
@@ -153,8 +153,10 @@ PT61_VERSIONS = {
                 "county_value": "60",
                 "map_parcel": "14-0078-0007-096-9"
             },
-            "financial_section": {
+            "tax_computation": {
                 "exempt_code": "First Transferee Foreclosure",
+                "fair_market_value": "0",
+                "liens_encumbrances": "0",
                 "auto_fill_fields": ["fairMarketValue", "liensAndEncumberances"]  # Website auto-fills these
             },
             "file_naming": {
