@@ -10,7 +10,7 @@ PT61_VERSIONS = {
             "First 1", 
             "Middle 1",
             "Last 2",     # Optional - for additional sellers
-            "First 2",    # Optional - for additional sellers
+            "First 2",    # Optional - for additional sellers  
             "Middle 2",   # Optional - for additional sellers
             "Sales Price",
             "date on deed"
@@ -186,3 +186,26 @@ def get_constants(version_display_name):
     """Get constants for a version"""
     _, config = get_version_config(version_display_name)
     return config["constants"]
+
+# Single source of truth functions for UI
+def get_all_version_display_names():
+    """Get all version display names for UI dropdowns"""
+    return [config["display_name"] for config in PT61_VERSIONS.values()]
+
+def get_version_descriptions():
+    """Get all version descriptions"""
+    return {config["display_name"]: config["description"] for config in PT61_VERSIONS.values()}
+
+def get_version_by_key(version_key):
+    """Get version config by key"""
+    if version_key in PT61_VERSIONS:
+        return PT61_VERSIONS[version_key]
+    raise ValueError(f"Unknown version key: {version_key}")
+
+def is_valid_version_name(version_display_name):
+    """Check if a version display name is valid"""
+    try:
+        get_version_config(version_display_name)
+        return True
+    except ValueError:
+        return False
