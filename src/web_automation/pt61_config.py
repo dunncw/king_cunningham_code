@@ -22,7 +22,7 @@ PT61_VERSIONS = {
                 "password_field": "txtPassword"
             },
             "seller_section": {
-                "type": "individual",  # individual vs business
+                "type": "business",
                 "address": {
                     "line1": "CENTENNIAL PARK DEVELOPMENT LLC",
                     "line2": "c/o 155 CENTENNIAL OLYMPIC PARK DR. NW",
@@ -32,7 +32,7 @@ PT61_VERSIONS = {
                 }
             },
             "buyer_section": {
-                "type": "business",
+                "type": "individual",
                 "name": "CENTENNIAL PARK DEVELOPMENT LLC",
                 "address": "same_as_seller"
             },
@@ -79,7 +79,7 @@ PT61_VERSIONS = {
             "seller_section": {
                 "type": "individual",
                 "address": {
-                    "line1": "c/o 155 CENTENNIAL OLYMPIC PARK DR. NW",
+                    "line1": "C/O 155 CENTENNIAL OLYMPIC PARK DRIVE NW",
                     "city": "ATLANTA",
                     "state": "GA",
                     "zip": "30313"
@@ -87,16 +87,16 @@ PT61_VERSIONS = {
             },
             "buyer_section": {
                 "type": "business",
-                "conditional_field": "DB To",  # Column that determines buyer
-                "options": {
-                    "CENTENNIAL": "CENTENNIAL PARK DEVELOPMENT LLC",
-                    "WYNDHAM": "WYNDHAM VACATION RESORTS, INC."
-                },
-                "address": "same_as_seller"
+                "address": {
+                    "line1": "155 CENTENNIAL OLYMPIC PARK DRIVE NW",
+                    "city": "ATLANTA",
+                    "state": "GA",
+                    "zip": "30313"
+                }
             },
             "property_section": {
                 "street_number": "155", 
-                "street_name": "Centennial Olympic Park",
+                "street_name": "CENTENNIAL OLYMPIC PARK",
                 "street_type": "Drive",
                 "street_type_value": "DR",
                 "post_direction": "NW",
@@ -104,7 +104,7 @@ PT61_VERSIONS = {
                 "county_value": "60",
                 "map_parcel": "14-0078-0007-096-9"
             },
-            "financial_section": {
+            "tax computation": {
                 "exempt_code": "None",
                 "fair_market_value": "0",
                 "liens_encumbrances": "0"
@@ -117,7 +117,7 @@ PT61_VERSIONS = {
     },
     
     "foreclosures": {
-        "display_name": "Foreclosures",
+        "display_name": "PT61 Foreclosures",
         "description": "For foreclosure processing (Shannon's version)",
         "required_columns": [
             "Contract Num",
