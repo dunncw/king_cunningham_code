@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSignal
 
 class WebAutomationUI(QWidget):
-    start_automation = pyqtSignal(str, str, str, str, str)
+    start_automation = pyqtSignal(str, str, str, str, str, str)  # Added version parameter
 
     def __init__(self):
         super().__init__()
@@ -15,9 +15,21 @@ class WebAutomationUI(QWidget):
         layout = QVBoxLayout()
 
         # Title
-        title_label = QLabel("Web Automation")
+        title_label = QLabel("PT-61 Form Automation")
         title_label.setStyleSheet("font-size: 18px; font-weight: bold;")
         layout.addWidget(title_label)
+
+        # Version selection
+        version_layout = QHBoxLayout()
+        self.version_combo = QComboBox()
+        self.version_combo.addItems([
+            "PT-61 New Batch",
+            "PT-61 Deedbacks", 
+            "PT61 Foreclosures"
+        ])
+        version_layout.addWidget(QLabel("Version:"))
+        version_layout.addWidget(self.version_combo)
+        layout.addLayout(version_layout)
 
         # Excel file selection
         excel_layout = QHBoxLayout()
@@ -63,7 +75,7 @@ class WebAutomationUI(QWidget):
         layout.addLayout(save_location_layout)
 
         # Start button
-        self.start_button = QPushButton("Start Web Automation")
+        self.start_button = QPushButton("Start PT-61 Automation")
         self.start_button.clicked.connect(self.on_start_clicked)
         layout.addWidget(self.start_button)
 
@@ -119,15 +131,16 @@ class WebAutomationUI(QWidget):
         if folder_path:
             self.save_location_edit.setText(folder_path)
 
-
     def on_start_clicked(self):
         excel_path = self.excel_edit.text()
         browser = self.browser_combo.currentText()
         username = self.username_edit.text()
         password = self.password_edit.text()
         save_location = self.save_location_edit.text()
+        version = self.version_combo.currentText()
+        
         if excel_path and username and password and save_location:
-            self.start_automation.emit(excel_path, browser, username, password, save_location)
+            self.start_automation.emit(excel_path, browser, username, password, save_location, version)
             self.start_button.setEnabled(False)
             self.status_label.setText("Automation in progress...")
             self.spinner.show()

@@ -54,13 +54,14 @@ class WebAutomationWorker(QObject):
     status = pyqtSignal(str)
     error = pyqtSignal(str)
 
-    def __init__(self, excel_path, browser, username, password, save_location):
+    def __init__(self, excel_path, browser, username, password, save_location, version):
         super().__init__()
         self.excel_path = excel_path
         self.browser = browser
         self.username = username
         self.password = password
         self.save_location = save_location
+        self.version = version  # Store version for future use
 
     def run(self):
         try:
@@ -71,6 +72,12 @@ class WebAutomationWorker(QObject):
             self.finished.emit()
 
     def run_web_automation(self):
+        # Log which version we're running
+        self.status.emit(f"Running automation with version: {self.version}")
+        
+        # For now, we'll keep the exact same logic as before
+        # This ensures the existing "PT-61 New Batch" version continues to work
+        
         # Define local variables
         business_name = 'CENTENNIAL PARK DEVELOPMENT LLC'
         address_1 = 'C/O 115 CENTENNIAL OLYMPIC PARK DRIVE NW'
@@ -105,7 +112,6 @@ class WebAutomationWorker(QObject):
             driver = webdriver.Edge(service=service)
         else:
             raise ValueError(f"Unsupported browser: {self.browser}")
-
 
         try:
             # Open the browser and navigate to the specified URL
@@ -430,9 +436,9 @@ class WebAutomationWorker(QObject):
                 driver.quit()
                 self.status.emit("Browser closed.")
 
-def run_web_automation_thread(excel_path, browser, username, password, save_location):
+def run_web_automation_thread(excel_path, browser, username, password, save_location, version):
     thread = QThread()
-    worker = WebAutomationWorker(excel_path, browser, username, password, save_location)
+    worker = WebAutomationWorker(excel_path, browser, username, password, save_location, version)
     worker.moveToThread(thread)
     
     thread.started.connect(worker.run)
@@ -453,8 +459,9 @@ if __name__ == "__main__":
     test_username = "jcunningham@kingcunningham.com"
     test_password = "Kc123!@#"
     test_save_location = r"D:\repositorys\KC_appp\data\sorted\pt61"
+    test_version = "PT-61 New Batch"
 
-    thread, worker = run_web_automation_thread(test_excel_path, test_browser, test_username, test_password, test_save_location)
+    thread, worker = run_web_automation_thread(test_excel_path, test_browser, test_username, test_password, test_save_location, test_version)
     
     worker.status.connect(print)  # Print status updates to console
     worker.progress.connect(lambda p: print(f"Progress: {p}%"))

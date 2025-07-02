@@ -487,14 +487,21 @@ class MainWindow(QMainWindow):
         self.doc_processor.show_error(error_message)
         self.doc_processor.process_button.setEnabled(True)
 
-    def start_web_automation(self, excel_path, browser, username, password, save_location):
-        self.thread, self.worker = run_web_automation_thread(excel_path, browser, username, password, save_location)
+    def start_web_automation(self, excel_path, browser, username, password, save_location, version):
+        # For now, we'll just pass the version through but only use it for logging
+        # The actual automation logic will remain the same until we implement version handlers
+        
+        self.thread, self.worker = run_web_automation_thread(
+            excel_path, browser, username, password, save_location, version
+        )
         
         self.worker.status.connect(self.web_automation.update_output)
         self.worker.progress.connect(self.web_automation.update_progress)
         self.worker.error.connect(self.show_error)
         self.worker.finished.connect(self.web_automation_finished)
 
+        # Log which version is being used
+        self.web_automation.update_output(f"Starting automation with version: {version}")
         self.web_automation.start_button.setEnabled(False)
         self.thread.start()
 
