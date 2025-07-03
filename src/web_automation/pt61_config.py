@@ -25,7 +25,7 @@ PT61_VERSIONS = {
                 "type": "business",
                 "address": {
                     "line1": "CENTENNIAL PARK DEVELOPMENT LLC",
-                    "line2": "c/o 155 CENTENNIAL OLYMPIC PARK DR. NW",
+                    "line2": "C/O 155 CENTENNIAL OLYMPIC PARK DRIVE NW",
                     "city": "ATLANTA",
                     "state": "GA",
                     "zip": "30313"
@@ -38,7 +38,7 @@ PT61_VERSIONS = {
             },
             "property_section": {
                 "street_number": "155",
-                "street_name": "Centennial Olympic Park",
+                "street_name": "CENTENNIAL OLYMPIC PARK",
                 "street_type": "Drive",
                 "street_type_value": "DR",  # Form value
                 "post_direction": "NW",
@@ -96,7 +96,7 @@ PT61_VERSIONS = {
             },
             "property_section": {
                 "street_number": "155", 
-                "street_name": "Centennial Olympic Park",
+                "street_name": "CENTENNIAL OLYMPIC PARK",
                 "street_type": "Drive",
                 "street_type_value": "DR",
                 "post_direction": "NW",
