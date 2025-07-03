@@ -193,7 +193,15 @@ def safe_get_cell_value(row, column_name):
         if column_name in row.index:
             value = row[column_name]
             if pd.notnull(value):
-                return str(value).strip()
+                # Handle contract numbers and other numeric values that should be strings
+                if column_name.lower() in ['contract num', 'contract_num', 'contract number']:
+                    # Convert to string and remove .0 if it's a whole number
+                    if isinstance(value, float) and value.is_integer():
+                        return str(int(value))
+                    else:
+                        return str(value).strip()
+                else:
+                    return str(value).strip()
         return ""
     except (KeyError, IndexError):
         return ""

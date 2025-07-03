@@ -25,7 +25,7 @@ PT61_VERSIONS = {
                 "type": "business",
                 "address": {
                     "line1": "CENTENNIAL PARK DEVELOPMENT LLC",
-                    "line2": "C/O 155 CENTENNIAL OLYMPIC PARK DRIVE NW",
+                    "line2": "c/o 155 CENTENNIAL OLYMPIC PARK DR. NW",
                     "city": "ATLANTA",
                     "state": "GA",
                     "zip": "30313"
@@ -38,7 +38,7 @@ PT61_VERSIONS = {
             },
             "property_section": {
                 "street_number": "155",
-                "street_name": "CENTENNIAL OLYMPIC PARK",
+                "street_name": "Centennial Olympic Park",
                 "street_type": "Drive",
                 "street_type_value": "DR",  # Form value
                 "post_direction": "NW",
@@ -96,7 +96,7 @@ PT61_VERSIONS = {
             },
             "property_section": {
                 "street_number": "155", 
-                "street_name": "CENTENNIAL OLYMPIC PARK",
+                "street_name": "Centennial Olympic Park",
                 "street_type": "Drive",
                 "street_type_value": "DR",
                 "post_direction": "NW",
@@ -154,10 +154,7 @@ PT61_VERSIONS = {
                 "map_parcel": "14-0078-0007-096-9"
             },
             "tax_computation": {
-                "exempt_code": "First Transferee Foreclosure",
-                "fair_market_value": "0",
-                "liens_encumbrances": "0",
-                "auto_fill_fields": ["fairMarketValue", "liensAndEncumberances"]  # Website auto-fills these
+                "exempt_code": "First Transferee Foreclosure"
             },
             "file_naming": {
                 "pattern": "{contract_num}_{last_name}_PT61.pdf",  # Different order
