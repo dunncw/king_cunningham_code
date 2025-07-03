@@ -228,8 +228,8 @@ class WebAutomationUI(QWidget):
 
     def autofill_dev_data(self):
         """Autofill form with development data for testing"""
-        # Set version to Deedbacks for development
-        index = self.version_combo.findText("PT-61 Deedbacks")
+        # Set version to Foreclosures for development
+        index = self.version_combo.findText("PT61 Foreclosures")
         if index >= 0:
             self.version_combo.setCurrentIndex(index)
         
@@ -240,8 +240,8 @@ class WebAutomationUI(QWidget):
         # Set browser to Chrome (most reliable)
         self.browser_combo.setCurrentText("Chrome")
         
-        # Set default paths for deedbacks development
-        default_excel = r"D:\repositorys\KC_appp\task\pt61\docs\7-1-25\WYN Deedback Example PT61.xlsx"
+        # Set default paths for foreclosures development
+        default_excel = r"D:\repositorys\KC_appp\task\pt61\docs\7-1-25\Wyndham FCL Tracking S.S..xlsx"
         default_save = r"D:\repositorys\KC_appp\task\pt61\saves"
         
         self.excel_edit.setText(default_excel)
