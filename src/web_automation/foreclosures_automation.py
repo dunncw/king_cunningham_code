@@ -25,55 +25,55 @@ class ForeclosuresAutomation(BasePT61Automation):
         self.navigate_to_form()
 
         # Fill seller section (individual like deedbacks)
-        self.status.emit("🚀 DEV: Filling seller section (individual)...")
+        self.status.emit("Filling seller section (individual)...")
         self.fill_seller_section(person_data)
         
-        self.status.emit("🚀 DEV: Clicking Next Step to move to buyer section...")
+        self.status.emit("Clicking Next Step to move to buyer section...")
         self.click_next_step()
         
         # Fill buyer section (business like deedbacks)
-        self.status.emit("🚀 DEV: Filling buyer section (business)...")
+        self.status.emit("Filling buyer section (business)...")
         self.fill_buyer_section(person_data)
         
         # Clear additional buyers section (foreclosures requirement)
-        self.status.emit("🚀 DEV: Clearing additional buyers section...")
+        self.status.emit("Clearing additional buyers section...")
         self.clear_additional_buyers_if_needed()
         
-        self.status.emit("🚀 DEV: Clicking Next Step to move to property section...")
+        self.status.emit("Clicking Next Step to move to property section...")
         self.click_next_step()
         
         # Fill property section (simplified for foreclosures)
-        self.status.emit("🚀 DEV: Filling property section (simplified)...")
+        self.status.emit("Filling property section (simplified)...")
         self.fill_property_section(person_data)
         
-        self.status.emit("🚀 DEV: Clicking Next Step to move to tax computation section...")
+        self.status.emit("Clicking Next Step to move to tax computation section...")
         self.click_next_step()
         
-        self.status.emit("🚀 DEV: Handling any alerts...")
+        self.status.emit("Handling any alerts...")
         self.handle_alert_if_present()
         
         # Fill tax computation section
-        self.status.emit("🚀 DEV: Filling tax computation section...")
+        self.status.emit("Filling tax computation section...")
         self.fill_financial_section(person_data)
         
-        self.status.emit("🚀 DEV: Clicking Next Step to move to submission...")
+        self.status.emit("Clicking Next Step to move to submission...")
         self.click_next_step()
         
         # Submit form and save PDF
-        self.status.emit("🚀 DEV: Submitting form...")
+        self.status.emit("Submitting form...")
         self.submit_form()
         
-        self.status.emit("🚀 DEV: Generating filename and saving PDF...")
+        self.status.emit("Generating filename and saving PDF...")
         filename = self.generate_filename(person_data)
         self.save_pdf(filename)
         
-        self.status.emit("🎉 DEV: Completed full foreclosures automation flow!")
+        self.status.emit("Completed foreclosures automation flow!")
 
         # Update progress
         progress = int((index / total_count) * 100)
         self.progress.emit(progress)
         
-        self.status.emit(f"✅ DEV: Completed development pause for foreclosures person {index}")
+        self.status.emit(f"Completed automation for foreclosures person {index}")
 
     def fill_seller_section(self, person_data):
         """Fill seller section for Foreclosures version - Individual seller (same as deedbacks)"""
@@ -184,7 +184,7 @@ class ForeclosuresAutomation(BasePT61Automation):
             except:
                 pass
             
-            self.status.emit("✅ Additional buyers section cleared and ready")
+            self.status.emit("Additional buyers section cleared and ready")
             
         except Exception as e:
             self.status.emit(f"Note: Could not fully clear additional buyers: {str(e)}")

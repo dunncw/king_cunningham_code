@@ -23,44 +23,28 @@ class DeedbacksAutomation(BasePT61Automation):
         # Navigate to form
         self.navigate_to_form()
 
-        # DEVELOPMENT PAUSE: Now we'll fill seller section and move to buyer section
-        self.status.emit("🚀 DEV: Filling seller section...")
         self.fill_seller_section(person_data)
         
-        self.status.emit("🚀 DEV: Clicking Next Step to move to buyer section...")
         self.click_next_step()
         
-        # DEVELOPMENT: Now we'll fill buyer section and move to property section
-        self.status.emit("🚀 DEV: Filling buyer section...")
         self.fill_buyer_section(person_data)
         
-        self.status.emit("🚀 DEV: Clicking Next Step to move to property section...")
         self.click_next_step()
         
-        # DEVELOPMENT: Now we'll complete the full flow
-        self.status.emit("🚀 DEV: Filling property section...")
         self.fill_property_section(person_data)
         
-        self.status.emit("🚀 DEV: Clicking Next Step to move to tax computation section...")
         self.click_next_step()
         
-        self.status.emit("🚀 DEV: Handling any alerts...")
         self.handle_alert_if_present()
         
-        self.status.emit("🚀 DEV: Filling tax computation section...")
         self.fill_financial_section(person_data)
         
-        self.status.emit("🚀 DEV: Clicking Next Step to move to submission...")
         self.click_next_step()
         
-        self.status.emit("🚀 DEV: Submitting form...")
         self.submit_form()
         
-        self.status.emit("🚀 DEV: Generating filename and saving PDF...")
         filename = self.generate_filename(person_data)
         self.save_pdf(filename)
-        
-        self.status.emit("🎉 DEV: Completed full deedbacks automation flow!")
 
         # Future implementation will go here:
         # self.fill_seller_section(person_data)
@@ -80,7 +64,7 @@ class DeedbacksAutomation(BasePT61Automation):
         progress = int((index / total_count) * 100)
         self.progress.emit(progress)
         
-        self.status.emit(f"✅ DEV: Completed development pause for person {index}")
+        self.status.emit(f"Completed automation for person {index}")
 
     def fill_seller_section(self, person_data):
         """Fill seller section for Deedbacks version - Individual seller"""

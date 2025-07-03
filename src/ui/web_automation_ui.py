@@ -28,12 +28,6 @@ class WebAutomationUI(QWidget):
         title_label.setStyleSheet("font-size: 18px; font-weight: bold;")
         layout.addWidget(title_label)
 
-        # DEVELOPMENT: Add autofill button for testing
-        dev_button = QPushButton("🚀 DEV: Autofill Test Data")
-        dev_button.setStyleSheet("background-color: #ff6b6b; color: white; font-weight: bold;")
-        dev_button.clicked.connect(self.autofill_dev_data)
-        layout.addWidget(dev_button)
-
         # Version selection - Using config as single source of truth
         version_layout = QHBoxLayout()
         self.version_combo = QComboBox()
@@ -224,33 +218,6 @@ class WebAutomationUI(QWidget):
         self.setLayout(layout)
         
         # Initialize version info
-        self.on_version_changed()
-
-    def autofill_dev_data(self):
-        """Autofill form with development data for testing"""
-        # Set version to Foreclosures for development
-        index = self.version_combo.findText("PT61 Foreclosures")
-        if index >= 0:
-            self.version_combo.setCurrentIndex(index)
-        
-        # Autofill credentials from deedbacks documentation
-        self.username_edit.setText("jcunningham@kingcunningham.com")
-        self.password_edit.setText("Kc123!@#")
-        
-        # Set browser to Chrome (most reliable)
-        self.browser_combo.setCurrentText("Chrome")
-        
-        # Set default paths for foreclosures development
-        default_excel = r"D:\repositorys\KC_appp\task\pt61\docs\7-1-25\Wyndham FCL Tracking S.S..xlsx"
-        default_save = r"D:\repositorys\KC_appp\task\pt61\saves"
-        
-        self.excel_edit.setText(default_excel)
-        self.save_location_edit.setText(default_save)
-        
-        # Show status
-        self.status_label.setText("🚀 Development data autofilled!")
-        
-        # Trigger validation
         self.on_version_changed()
 
     def on_version_changed(self):
