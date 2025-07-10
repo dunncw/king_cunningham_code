@@ -61,7 +61,7 @@ def get_recipient_requirements(recipient_code):
 
 if __name__ == "__main__":
     # You can change this to query different recipients
-    recipient_code = "SCCP49"
+    recipient_code = "GAC3TH" 
     
     result = get_recipient_requirements(recipient_code)
     
