@@ -10,7 +10,7 @@ PT61_VERSIONS = {
             "First 1", 
             "Middle 1",
             "Last 2",     # Optional - for additional sellers
-            "First 2",    # Optional - for additional sellers  
+            "First 2",    # Optional - for additional sellers
             "Middle 2",   # Optional - for additional sellers
             "Sales Price",
             "date on deed"

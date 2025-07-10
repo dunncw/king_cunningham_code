@@ -1,5 +1,3 @@
-# File: web_automation/version_validator.py
-
 import pandas as pd
 from .pt61_config import get_required_columns, get_version_config
 
@@ -30,24 +28,24 @@ def validate_excel_for_version(excel_path, version_display_name):
     result = ValidationResult()
     
     try:
-        # Read Excel file to get column headers
+        # Read Excel file to get column headers - NO STRIPPING
         df = pd.read_excel(excel_path, nrows=0)  # Just read headers
-        excel_columns = [col.strip() for col in df.columns.tolist()]  # Remove whitespace
-        excel_columns_lower = [col.lower() for col in excel_columns]  # For case-insensitive matching
+        excel_columns = df.columns.tolist()  # Keep original column names exactly as they are
+        excel_columns_lower = [col.lower() for col in excel_columns]  # For case-insensitive matching only
         
         # Get required columns for this version
         required_columns = get_required_columns(version_display_name)
         version_key, config = get_version_config(version_display_name)
         
-        # Check for missing required columns
+        # Check for missing required columns - EXACT MATCHING ONLY
         missing_columns = []
         found_columns = []
         
         for required_col in required_columns:
-            # Try exact match first
+            # Try exact match first (case-sensitive and space-sensitive)
             if required_col in excel_columns:
                 found_columns.append(required_col)
-            # Try case-insensitive match
+            # Try case-insensitive match ONLY (no space tolerance)
             elif required_col.lower() in excel_columns_lower:
                 # Find the actual column name
                 actual_col = excel_columns[excel_columns_lower.index(required_col.lower())]
@@ -70,14 +68,9 @@ def validate_excel_for_version(excel_path, version_display_name):
             result.add_error("Excel file contains no data rows")
         elif len(df_data) == 0:
             result.add_error("Excel file contains only headers, no data")
-        else:
-            result.add_warning(f"Found {len(df_data)} data rows to process")
         
-        # Add info about extra columns (not an error, just informational)
-        extra_columns = [col for col in excel_columns if col not in required_columns]
-        if extra_columns:
-            result.add_warning(f"Extra columns found (will be ignored): {', '.join(extra_columns[:5])}" + 
-                             ("..." if len(extra_columns) > 5 else ""))
+        # REMOVED: Row count "warning" - this is just info, not a problem
+        # REMOVED: Extra columns "warning" - this is bloat, users don't need to know
         
     except FileNotFoundError:
         result.add_error(f"Excel file not found: {excel_path}")
