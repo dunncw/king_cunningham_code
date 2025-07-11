@@ -283,13 +283,6 @@ def format_sales_price(price_value):
         
         return "0.00"
 
-def print_extracted_data(people_data):
-    """Print extracted data for debugging"""
-    for i, person in enumerate(people_data):
-        print(f"Person {i + 1}:")
-        print(json.dumps(person, indent=2))
-        print()  # Add a blank line between people
-
 def validate_and_extract_data(excel_path, version_display_name="PT-61 New Batch"):
     """
     Validate Excel file and extract data if valid

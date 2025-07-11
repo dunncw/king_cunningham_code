@@ -9,8 +9,8 @@ from .pt61_config import get_version_config
 class NewBatchAutomation(BasePT61Automation):
     """PT-61 New Batch automation implementation"""
     
-    def __init__(self, excel_path, browser, username, password, save_location, version):
-        super().__init__(excel_path, browser, username, password, save_location, version)
+    def __init__(self, excel_path, browser, username, password, save_location, version, document_stacking=False):
+        super().__init__(excel_path, browser, username, password, save_location, version, document_stacking)
         
         # Get version config
         _, self.config = get_version_config(version)
@@ -131,16 +131,9 @@ class NewBatchAutomation(BasePT61Automation):
 
     def fill_financial_section(self, person_data):
         """Fill financial section for New Batch version"""
-        financial_config = self.constants["financial_section"]
+        financial_config = self.constants["tax_computation"]
         self.fill_standard_financial_fields(
             sales_price=person_data['sales_price'],
             fair_market_value=financial_config["fair_market_value"],
             liens_value=financial_config["liens_encumbrances"]
         )
-
-    def generate_filename(self, person_data):
-        """Generate filename for New Batch version"""
-        # Pattern: {last_name}_{contract_num}_PT61.pdf
-        last_name = person_data['individual_name']['last']
-        contract_num = person_data['contract_number']
-        return f"{last_name}_{contract_num}_PT61.pdf"

@@ -416,8 +416,33 @@ class BasePT61Automation(QObject):
         raise NotImplementedError("Version classes must implement fill_financial_section")
 
     def generate_filename(self, person_data):
-        """Generate filename for PDF - to be implemented by version classes"""
-        raise NotImplementedError("Version classes must implement generate_filename")
+        """Generate filename for PDF using config pattern"""
+        try:
+            # Get file naming pattern from config
+            file_naming = self.config["constants"]["file_naming"]
+            pattern = file_naming["pattern"]
+            
+            # Replace placeholders with actual data
+            filename = pattern.format(
+                last_name=person_data['individual_name']['last'],
+                contract_num=person_data['contract_number'],
+                contract_number=person_data['contract_number'],  # Alias for contract_num
+                first_name=person_data['individual_name']['first'],
+                middle_name=person_data['individual_name']['middle']
+            )
+            
+            # Clean filename (remove invalid characters)
+            import re
+            filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+            
+            return filename
+            
+        except Exception as e:
+            # Fallback to simple pattern if config fails
+            self.status.emit(f"Warning: Using fallback filename pattern due to error: {str(e)}")
+            last_name = person_data['individual_name']['last']
+            contract_num = person_data['contract_number']
+            return f"{last_name}_{contract_num}_PT61.pdf"
 
     def process_person(self, person_data, index, total_count):
         """Process a single person through the form - template method"""

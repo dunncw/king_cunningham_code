@@ -139,10 +139,3 @@ class DeedbacksAutomation(BasePT61Automation):
         # Use the generic tax computation method with config data
         tax_config = self.constants["tax_computation"]
         self.fill_tax_computation_section(person_data, tax_config)
-
-    def generate_filename(self, person_data):
-        """Generate filename for Deedbacks version"""
-        # Pattern: {last_name}_{contract_num}_PT61.pdf
-        last_name = person_data['individual_name']['last']
-        contract_num = person_data['contract_number']
-        return f"{last_name}_{contract_num}_PT61.pdf"

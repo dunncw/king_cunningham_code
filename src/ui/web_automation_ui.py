@@ -39,7 +39,7 @@ class WebAutomationUI(QWidget):
 
         # Row 1: Version selection and Excel validation
         version_row = QHBoxLayout()
-        version_row.addWidget(QLabel("Version:"))
+        version_row.addWidget(QLabel("Workflow:"))
         
         self.version_combo = QComboBox()
         self.version_combo.setMinimumWidth(150)
