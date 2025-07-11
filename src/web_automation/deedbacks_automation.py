@@ -9,8 +9,8 @@ from .pt61_config import get_version_config
 class DeedbacksAutomation(BasePT61Automation):
     """PT-61 Deedbacks automation implementation"""
     
-    def __init__(self, excel_path, browser, username, password, save_location, version):
-        super().__init__(excel_path, browser, username, password, save_location, version)
+    def __init__(self, excel_path, browser, username, password, save_location, version, document_stacking=False):
+        super().__init__(excel_path, browser, username, password, save_location, version, document_stacking)
         
         # Get version config
         _, self.config = get_version_config(version)
@@ -45,20 +45,6 @@ class DeedbacksAutomation(BasePT61Automation):
         
         filename = self.generate_filename(person_data)
         self.save_pdf(filename)
-
-        # Future implementation will go here:
-        # self.fill_seller_section(person_data)
-        # self.click_next_step()
-        # self.fill_buyer_section(person_data)
-        # self.click_next_step()
-        # self.fill_property_section(person_data)
-        # self.click_next_step()
-        # self.handle_alert_if_present()
-        # self.fill_financial_section(person_data)
-        # self.click_next_step()
-        # self.submit_form()
-        # filename = self.generate_filename(person_data)
-        # self.save_pdf(filename)
 
         # Update progress
         progress = int((index / total_count) * 100)

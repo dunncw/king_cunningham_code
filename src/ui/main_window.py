@@ -28,7 +28,7 @@ def get_resource_path(relative_path):
 
 class MainWindow(QMainWindow):
     check_for_updates = pyqtSignal()
-    start_web_automation = pyqtSignal(str, str, str)
+    start_web_automation = pyqtSignal(str, str, str, str, str, str, bool)
     start_crg_automation = pyqtSignal()
     start_simplifile_batch_upload = pyqtSignal(str, str, str, str, str, str)
 
@@ -487,12 +487,13 @@ class MainWindow(QMainWindow):
         self.doc_processor.show_error(error_message)
         self.doc_processor.process_button.setEnabled(True)
 
-    def start_web_automation(self, excel_path, browser, username, password, save_location, version):
+    def start_web_automation(self, excel_path, browser, username, password, save_location, version, document_stacking):
+        """Start web automation with document stacking option"""
         # For now, we'll just pass the version through but only use it for logging
         # The actual automation logic will remain the same until we implement version handlers
         
         self.thread, self.worker = run_web_automation_thread(
-            excel_path, browser, username, password, save_location, version
+            excel_path, browser, username, password, save_location, version, document_stacking
         )
         
         self.worker.status.connect(self.web_automation.update_output)
@@ -500,8 +501,13 @@ class MainWindow(QMainWindow):
         self.worker.error.connect(self.show_error)
         self.worker.finished.connect(self.web_automation_finished)
 
-        # Log which version is being used
+        # Log which version and document stacking option is being used
         self.web_automation.update_output(f"Starting automation with version: {version}")
+        if document_stacking:
+            self.web_automation.update_output("Document stacking ENABLED - PDFs will be combined")
+        else:
+            self.web_automation.update_output("Document stacking DISABLED - Individual PDFs will be saved")
+            
         self.web_automation.start_button.setEnabled(False)
         self.thread.start()
 
