@@ -5,7 +5,7 @@ from .new_batch_automation import NewBatchAutomation
 from .deedbacks_automation import DeedbacksAutomation
 from .foreclosures_automation import ForeclosuresAutomation
 
-def create_automation_worker(excel_path, browser, username, password, save_location, version_display_name):
+def create_automation_worker(excel_path, browser, username, password, save_location, version_display_name, document_stacking=False):
     """
     Factory function to create the appropriate automation worker based on version
     
@@ -16,6 +16,7 @@ def create_automation_worker(excel_path, browser, username, password, save_locat
         password (str): Login password
         save_location (str): Where to save PDFs
         version_display_name (str): Display name of version
+        document_stacking (bool): Whether to combine PDFs into one document
     
     Returns:
         BasePT61Automation: Appropriate automation worker instance
@@ -23,13 +24,13 @@ def create_automation_worker(excel_path, browser, username, password, save_locat
     # Get version key from display name
     version_key = get_version_key(version_display_name)
     
-    # Create appropriate automation worker
+    # Create appropriate automation worker (all now support document_stacking parameter)
     if version_key == "new_batch":
-        return NewBatchAutomation(excel_path, browser, username, password, save_location, version_display_name)
+        return NewBatchAutomation(excel_path, browser, username, password, save_location, version_display_name, document_stacking)
     elif version_key == "deedbacks":
-        return DeedbacksAutomation(excel_path, browser, username, password, save_location, version_display_name)
+        return DeedbacksAutomation(excel_path, browser, username, password, save_location, version_display_name, document_stacking)
     elif version_key == "foreclosures":
-        return ForeclosuresAutomation(excel_path, browser, username, password, save_location, version_display_name)
+        return ForeclosuresAutomation(excel_path, browser, username, password, save_location, version_display_name, document_stacking)
     else:
         raise ValueError(f"Unknown version key: {version_key}")
 

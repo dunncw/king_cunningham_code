@@ -16,6 +16,7 @@ from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 from PyQt6.QtCore import QObject, pyqtSignal
 import pyautogui
+from .pdf_stacker import PT61PDFStacker
 
 class BasePT61Automation(QObject):
     """Base class for PT61 automation with shared functionality"""
@@ -25,7 +26,7 @@ class BasePT61Automation(QObject):
     status = pyqtSignal(str)
     error = pyqtSignal(str)
 
-    def __init__(self, excel_path, browser, username, password, save_location, version):
+    def __init__(self, excel_path, browser, username, password, save_location, version, document_stacking=False):
         super().__init__()
         self.excel_path = excel_path
         self.browser = browser
@@ -33,7 +34,12 @@ class BasePT61Automation(QObject):
         self.password = password
         self.save_location = save_location
         self.version = version
+        self.document_stacking = document_stacking  # NEW: Document stacking option
         self.driver = None
+        
+        # NEW: Initialize PDF stacker
+        self.pdf_stacker = PT61PDFStacker()
+        self.pdf_stacker.progress_update.connect(self.status.emit)
 
     def setup_webdriver(self):
         """Setup WebDriver based on browser choice"""
@@ -307,7 +313,7 @@ class BasePT61Automation(QObject):
         self.status.emit("Clicked 'Submit PT-61 Form' button")
 
     def save_pdf(self, filename):
-        """Save the generated PDF"""
+        """Save the generated PDF and optionally add to stack"""
         # Wait for the specific iframe to be present
         iframe_locator = (By.CSS_SELECTOR, "#dvPT61IFrame iframe")
         WebDriverWait(self.driver, 30).until(EC.presence_of_element_located(iframe_locator))
@@ -343,14 +349,51 @@ class BasePT61Automation(QObject):
 
         self.status.emit(f"Saved PDF as: {filename}")
 
+        # NEW: Add to PDF stack if document stacking is enabled
+        if self.document_stacking:
+            self.pdf_stacker.add_pdf(file_path)
+            self.status.emit(f"Added to document stack: {filename}")
+
         # Close the PDF tab
         self.driver.close()
 
         # Switch back to the original tab
         self.driver.switch_to.window(self.driver.window_handles[0])
 
+    def finalize_document_stacking(self):
+        """Create the combined PDF if document stacking is enabled"""
+        if self.document_stacking:
+            try:
+                self.status.emit("Starting document stacking process...")
+                
+                # Get stack info
+                stack_info = self.pdf_stacker.get_stack_info()
+                self.status.emit(f"Processing {stack_info['total_files']} PDF files for stacking")
+                
+                if stack_info['total_files'] == 0:
+                    self.status.emit("No PDF files to stack")
+                    return
+                
+                # Create the combined PDF
+                combined_pdf_path = self.pdf_stacker.create_stacked_pdf(
+                    self.save_location, 
+                    self.version
+                )
+                
+                self.status.emit(f"Document stacking completed successfully!")
+                self.status.emit(f"Combined PDF saved as: {os.path.basename(combined_pdf_path)}")
+                
+            except Exception as e:
+                self.status.emit(f"Error during document stacking: {str(e)}")
+                # Don't fail the entire process if stacking fails
+                self.status.emit("Individual PDF files are still available")
+
     def cleanup(self):
         """Clean up resources"""
+        # NEW: Finalize document stacking before cleanup
+        if self.document_stacking:
+            self.finalize_document_stacking()
+        
         if self.driver:
             self.driver.quit()
             self.status.emit("Browser closed.")

@@ -1,6 +1,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QFileDialog, QProgressBar, QTextEdit, QComboBox, QFrame, QScrollArea
+    QFileDialog, QProgressBar, QTextEdit, QComboBox, QFrame, QScrollArea,
+    QCheckBox
 )
 from PyQt6.QtCore import pyqtSignal, QTimer
 from PyQt6.QtGui import QFont
@@ -11,7 +12,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 class WebAutomationUI(QWidget):
-    start_automation = pyqtSignal(str, str, str, str, str, str)  # Added version parameter
+    start_automation = pyqtSignal(str, str, str, str, str, str, bool)  # Added document_stacking parameter
 
     def __init__(self):
         super().__init__()
@@ -161,7 +162,7 @@ class WebAutomationUI(QWidget):
         password_layout.addWidget(self.password_edit)
         layout.addLayout(password_layout)
 
-        # Add save location input
+        # Save location input
         save_location_layout = QHBoxLayout()
         self.save_location_edit = QLineEdit()
         save_location_button = QPushButton("Select Save Location")
@@ -170,6 +171,17 @@ class WebAutomationUI(QWidget):
         save_location_layout.addWidget(self.save_location_edit)
         save_location_layout.addWidget(save_location_button)
         layout.addLayout(save_location_layout)
+
+        # NEW: Output Options section
+        output_options_layout = QHBoxLayout()
+        output_options_label = QLabel("Output Options:")
+        self.document_stacking_checkbox = QCheckBox("Document Stacking")
+        self.document_stacking_checkbox.setToolTip("Combine all PDFs into one document after processing")
+        
+        output_options_layout.addWidget(output_options_label)
+        output_options_layout.addWidget(self.document_stacking_checkbox)
+        output_options_layout.addStretch()  # Push everything to the left
+        layout.addLayout(output_options_layout)
 
         # Start button
         self.start_button = QPushButton("Start PT-61 Automation")
@@ -223,7 +235,7 @@ class WebAutomationUI(QWidget):
     def on_version_changed(self):
         """Handle version selection change"""
         try:
-            from web_automation.pt61_config import get_version_config, is_valid_version_name
+            from web_automation.pt61_config import get_version_config, is_valid_version_name, get_default_document_stacking
             import json
             
             version_name = self.version_combo.currentText()
@@ -251,6 +263,10 @@ class WebAutomationUI(QWidget):
                 self.constants_display.setText(constants_json)
             except Exception as e:
                 self.constants_display.setText(f"Error formatting constants: {str(e)}")
+            
+            # NEW: Set document stacking checkbox based on version default
+            default_stacking = get_default_document_stacking(version_name)
+            self.document_stacking_checkbox.setChecked(default_stacking)
             
             # Trigger validation if Excel file is selected
             if self.excel_edit.text():
@@ -341,9 +357,10 @@ class WebAutomationUI(QWidget):
         password = self.password_edit.text()
         save_location = self.save_location_edit.text()
         version = self.version_combo.currentText()
+        document_stacking = self.document_stacking_checkbox.isChecked()  # NEW: Get checkbox state
         
         if excel_path and username and password and save_location:
-            self.start_automation.emit(excel_path, browser, username, password, save_location, version)
+            self.start_automation.emit(excel_path, browser, username, password, save_location, version, document_stacking)
             self.start_button.setEnabled(False)
             self.status_label.setText("Automation in progress...")
             self.spinner.show()

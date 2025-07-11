@@ -4,13 +4,14 @@ PT61_VERSIONS = {
     "new_batch": {
         "display_name": "New Batch",
         "description": "Current version for new Wyndham batch processing",
+        "default_document_stacking": False,  # Document stacking OFF by default
         "required_columns": [
             "Contract Num",
             "Last 1", 
             "First 1", 
             "Middle 1",
             "Last 2",     # Optional - for additional sellers
-            "First 2",    # Optional - for additional sellers
+            "First 2",    # Optional - for additional sellers  
             "Middle 2",   # Optional - for additional sellers
             "Sales Price",
             "date on deed"
@@ -61,6 +62,7 @@ PT61_VERSIONS = {
     "deedbacks": {
         "display_name": "Deedbacks", 
         "description": "For Wyndham deedback processing (Brittany's version)",
+        "default_document_stacking": False,  # Document stacking OFF by default
         "required_columns": [
             "Contract Num",
             "Last 1",
@@ -119,6 +121,7 @@ PT61_VERSIONS = {
     "foreclosures": {
         "display_name": "Foreclosures",
         "description": "For foreclosure processing (Shannon's version)",
+        "default_document_stacking": True,  # Document stacking ON by default for foreclosures
         "required_columns": [
             "Contract Num",
             "First 1",
@@ -185,6 +188,11 @@ def get_constants(version_display_name):
     """Get constants for a version"""
     _, config = get_version_config(version_display_name)
     return config["constants"]
+
+def get_default_document_stacking(version_display_name):
+    """Get default document stacking setting for a version"""
+    _, config = get_version_config(version_display_name)
+    return config.get("default_document_stacking", False)
 
 # Single source of truth functions for UI
 def get_all_version_display_names():

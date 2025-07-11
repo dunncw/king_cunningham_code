@@ -10,8 +10,8 @@ from .pt61_config import get_version_config
 class ForeclosuresAutomation(BasePT61Automation):
     """PT61 Foreclosures automation implementation"""
     
-    def __init__(self, excel_path, browser, username, password, save_location, version):
-        super().__init__(excel_path, browser, username, password, save_location, version)
+    def __init__(self, excel_path, browser, username, password, save_location, version, document_stacking=False):
+        super().__init__(excel_path, browser, username, password, save_location, version, document_stacking)
         
         # Get version config
         _, self.config = get_version_config(version)
