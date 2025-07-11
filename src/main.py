@@ -3,16 +3,12 @@
 import sys
 import os
 import traceback
-from selenium.webdriver.chrome.options import Options as ChromeOptions
-from PyQt6.QtWidgets import QApplication, QMessageBox, QSplashScreen, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QApplication, QMessageBox, QSplashScreen
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont
-from PyQt6.QtCore import QTimer, Qt, QSize, QRect
+from PyQt6.QtCore import QTimer, Qt, QRect
 from ui.main_window import MainWindow
-from utils.updater import UpdateChecker
 
 __version__ = "0.0.5"
-
-# TODO: need to build updater application to push updates so users only have to downlaod the app once https://www.pyupdater.org/ 
 
 def get_resource_path(relative_path):
     try:
@@ -74,10 +70,6 @@ class KingCunninghamApp(QApplication):
         self.main_window = None
         self.splash = None
         self.splash_timer = None
-        self.update_checker = UpdateChecker(__version__)
-        self.update_checker.update_available.connect(self.on_update_available)
-        self.update_checker.no_update.connect(self.on_no_update)
-        self.update_checker.error_occurred.connect(self.on_error)
 
     def run(self):
         self.setWindowIcon(QIcon(self.get_icon_path()))
@@ -85,7 +77,7 @@ class KingCunninghamApp(QApplication):
         self.initialize_application()
         self.splash_timer = QTimer(self)
         self.splash_timer.timeout.connect(self.show_main_window)
-        self.splash_timer.start(5000)
+        self.splash_timer.start(3000)  # Reduced from 5000ms to 3000ms
 
     def get_icon_path(self):
         return get_resource_path(os.path.join("resources", "app_icon.ico"))
@@ -110,17 +102,15 @@ class KingCunninghamApp(QApplication):
 
     def initialize_application(self):
         self.main_window = MainWindow(__version__)
-        self.main_window.check_for_updates.connect(self.check_for_updates)
         self.main_window.setWindowIcon(self.windowIcon())
 
+        # Simplified loading steps
         steps = [
-            "Loading engines...",
-            "Initializing UI...",
-            "Loading templates...",
-            "Finalizing..."
+            "Loading components...",
+            "Initializing interface...",
+            "Ready!"
         ]
         for i, message in enumerate(steps):
-            progress = (i + 1) * 25
             self.splash.showMessage(
                 message,
                 Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter,
@@ -128,7 +118,7 @@ class KingCunninghamApp(QApplication):
             )
             self.splash.show()
             self.processEvents()
-            QTimer.singleShot(1000 * i, lambda m=message: self.update_splash(m))
+            QTimer.singleShot(800 * i, lambda m=message: self.update_splash(m))
 
     def update_splash(self, message):
         if self.splash:
@@ -143,28 +133,6 @@ class KingCunninghamApp(QApplication):
             self.splash.finish(self.main_window)
         self.main_window.show()
         self.splash_timer.stop()
-
-    def check_for_updates(self):
-        self.main_window.update_check_status("Checking for updates...")
-        self.update_checker.check_for_updates()
-
-    def on_update_available(self, new_version, download_url):
-        self.main_window.update_check_status(f"Update available: v{new_version}")
-        if self.main_window.show_update_available(new_version):
-            self.start_update(download_url)
-        else:
-            self.main_window.update_check_status("Update cancelled by user.")
-
-    def on_no_update(self):
-        self.main_window.show_no_update()
-
-    def on_error(self, error_message):
-        self.main_window.update_check_status(f"Error: {error_message}")
-        QMessageBox.critical(self.main_window, "Error", error_message)
-
-    def start_update(self, download_url):
-        # Implement update process here
-        pass
 
 def excepthook(exc_type, exc_value, exc_tb):
     tb = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))

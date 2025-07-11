@@ -235,10 +235,3 @@ class ForeclosuresAutomation(BasePT61Automation):
 
         # Note: Fair market value and liens fields are auto-filled by website for foreclosures
         self.status.emit("Website will auto-fill fair market value and liens fields")
-
-    def generate_filename(self, person_data):
-        """Generate filename for Foreclosures version"""
-        # Pattern: {contract_num}_{last_name}_PT61.pdf (different order than other versions)
-        contract_num = person_data['contract_number']
-        last_name = person_data['individual_name']['last']
-        return f"{contract_num}_{last_name}_PT61.pdf"
