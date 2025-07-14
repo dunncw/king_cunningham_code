@@ -33,6 +33,12 @@ def extract_data_from_excel(excel_path, version_display_name="PT-61 New Batch"):
     people_data = []
     for _, row in df.iterrows():
         person = extract_person_data(row, version_key, required_columns)
+
+        if (not person['individual_name']['first'].strip() or
+            not person['individual_name']['last'].strip() or
+            not person['contract_number'].strip()):
+            continue  # Skip this empty/incomplete row
+
         people_data.append(person)
     
     return people_data
