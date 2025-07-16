@@ -29,6 +29,17 @@ class CountyConfig:
     # Special configurations
     KING_CUNNINGHAM_REQUIRED_FOR_DEED = True
     
+    # PT-61 helper document configuration (default: False)
+    USE_PT61_HELPER_DOCUMENT = False
+    
+    # Fixed values for specific counties
+    FIXED_PARCEL_ID = None
+    FIXED_TAX_EXEMPT = None
+    FIXED_DEED_GRANTEE = None
+    
+    # Foreclosure workflow configuration
+    IS_FORECLOSURE_WORKFLOW = False
+    
     @classmethod
     def get_config_dict(cls) -> Dict[str, Any]:
         """Get configuration as a dictionary"""
@@ -45,7 +56,12 @@ class CountyConfig:
             "mortgage_requires_reference_info": cls.MORTGAGE_REQUIRES_REFERENCE_INFO,
             "deed_grantees_use_grantor_grantee": cls.DEED_GRANTEES_USE_GRANTOR_GRANTEE,
             "deed_grantees_use_owners": cls.DEED_GRANTEES_USE_OWNERS,
-            "king_cunningham_required_for_deed": cls.KING_CUNNINGHAM_REQUIRED_FOR_DEED
+            "king_cunningham_required_for_deed": cls.KING_CUNNINGHAM_REQUIRED_FOR_DEED,
+            "use_pt61_helper_document": cls.USE_PT61_HELPER_DOCUMENT,
+            "fixed_parcel_id": cls.FIXED_PARCEL_ID,
+            "fixed_tax_exempt": cls.FIXED_TAX_EXEMPT,
+            "fixed_deed_grantee": cls.FIXED_DEED_GRANTEE,
+            "is_foreclosure_workflow": cls.IS_FORECLOSURE_WORKFLOW
         }
 
 
@@ -113,9 +129,31 @@ class FultonCountyConfig(CountyConfig):
     COUNTY_ID = "GAC3TH"
     COUNTY_NAME = "Fulton County, GA"
     
-    # Using same config as Beaufort County for now
-    DEED_DOCUMENT_TYPE = "DEED - HILTON HEAD TIMESHARE"
-    MORTGAGE_DOCUMENT_TYPE = "MORT - SATISFACTION"
+    # Correct document types for Fulton County
+    DEED_DOCUMENT_TYPE = "DEED"
+    MORTGAGE_DOCUMENT_TYPE = "SATISFACTION"
+    
+    # All documents require execution date per requirements
+    DEED_REQUIRES_EXECUTION_DATE = True
+    MORTGAGE_REQUIRES_EXECUTION_DATE = True
+    
+    # Deed document grantees configuration
+    DEED_GRANTEES_USE_GRANTOR_GRANTEE = False
+    DEED_GRANTEES_USE_OWNERS = False
+    
+    # No KING CUNNINGHAM LLC TR as grantor per requirements
+    KING_CUNNINGHAM_REQUIRED_FOR_DEED = False
+    
+    # PT-61 is used as a helper document in Fulton County
+    USE_PT61_HELPER_DOCUMENT = True
+    
+    # Fixed values from requirements
+    FIXED_PARCEL_ID = "14-0078-0007-096-9"
+    FIXED_TAX_EXEMPT = True
+    FIXED_DEED_GRANTEE = "CENTENNIAL PARK DEVELOPMENT LLC"
+    
+    # This is a foreclosure workflow
+    IS_FORECLOSURE_WORKFLOW = True
 
 
 class ForsythCountyConfig(CountyConfig):
