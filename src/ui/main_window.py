@@ -16,7 +16,6 @@ from document_processor.processor import OCRWorker
 from .scra_automation_ui import SCRAAutomationUI
 from .pacer_automation_ui import PACERAutomationUI
 from .simplifile_ui import SimplifileUI
-from simplifile.api import run_simplifile_thread
 from simplifile.batch_processor import run_simplifile_batch_thread
 
 def get_resource_path(relative_path):
@@ -215,8 +214,8 @@ class MainWindow(QMainWindow):
         back_button.clicked.connect(self.show_main_menu)
         self.pacer_automation.layout().addWidget(back_button)
 
+        # Updated Simplifile UI - no single upload signal connection needed
         self.simplifile_ui = SimplifileUI()
-        self.simplifile_ui.start_simplifile_upload.connect(self.start_simplifile_upload)
         self.simplifile_ui.start_simplifile_batch_upload.connect(self.start_simplifile_batch_process)
         back_button = QPushButton("← Back to Main Menu")
         back_button.clicked.connect(self.show_main_menu)
@@ -326,23 +325,10 @@ class MainWindow(QMainWindow):
     def show_simplifile(self):
         self.central_widget.setCurrentWidget(self.simplifile_ui)
         self.resize(900, 800)
-    
-    # All existing automation methods (unchanged)
-    def start_simplifile_upload(self, api_token, submitter_id, recipient_id, package_data, document_files):
-        self.simplifile_thread, self.simplifile_worker = run_simplifile_thread(
-            api_token, submitter_id, recipient_id, package_data, document_files
-        )
-        
-        self.simplifile_worker.status.connect(self.simplifile_ui.update_status)
-        self.simplifile_worker.progress.connect(self.simplifile_ui.update_progress)
-        self.simplifile_worker.error.connect(self.simplifile_ui.show_error)
-        self.simplifile_worker.finished.connect(self.simplifile_ui.upload_finished)
-        
-        self.simplifile_thread.start()
 
     def start_simplifile_batch_process(self, excel_path, deeds_path, mortgage_path):
         api_token = self.simplifile_ui.api_token.text()
-        submitter_id = "SCTP3G"
+        submitter_id = "SCTP3G"  # Hardcoded submitter ID
         recipient_id = self.simplifile_ui.recipient_combo.currentData()
         
         affidavits_path = self.simplifile_ui.affidavits_file_path.text() if hasattr(self.simplifile_ui, 'affidavits_file_path') else None
