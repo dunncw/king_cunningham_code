@@ -1,32 +1,44 @@
-# simplifile2/validator.py - Pre-processing validation to prevent broken API requests
+# core/validator.py - Pre-processing validation with new structure
 import os
 import pandas as pd
 from typing import Dict, List, Any, Tuple
 from .county_config import get_county_config
-from .workflow_definition import get_workflow
-from .pdf_stack_processor import FultonFCLPDFProcessor
+from ..utils.logging import Logger, StepLogger
 
 
 class SimplifileValidator:
     """Comprehensive validator to ensure all data is valid before API submission"""
     
-    def __init__(self, county_id: str, workflow_type: str, log_callback=None):
+    def __init__(self, county_id: str, workflow_type: str, logger: Logger):
         self.county_id = county_id
         self.workflow_type = workflow_type
-        self.log = log_callback or print
+        self.logger = logger
+        self.step_logger = StepLogger(logger)
         
         # Initialize components
         self.county_config = get_county_config(county_id)
-        self.workflow = get_workflow(county_id, workflow_type)
-        self.pdf_processor = FultonFCLPDFProcessor()
+        self.workflow = self._get_workflow()
+        self.pdf_processor = self._get_pdf_processor()
+    
+    def _get_workflow(self):
+        """Get workflow instance for county/workflow type"""
+        # Import based on county and workflow
+        if self.county_id == "GAC3TH" and self.workflow_type == "fcl":
+            from ..workflows.fulton_fcl import FultonFCLWorkflow
+            return FultonFCLWorkflow(self.county_config, self.logger)
+        else:
+            raise ValueError(f"Workflow '{self.workflow_type}' not supported for county '{self.county_id}'")
+    
+    def _get_pdf_processor(self):
+        """Get PDF processor for workflow"""
+        if self.county_id == "GAC3TH" and self.workflow_type == "fcl":
+            from ..workflows.fulton_fcl import FultonFCLPDFProcessor
+            return FultonFCLPDFProcessor(self.logger)
+        else:
+            raise ValueError(f"PDF processor not available for workflow '{self.workflow_type}' in county '{self.county_id}'")
     
     def validate_all(self, excel_path: str, deed_path: str, pt61_path: str, mortgage_path: str) -> Tuple[bool, List[str], Dict[str, Any]]:
-        """
-        Comprehensive validation of all inputs before processing
-        
-        Returns:
-            Tuple of (is_valid, error_messages, validation_summary)
-        """
+        """Comprehensive validation of all inputs before processing"""
         errors = []
         validation_summary = {
             "files_checked": 0,
@@ -36,50 +48,58 @@ class SimplifileValidator:
             "issues_found": []
         }
         
-        self.log("Starting comprehensive validation...")
+        self.logger.info("Starting comprehensive validation...")
+        self.step_logger.reset()
         
         # Step 1: File existence validation
-        self.log("Step 1: Validating file existence...")
+        self.step_logger.start_step("Validating file existence")
         file_errors = self._validate_file_existence(excel_path, deed_path, pt61_path, mortgage_path)
         if file_errors:
             errors.extend(file_errors)
             return False, errors, validation_summary
         
         validation_summary["files_checked"] = 4
+        self.step_logger.step_success("All files exist and are readable")
         
         # Step 2: PDF stack validation
-        self.log("Step 2: Validating PDF stacks...")
+        self.step_logger.start_step("Validating PDF stacks")
         pdf_errors, pdf_summary = self._validate_pdf_stacks(deed_path, pt61_path, mortgage_path)
         if pdf_errors:
             errors.extend(pdf_errors)
             return False, errors, validation_summary
         
         validation_summary.update(pdf_summary)
+        self.step_logger.step_success(f"{pdf_summary.get('pdf_documents', 0)} complete document sets found")
         
         # Step 3: Excel validation
-        self.log("Step 3: Validating Excel structure and data...")
+        self.step_logger.start_step("Validating Excel structure and data")
         excel_valid, excel_errors, excel_summary = self._validate_excel_comprehensive(excel_path)
         if not excel_valid:
             errors.extend(excel_errors)
             return False, errors, validation_summary
         
         validation_summary.update(excel_summary)
+        self.step_logger.step_success(f"{excel_summary.get('valid_packages', 0)} valid packages out of {excel_summary.get('excel_rows', 0)} rows")
         
         # Step 4: Data alignment validation
-        self.log("Step 4: Validating data alignment...")
+        self.step_logger.start_step("Validating data alignment")
         alignment_errors = self._validate_data_alignment(validation_summary)
         if alignment_errors:
             errors.extend(alignment_errors)
             return False, errors, validation_summary
         
+        self.step_logger.step_success("Data alignment verified")
+        
         # Step 5: Sample package validation
-        self.log("Step 5: Validating sample package generation...")
+        self.step_logger.start_step("Validating sample package generation")
         package_errors = self._validate_sample_package_generation(excel_path, deed_path, pt61_path, mortgage_path)
         if package_errors:
             errors.extend(package_errors)
             return False, errors, validation_summary
         
-        self.log("All validations passed successfully!")
+        self.step_logger.step_success("Sample package generation successful")
+        
+        self.logger.info("All validations passed successfully!")
         return True, [], validation_summary
     
     def _validate_file_existence(self, excel_path: str, deed_path: str, pt61_path: str, mortgage_path: str) -> List[str]:
@@ -122,13 +142,13 @@ class SimplifileValidator:
         """Validate PDF stack structure and alignment"""
         try:
             # Validate stack alignment
-            pdf_errors = self.pdf_processor.validate_fcl_stacks(deed_path, pt61_path, mortgage_path)
+            pdf_errors = self.pdf_processor.validate_stacks(deed_path, pt61_path, mortgage_path)
             
             if pdf_errors:
                 return pdf_errors, {}
             
             # Get stack summary for validation info
-            summary = self.pdf_processor.get_fcl_stack_summary(deed_path, pt61_path, mortgage_path)
+            summary = self.pdf_processor.get_stack_summary(deed_path, pt61_path, mortgage_path)
             
             pdf_validation_summary = {
                 "pdf_documents": summary["max_packages"],
@@ -137,8 +157,6 @@ class SimplifileValidator:
                 "mortgage_pages": summary["mortgage_stack"]["total_pages"],
                 "stacks_aligned": summary["all_stacks_aligned"]
             }
-            
-            self.log(f"PDF Validation: {summary['max_packages']} complete document sets found")
             
             return [], pdf_validation_summary
             
@@ -187,16 +205,14 @@ class SimplifileValidator:
             
             # Log warnings but don't fail validation
             if data_errors:
-                self.log("Data validation warnings:")
+                self.logger.warning("Data validation warnings:")
                 for error in data_errors:
-                    self.log(f"   - {error}")
+                    self.logger.info(f"   - {error}")
             
             if invalid_packages > 0:
-                self.log(f"{invalid_packages} invalid rows will be skipped during processing")
+                self.logger.warning(f"{invalid_packages} invalid rows will be skipped during processing")
                 for issue in validation_issues:
-                    self.log(f"   - {issue}")
-            
-            self.log(f"Excel Validation: {valid_packages} valid packages out of {total_rows} rows")
+                    self.logger.info(f"   - {issue}")
             
             # Consider validation successful if we have at least one valid package
             if valid_packages == 0:
@@ -222,7 +238,7 @@ class SimplifileValidator:
         
         # Note: It's OK to have more PDF documents than Excel rows (extras will be ignored)
         if pdf_documents > valid_packages:
-            self.log(f"PDF stacks have {pdf_documents} documents but only {valid_packages} will be processed")
+            self.logger.info(f"PDF stacks have {pdf_documents} documents but only {valid_packages} will be processed")
         
         return errors
     
@@ -249,27 +265,34 @@ class SimplifileValidator:
             package_data["document_index"] = 0  # Use first document set
             
             # Extract PDF documents
-            pdf_documents = self.pdf_processor.get_fcl_documents(0, deed_path, pt61_path, mortgage_path)
+            pdf_documents = self.pdf_processor.get_documents(0, deed_path, pt61_path, mortgage_path)
             
             # Test document building
-            from .document_builder import DocumentBuilder
-            document_builder = DocumentBuilder(self.county_config)
+            payload_builder = self._get_payload_builder()
             
             # Build sample package
-            api_payload = document_builder.build_fcl_package(package_data, pdf_documents)
+            api_payload = payload_builder.build_package(package_data, pdf_documents)
             
             # Validate the package
-            validation_errors = document_builder.validate_package(api_payload)
+            validation_errors = payload_builder.validate_package(api_payload)
             
             if validation_errors:
                 return [f"Sample package validation failed: {'; '.join(validation_errors)}"]
             
-            self.log("Sample package generation successful")
             return []
             
         except Exception as e:
             return [f"Error generating sample package: {str(e)}"]
     
+    def _get_payload_builder(self):
+        """Get payload builder for workflow"""
+        if self.county_id == "GAC3TH" and self.workflow_type == "fcl":
+            from ..workflows.fulton_fcl import FultonFCLPayloadBuilder
+            return FultonFCLPayloadBuilder(self.county_config, self.logger)
+        else:
+            raise ValueError(f"Payload builder not available for workflow '{self.workflow_type}' in county '{self.county_id}'")
+    
     def cleanup(self):
         """Clean up resources"""
-        self.pdf_processor.cleanup()
+        if hasattr(self.pdf_processor, 'cleanup'):
+            self.pdf_processor.cleanup()

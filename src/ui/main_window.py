@@ -17,7 +17,7 @@ from .scra_automation_ui import SCRAAutomationUI
 from .pacer_automation_ui import PACERAutomationUI
 from .simplifile_ui import SimplifileUI
 from simplifile.batch_processor import run_simplifile_batch_thread
-from simplifile2.simplifile_ui import SimplifileUI as Simplifile2UI
+from simplifile2.ui.main_window import SimplifileMainWindow as Simplifile2UI
 
 def get_resource_path(relative_path):
     try:
