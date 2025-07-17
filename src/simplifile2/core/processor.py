@@ -1,4 +1,4 @@
-# simplifile2/main_processor.py - Main processing orchestrator
+# core/processor.py - Main processing orchestrator with updated imports
 import pandas as pd
 import requests
 import json
@@ -6,15 +6,13 @@ from typing import Dict, List, Any, Tuple, Callable
 from datetime import datetime
 
 from .county_config import get_county_config
-from .workflow_definition import get_workflow
-from .pdf_stack_processor import FultonFCLPDFProcessor
-from .document_builder import DocumentBuilder
+from ..utils.logging import Logger, StepLogger
 
 
 class SimplifileProcessor:
     """Main processor that orchestrates the complete Simplifile workflow"""
     
-    def __init__(self, api_token: str, county_id: str, workflow_type: str, log_callback: Callable[[str], None] = None):
+    def __init__(self, api_token: str, county_id: str, workflow_type: str, logger: Logger):
         """
         Initialize the processor
         
@@ -22,18 +20,19 @@ class SimplifileProcessor:
             api_token: Simplifile API token
             county_id: County identifier (e.g., "GAC3TH")
             workflow_type: Workflow type (e.g., "fcl")
-            log_callback: Function to call for logging messages
+            logger: Logger instance for output
         """
         self.api_token = api_token
         self.county_id = county_id
         self.workflow_type = workflow_type
-        self.log = log_callback or print
+        self.logger = logger
+        self.step_logger = StepLogger(logger)
         
         # Initialize components
         self.county_config = get_county_config(county_id)
-        self.workflow = get_workflow(county_id, workflow_type)
-        self.pdf_processor = FultonFCLPDFProcessor()
-        self.document_builder = DocumentBuilder(self.county_config)
+        self.workflow = self._get_workflow()
+        self.pdf_processor = self._get_pdf_processor()
+        self.payload_builder = self._get_payload_builder()
         
         # Hardcoded submitter ID
         self.submitter_id = "SCTP3G"
@@ -47,6 +46,30 @@ class SimplifileProcessor:
             "failed_uploads": 0,
             "errors": []
         }
+    
+    def _get_workflow(self):
+        """Get workflow instance for county/workflow type"""
+        if self.county_id == "GAC3TH" and self.workflow_type == "fcl":
+            from ..workflows.fulton_fcl import FultonFCLWorkflow
+            return FultonFCLWorkflow(self.county_config, self.logger)
+        else:
+            raise ValueError(f"Workflow '{self.workflow_type}' not supported for county '{self.county_id}'")
+    
+    def _get_pdf_processor(self):
+        """Get PDF processor for workflow"""
+        if self.county_id == "GAC3TH" and self.workflow_type == "fcl":
+            from ..workflows.fulton_fcl import FultonFCLPDFProcessor
+            return FultonFCLPDFProcessor(self.logger)
+        else:
+            raise ValueError(f"PDF processor not available for workflow '{self.workflow_type}' in county '{self.county_id}'")
+    
+    def _get_payload_builder(self):
+        """Get payload builder for workflow"""
+        if self.county_id == "GAC3TH" and self.workflow_type == "fcl":
+            from ..workflows.fulton_fcl import FultonFCLPayloadBuilder
+            return FultonFCLPayloadBuilder(self.county_config, self.logger)
+        else:
+            raise ValueError(f"Payload builder not available for workflow '{self.workflow_type}' in county '{self.county_id}'")
     
     def process_batch(self, excel_path: str, deed_path: str, pt61_path: str, mortgage_path: str) -> Dict[str, Any]:
         """
@@ -63,47 +86,49 @@ class SimplifileProcessor:
         """
         try:
             start_time = datetime.now()
-            self.log(f"Starting {self.county_config.COUNTY_NAME} {self.workflow_type.upper()} batch processing...")
+            self.logger.header(f"{self.county_config.COUNTY_NAME} {self.workflow_type.upper()} batch processing started")
+            self.step_logger.reset()
             
             # Step 1: Validate PDF stacks
-            self.log("Step 1: Validating PDF stacks...")
+            self.step_logger.start_step("Validating PDF stacks")
             pdf_errors = self._validate_pdf_stacks(deed_path, pt61_path, mortgage_path)
             if pdf_errors:
                 for error in pdf_errors:
-                    self.log(f"PDF Error: {error}")
+                    self.step_logger.step_error(error)
                 return self._create_error_result("PDF validation failed", pdf_errors)
             
             # Step 2: Load and validate Excel
-            self.log("Step 2: Loading and validating Excel file...")
+            self.step_logger.start_step("Loading and validating Excel file")
             excel_df = self._load_and_validate_excel(excel_path)
             if excel_df is None:
                 return self._create_error_result("Excel validation failed", self.stats["errors"])
             
             # Step 3: Process Excel data and create packages
-            self.log("Step 3: Processing Excel data...")
+            self.step_logger.start_step("Processing Excel data")
             valid_packages_data = self._process_excel_data(excel_df)
             
             if not valid_packages_data:
                 return self._create_error_result("No valid packages to process", self.stats["errors"])
             
-            self.log(f"Created {len(valid_packages_data)} valid packages from {self.stats['total_rows']} Excel rows")
+            self.logger.info(f"Created {len(valid_packages_data)} valid packages from {self.stats['total_rows']} Excel rows")
             if self.stats["skipped_rows"] > 0:
-                self.log(f"Skipped {self.stats['skipped_rows']} invalid rows")
+                self.logger.info(f"Skipped {self.stats['skipped_rows']} invalid rows")
             
             # Step 4: Generate API payloads and upload
-            self.log("Step 4: Generating API payloads and uploading...")
+            self.step_logger.start_step("Generating API payloads and uploading")
             upload_results = self._upload_packages(valid_packages_data, deed_path, pt61_path, mortgage_path)
             
             # Step 5: Generate final results
             end_time = datetime.now()
             processing_time = (end_time - start_time).total_seconds()
             
-            self.log("-" * 60)
-            self.log("BATCH PROCESSING COMPLETED")
-            self.log(f"Total processing time: {processing_time:.1f} seconds")
-            self.log(f"Packages processed: {self.stats['processed_packages']}")
-            self.log(f"Successful uploads: {self.stats['successful_uploads']}")
-            self.log(f"Failed uploads: {self.stats['failed_uploads']}")
+            self.logger.separator()
+            self.logger.info("BATCH PROCESSING COMPLETED")
+            self.logger.separator("=")
+            self.logger.info(f"Total processing time: {processing_time:.1f} seconds")
+            self.logger.info(f"Packages processed: {self.stats['processed_packages']}")
+            self.logger.info(f"Successful uploads: {self.stats['successful_uploads']}")
+            self.logger.info(f"Failed uploads: {self.stats['failed_uploads']}")
             
             return {
                 "success": True,
@@ -113,25 +138,26 @@ class SimplifileProcessor:
             }
             
         except Exception as e:
-            self.log(f"CRITICAL ERROR: {str(e)}")
+            self.logger.error(f"CRITICAL ERROR: {str(e)}")
             return self._create_error_result(f"Processing failed: {str(e)}", [str(e)])
         
         finally:
             # Cleanup
-            self.pdf_processor.cleanup()
+            if hasattr(self.pdf_processor, 'cleanup'):
+                self.pdf_processor.cleanup()
     
     def _validate_pdf_stacks(self, deed_path: str, pt61_path: str, mortgage_path: str) -> List[str]:
         """Validate PDF stack alignment and structure"""
         try:
-            errors = self.pdf_processor.validate_fcl_stacks(deed_path, pt61_path, mortgage_path)
+            errors = self.pdf_processor.validate_stacks(deed_path, pt61_path, mortgage_path)
             
             if not errors:
                 # Get stack summary for logging
-                summary = self.pdf_processor.get_fcl_stack_summary(deed_path, pt61_path, mortgage_path)
-                self.log(f"Deed Stack: {summary['deed_stack']['complete_documents']} documents ({summary['deed_stack']['total_pages']} pages)")
-                self.log(f"PT-61 Stack: {summary['pt61_stack']['complete_documents']} documents ({summary['pt61_stack']['total_pages']} pages)")
-                self.log(f"Mortgage Stack: {summary['mortgage_stack']['complete_documents']} documents ({summary['mortgage_stack']['total_pages']} pages)")
-                self.log(f"Maximum packages: {summary['max_packages']}")
+                summary = self.pdf_processor.get_stack_summary(deed_path, pt61_path, mortgage_path)
+                self.logger.info(f"Deed Stack: {summary['deed_stack']['complete_documents']} documents ({summary['deed_stack']['total_pages']} pages)")
+                self.logger.info(f"PT-61 Stack: {summary['pt61_stack']['complete_documents']} documents ({summary['pt61_stack']['total_pages']} pages)")
+                self.logger.info(f"Mortgage Stack: {summary['mortgage_stack']['complete_documents']} documents ({summary['mortgage_stack']['total_pages']} pages)")
+                self.logger.info(f"Maximum packages: {summary['max_packages']}")
             
             return errors
             
@@ -144,31 +170,31 @@ class SimplifileProcessor:
             # Load Excel file with all columns as strings except specific numeric columns
             excel_df = pd.read_excel(excel_path, dtype=str)
             self.stats["total_rows"] = len(excel_df)
-            self.log(f"Loaded Excel file with {self.stats['total_rows']} rows")
+            self.logger.info(f"Loaded Excel file with {self.stats['total_rows']} rows")
             
             # Validate Excel structure
             structure_errors = self.workflow.validate_excel_structure(excel_df)
             if structure_errors:
-                self.log("Excel structure validation failed:")
+                self.logger.error("Excel structure validation failed:")
                 for error in structure_errors:
-                    self.log(f"  - {error}")
+                    self.logger.error(f"  - {error}")
                 self.stats["errors"].extend(structure_errors)
                 return None
             
             # Validate Excel data
             data_errors = self.workflow.validate_excel_data(excel_df)
             if data_errors:
-                self.log("Excel data validation warnings:")
+                self.logger.warning("Excel data validation warnings:")
                 for error in data_errors:
-                    self.log(f"  - WARNING: {error}")
+                    self.logger.warning(f"  - {error}")
                 # Data errors are warnings, don't stop processing
             
-            self.log("Excel validation completed successfully")
+            self.logger.info("Excel validation completed successfully")
             return excel_df
             
         except Exception as e:
             error_msg = f"Error loading Excel file: {str(e)}"
-            self.log(error_msg)
+            self.logger.error(error_msg)
             self.stats["errors"].append(error_msg)
             return None
     
@@ -187,7 +213,7 @@ class SimplifileProcessor:
                 is_valid, validation_error = self.workflow.is_row_valid(row_dict)
                 
                 if not is_valid:
-                    self.log(f"SKIPPING Row {row_number}: {validation_error}")
+                    self.logger.info(f"SKIPPING Row {row_number}: {validation_error}")
                     self.stats["skipped_rows"] += 1
                     continue
                 
@@ -200,7 +226,7 @@ class SimplifileProcessor:
                 
             except Exception as e:
                 error_msg = f"Error processing row {row_number}: {str(e)}"
-                self.log(f"SKIPPING Row {row_number}: {error_msg}")
+                self.logger.info(f"SKIPPING Row {row_number}: {error_msg}")
                 self.stats["skipped_rows"] += 1
                 self.stats["errors"].append(error_msg)
         
@@ -215,21 +241,21 @@ class SimplifileProcessor:
                 package_name = package_data["package_name"]
                 document_index = package_data["document_index"]
                 
-                self.log(f"Processing package: {package_name}")
+                self.logger.info(f"Processing package: {package_name}")
                 
                 # Extract PDF documents for this package
-                pdf_documents = self.pdf_processor.get_fcl_documents(
+                pdf_documents = self.pdf_processor.get_documents(
                     document_index, deed_path, pt61_path, mortgage_path
                 )
                 
                 # Build API payload
-                api_payload = self.document_builder.build_fcl_package(package_data, pdf_documents)
+                api_payload = self.payload_builder.build_package(package_data, pdf_documents)
                 
                 # Validate payload
-                validation_errors = self.document_builder.validate_package(api_payload)
+                validation_errors = self.payload_builder.validate_package(api_payload)
                 if validation_errors:
                     error_msg = f"Package validation failed: {'; '.join(validation_errors)}"
-                    self.log(f"  VALIDATION ERROR: {error_msg}")
+                    self.logger.error(f"  VALIDATION ERROR: {error_msg}")
                     
                     upload_results.append({
                         "package_name": package_name,
@@ -247,14 +273,14 @@ class SimplifileProcessor:
                 
                 if upload_result["status"] == "success":
                     self.stats["successful_uploads"] += 1
-                    self.log(f"  Successfully uploaded: {package_name}")
+                    self.logger.info(f"  Successfully uploaded: {package_name}")
                 else:
                     self.stats["failed_uploads"] += 1
-                    self.log(f"  Upload failed: {package_name} - {upload_result['error']}")
+                    self.logger.error(f"  Upload failed: {package_name} - {upload_result['error']}")
                 
             except Exception as e:
                 error_msg = f"Error processing package {package_data.get('package_name', 'Unknown')}: {str(e)}"
-                self.log(f"  ERROR: {error_msg}")
+                self.logger.error(f"  ERROR: {error_msg}")
                 
                 upload_results.append({
                     "package_name": package_data.get("package_name", "Unknown"),
@@ -287,7 +313,7 @@ class SimplifileProcessor:
             )
             
             # Log raw response first
-            self.log(f"API Raw Response [{response.status_code}] for {package_name}: {response.text}")
+            self.logger.info(f"API Raw Response [{response.status_code}] for {package_name}: {response.text}")
             
             # Process response
             if response.status_code == 200:
@@ -351,7 +377,7 @@ class SimplifileProcessor:
             response = requests.get(api_url, headers=headers, timeout=30)
             
             # Log raw response first
-            self.log(f"API Raw Response [{response.status_code}]: {response.text}")
+            self.logger.info(f"API Raw Response [{response.status_code}]: {response.text}")
             
             if response.status_code == 200:
                 return True, "API connection successful!"
