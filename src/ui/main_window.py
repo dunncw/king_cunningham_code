@@ -17,6 +17,7 @@ from .scra_automation_ui import SCRAAutomationUI
 from .pacer_automation_ui import PACERAutomationUI
 from .simplifile_ui import SimplifileUI
 from simplifile.batch_processor import run_simplifile_batch_thread
+from simplifile2.simplifile_ui import SimplifileUI as Simplifile2UI
 
 def get_resource_path(relative_path):
     try:
@@ -160,6 +161,11 @@ class MainWindow(QMainWindow):
                 "name": "Simplifile",
                 "description": "Electronic document recording",
                 "action": self.show_simplifile
+            },
+            {
+                "name": "Simplifile 2",
+                "description": "Electronic document recording (New)",
+                "action": self.show_simplifile2
             }
         ]
         
@@ -221,6 +227,14 @@ class MainWindow(QMainWindow):
         back_button.clicked.connect(self.show_main_menu)
         self.simplifile_ui.layout().addWidget(back_button)
 
+        # Simplifile 2 UI (new clean version)
+        self.simplifile2_ui = Simplifile2UI()
+        back_button = QPushButton("← Back to Main Menu")
+        back_button.clicked.connect(self.show_main_menu)
+        # Add back button to the UI layout
+        if hasattr(self.simplifile2_ui, 'layout'):
+            self.simplifile2_ui.layout().addWidget(back_button)
+
         # Add widgets to stacked widget
         self.central_widget.addWidget(self.main_menu)
         self.central_widget.addWidget(self.doc_processor)
@@ -229,6 +243,7 @@ class MainWindow(QMainWindow):
         self.central_widget.addWidget(self.scra_automation)
         self.central_widget.addWidget(self.pacer_automation)
         self.central_widget.addWidget(self.simplifile_ui)
+        self.central_widget.addWidget(self.simplifile2_ui)
 
         self.show_main_menu()
     
@@ -325,6 +340,11 @@ class MainWindow(QMainWindow):
     def show_simplifile(self):
         self.central_widget.setCurrentWidget(self.simplifile_ui)
         self.resize(900, 800)
+    
+    def show_simplifile2(self):
+        self.central_widget.setCurrentWidget(self.simplifile2_ui)
+        self.resize(1000, 800)
+
 
     def start_simplifile_batch_process(self, excel_path, deeds_path, mortgage_path):
         api_token = self.simplifile_ui.api_token.text()
