@@ -53,6 +53,7 @@ class FultonCountyConfig(CountyConfig):
     FIXED_PARCEL_ID = "14-0078-0007-096-9"
     FIXED_TAX_EXEMPT = True
     FIXED_DEED_GRANTEE = "CENTENNIAL PARK DEVELOPMENT LLC"
+    FIXED_SAT_GRANTEE = "CENTENNIAL PARK DEVELOPMENT LLC"
 
 
 # Registry of available counties
