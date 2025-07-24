@@ -1,50 +1,72 @@
-# ui/workers/processing_worker.py - Processing thread worker
+# ui/workers/processing_worker.py - Updated processing thread worker for dynamic workflows
 from PyQt6.QtCore import QThread, pyqtSignal
 from typing import Dict
 
 
 class ProcessingWorker(QThread):
-    """Worker thread for batch processing"""
+    """Worker thread for batch processing with dynamic workflow support"""
     
     # Signals
     log_message = pyqtSignal(str)  # Log message
     finished = pyqtSignal(dict)  # Processing results
     error = pyqtSignal(str)  # Error message
     
-    def __init__(self, api_token: str, county_id: str, workflow_id: str, file_paths: Dict[str, str]):
+    def __init__(self, api_token: str, county_id: str, workflow_id: str, workflow_config: Dict[str, str], file_paths: Dict[str, str]):
         super().__init__()
         self.api_token = api_token
         self.county_id = county_id
         self.workflow_id = workflow_id
+        self.workflow_config = workflow_config
         self.file_paths = file_paths
     
     def run(self):
-        """Run batch processing"""
+        """Run batch processing based on workflow type"""
         try:
-            from ...core.processor import SimplifileProcessor
-            from ...utils.logging import Logger
+            # Determine workflow type and use appropriate processor
+            input_type = self.workflow_config.get('input_type', 'unknown')
             
-            # Create logger that emits to UI
-            logger = Logger(ui_callback=self.log_message.emit)
-            
-            # Create processor
-            processor = SimplifileProcessor(
-                api_token=self.api_token,
-                county_id=self.county_id,
-                workflow_type=self.workflow_id,
-                logger=logger
-            )
-            
-            # Process the batch
-            results = processor.process_batch(
-                excel_path=self.file_paths["excel_path"],
-                deed_path=self.file_paths["deed_path"],
-                pt61_path=self.file_paths["pt61_path"],
-                mortgage_path=self.file_paths["mortgage_path"]
-            )
-            
-            # Emit results
-            self.finished.emit(results)
-            
+            if input_type == 'pdf_stacks':
+                # Use existing stack-based processing (FCL workflow)
+                self._process_stack_workflow()
+            elif input_type == 'directory':
+                # Use new directory-based processing (Deedbacks workflow)
+                self._process_directory_workflow()
+            else:
+                # Unsupported workflow type
+                self.error.emit(f"Processing not supported for workflow input type: {input_type}")
+                
         except Exception as e:
             self.error.emit(f"Processing error: {str(e)}")
+    
+    def _process_stack_workflow(self):
+        """Process traditional stack-based workflows (like FCL)"""
+        from ...core.processor import SimplifileProcessor
+        from ...utils.logging import Logger
+        
+        # Create logger that emits to UI
+        logger = Logger(ui_callback=self.log_message.emit)
+        
+        # Create processor
+        processor = SimplifileProcessor(
+            api_token=self.api_token,
+            county_id=self.county_id,
+            workflow_type=self.workflow_id,
+            logger=logger
+        )
+        
+        # Process the batch with expected file paths for stack workflows
+        results = processor.process_batch(
+            excel_path=self.file_paths.get("excel", ""),
+            deed_path=self.file_paths.get("deed_stack", ""),
+            pt61_path=self.file_paths.get("pt61_stack", ""),
+            mortgage_path=self.file_paths.get("mortgage_stack", "")
+        )
+        
+        # Emit results
+        self.finished.emit(results)
+    
+    def _process_directory_workflow(self):
+        """Process directory-based workflows (like Deedbacks)"""
+        # For now, directory workflows only support validation/discovery
+        # This can be implemented later when actual processing is needed
+        self.error.emit("Directory-based workflows currently only support file discovery and validation.")

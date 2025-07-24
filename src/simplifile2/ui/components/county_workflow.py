@@ -1,16 +1,18 @@
-# ui/components/county_workflow.py - County and workflow selector widget
+# ui/components/county_workflow.py - Dynamic county and workflow selector widget
 from PyQt6.QtWidgets import QGroupBox, QVBoxLayout, QHBoxLayout, QLabel, QComboBox
 from PyQt6.QtCore import pyqtSignal
+from typing import Dict, Any
 
 
 class CountyWorkflowWidget(QGroupBox):
     """Widget for selecting county and workflow"""
     
     # Signals
-    selection_changed = pyqtSignal(str, str)  # county_id, workflow_id
+    selection_changed = pyqtSignal(str, str, dict)  # county_id, workflow_id, workflow_config
     
     def __init__(self):
         super().__init__("County - Workflow")
+        self.current_workflow_config = {}
         self.init_ui()
         self.populate_counties()
     
@@ -37,6 +39,13 @@ class CountyWorkflowWidget(QGroupBox):
         workflow_layout.addWidget(self.workflow_combo)
         
         layout.addLayout(workflow_layout)
+        
+        # Workflow description
+        self.description_label = QLabel("")
+        self.description_label.setWordWrap(True)
+        self.description_label.setStyleSheet("color: #a0a0a0; font-style: italic; margin-top: 5px;")
+        layout.addWidget(self.description_label)
+        
         self.setLayout(layout)
     
     def populate_counties(self):
@@ -59,19 +68,19 @@ class CountyWorkflowWidget(QGroupBox):
     def update_workflow_options(self):
         """Update workflow dropdown based on selected county"""
         self.workflow_combo.clear()
+        self.description_label.setText("")
         
         county_id = self.county_combo.currentData()
         if not county_id:
             return
         
         try:
-            from ...workflows.fulton_fcl import FultonFCLWorkflow
-            from ...core.county_config import get_county_config
+            from ...core.county_config import get_county_workflows
             
-            # For now, hardcode FCL workflow for Fulton County
-            # TODO: Make this dynamic when we have more workflows
-            if county_id == "GAC3TH":  # Fulton County
-                self.workflow_combo.addItem("Foreclosure (FCL)", "fcl")
+            workflows = get_county_workflows(county_id)
+            
+            for workflow_id, workflow_config in workflows.items():
+                self.workflow_combo.addItem(workflow_config["name"], workflow_id)
             
             # Emit selection changed after updating workflows
             self.emit_selection_changed()
@@ -80,12 +89,28 @@ class CountyWorkflowWidget(QGroupBox):
             print(f"Error loading workflows for {county_id}: {str(e)}")
     
     def emit_selection_changed(self):
-        """Emit selection changed signal"""
+        """Emit selection changed signal with workflow configuration"""
         county_id = self.county_combo.currentData()
         workflow_id = self.workflow_combo.currentData()
         
         if county_id and workflow_id:
-            self.selection_changed.emit(county_id, workflow_id)
+            try:
+                from ...core.county_config import get_workflow_config
+                
+                workflow_config = get_workflow_config(county_id, workflow_id)
+                self.current_workflow_config = workflow_config
+                
+                # Update description
+                description = workflow_config.get("description", "")
+                self.description_label.setText(description)
+                
+                # Emit signal with config
+                self.selection_changed.emit(county_id, workflow_id, workflow_config)
+                
+            except Exception as e:
+                print(f"Error loading workflow config: {str(e)}")
+                self.current_workflow_config = {}
+                self.selection_changed.emit(county_id, workflow_id, {})
     
     def get_county_id(self) -> str:
         """Get selected county ID"""
@@ -102,6 +127,10 @@ class CountyWorkflowWidget(QGroupBox):
     def get_workflow_name(self) -> str:
         """Get selected workflow display name"""
         return self.workflow_combo.currentText()
+    
+    def get_workflow_config(self) -> Dict[str, Any]:
+        """Get current workflow configuration"""
+        return self.current_workflow_config.copy()
     
     def is_selection_valid(self) -> bool:
         """Check if both county and workflow are selected"""
