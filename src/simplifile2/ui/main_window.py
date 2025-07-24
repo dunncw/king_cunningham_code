@@ -1,4 +1,4 @@
-# ui/main_window.py - Simplified main UI window
+# ui/main_window.py - Updated main UI window with dynamic workflow support
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
     QTextEdit, QProgressBar, QMessageBox
@@ -14,7 +14,7 @@ from .workers.processing_worker import ProcessingWorker
 
 
 class SimplifileMainWindow(QWidget):
-    """Main Simplifile UI window with validation-first flow"""
+    """Main Simplifile UI window with validation-first flow and dynamic workflow support"""
     
     def __init__(self):
         super().__init__()
@@ -22,6 +22,7 @@ class SimplifileMainWindow(QWidget):
         self.processing_worker = None
         self.validation_passed = False
         self.validation_summary = {}
+        self.current_workflow_config = {}
         
         self.init_ui()
     
@@ -38,10 +39,10 @@ class SimplifileMainWindow(QWidget):
         
         # County/Workflow Selection
         self.county_workflow = CountyWorkflowWidget()
-        self.county_workflow.selection_changed.connect(self.reset_validation_state)
+        self.county_workflow.selection_changed.connect(self.on_workflow_selection_changed)
         main_layout.addWidget(self.county_workflow)
         
-        # File Inputs
+        # File Inputs (dynamic based on workflow)
         self.file_inputs = FileInputsWidget()
         self.file_inputs.files_changed.connect(self.reset_validation_state)
         main_layout.addWidget(self.file_inputs)
@@ -75,6 +76,26 @@ class SimplifileMainWindow(QWidget):
         main_layout.addWidget(self.output_text)
         
         self.setLayout(main_layout)
+    
+    def on_workflow_selection_changed(self, county_id: str, workflow_id: str, workflow_config: Dict[str, Any]):
+        """Handle workflow selection changes"""
+        self.current_workflow_config = workflow_config
+        
+        # Update file inputs based on workflow
+        self.file_inputs.update_for_workflow(workflow_config)
+        
+        # Reset validation state
+        self.reset_validation_state()
+        
+        # Log the selection
+        if county_id and workflow_id:
+            county_name = self.county_workflow.get_county_name()
+            workflow_name = self.county_workflow.get_workflow_name()
+            self.log_output(f"Selected: {county_name} - {workflow_name}")
+            
+            if workflow_config:
+                input_type = workflow_config.get('input_type', 'unknown')
+                self.log_output(f"Input type: {input_type}")
     
     def reset_validation_state(self):
         """Reset validation state when inputs change"""
@@ -120,6 +141,7 @@ class SimplifileMainWindow(QWidget):
         self.validation_worker = ValidationWorker(
             county_id=self.county_workflow.get_county_id(),
             workflow_id=self.county_workflow.get_workflow_id(),
+            workflow_config=self.current_workflow_config,
             file_paths=self.file_inputs.get_file_paths()
         )
         
@@ -146,17 +168,31 @@ class SimplifileMainWindow(QWidget):
             # Update buttons
             self.validate_button.setText("Validation Passed")
             self.validate_button.setEnabled(True)
-            self.process_button.setEnabled(True)
+            
+            # Only enable process button for workflows that support processing
+            workflow_config = self.current_workflow_config
+            if workflow_config.get('supports_processing', True):  # Default to True for backward compatibility
+                self.process_button.setEnabled(True)
+            else:
+                self.process_button.setEnabled(False)
+                self.log_output("NOTE: This workflow only supports validation and file discovery.")
             
             # Show success message
             valid_packages = summary.get("valid_packages", 0)
-            QMessageBox.information(
-                self,
-                "Validation Successful",
-                f"All validations passed!\n\n"
-                f"Ready to process {valid_packages} packages.\n\n"
-                f"Click 'Process Batch' to submit to Simplifile API."
-            )
+            if workflow_config.get('supports_processing', True):
+                message_text = (
+                    f"All validations passed!\n\n"
+                    f"Ready to process {valid_packages} packages.\n\n"
+                    f"Click 'Process Batch' to submit to Simplifile API."
+                )
+            else:
+                message_text = (
+                    f"File discovery and validation completed!\n\n"
+                    f"Found {valid_packages} valid packages.\n\n"
+                    f"Check the log for detailed file matching results."
+                )
+            
+            QMessageBox.information(self, "Validation Successful", message_text)
         else:
             self.validation_passed = False
             self.validation_summary = {}
@@ -187,6 +223,11 @@ class SimplifileMainWindow(QWidget):
             QMessageBox.warning(self, "Validation Required", "Please run validation first and ensure it passes before processing.")
             return
         
+        # Check if current workflow supports processing
+        if not self.current_workflow_config.get('supports_processing', True):
+            QMessageBox.information(self, "Processing Not Supported", "This workflow only supports file discovery and validation.")
+            return
+        
         # Confirm processing
         valid_packages = self.validation_summary.get("valid_packages", 0)
         reply = QMessageBox.question(
@@ -210,6 +251,7 @@ class SimplifileMainWindow(QWidget):
             api_token=self.api_config.get_api_token(),
             county_id=self.county_workflow.get_county_id(),
             workflow_id=self.county_workflow.get_workflow_id(),
+            workflow_config=self.current_workflow_config,
             file_paths=self.file_inputs.get_file_paths()
         )
         
@@ -311,9 +353,15 @@ class SimplifileMainWindow(QWidget):
     
     def log_validation_header(self):
         """Log validation header"""
-        self.log_output("FILE VALIDATION")
+        self.log_output("FILE VALIDATION AND DISCOVERY")
         self.log_output(f"County: {self.county_workflow.get_county_name()}")
         self.log_output(f"Workflow: {self.county_workflow.get_workflow_name()}")
+        
+        workflow_config = self.current_workflow_config
+        if workflow_config:
+            input_type = workflow_config.get('input_type', 'unknown')
+            self.log_output(f"Input Type: {input_type}")
+        
         self.log_output("-" * 60)
     
     def log_output(self, message: str):
