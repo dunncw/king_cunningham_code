@@ -76,6 +76,27 @@ class SimplifileMainWindow(QWidget):
         main_layout.addWidget(self.output_text)
         
         self.setLayout(main_layout)
+        
+        # Initialize file inputs with current workflow selection (if any) - AFTER UI is complete
+        self.initialize_file_inputs()
+    
+    def initialize_file_inputs(self):
+        """Initialize file inputs based on current workflow selection"""
+        # Check if county and workflow are already selected
+        if self.county_workflow.is_selection_valid():
+            workflow_config = self.county_workflow.get_workflow_config()
+            if workflow_config:
+                self.current_workflow_config = workflow_config
+                self.file_inputs.update_for_workflow(workflow_config)
+                
+                # Log the initial selection (only if output_text exists)
+                if hasattr(self, 'output_text'):
+                    county_name = self.county_workflow.get_county_name()
+                    workflow_name = self.county_workflow.get_workflow_name()
+                    self.log_output(f"Selected: {county_name} - {workflow_name}")
+                    
+                    input_type = workflow_config.get('input_type', 'unknown')
+                    self.log_output(f"Input type: {input_type}")
     
     def on_workflow_selection_changed(self, county_id: str, workflow_id: str, workflow_config: Dict[str, Any]):
         """Handle workflow selection changes"""

@@ -2,7 +2,7 @@
 import os
 import re
 import base64
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Optional
 import pandas as pd
 
 from .base import BaseWorkflow
@@ -41,6 +41,13 @@ class FultonDeedbacksWorkflow(BaseWorkflow):
         """Deedbacks creates DEED and optionally SATISFACTION documents"""
         return [self.county.DEED_DOCUMENT_TYPE, self.county.MORTGAGE_DOCUMENT_TYPE]
 
+    def normalize_contract_number(self, contract_num: str) -> str:
+        """Normalize contract number by removing leading zeros"""
+        if not contract_num:
+            return ""
+        # Remove leading zeros but keep the number as string
+        return str(int(contract_num)) if contract_num.isdigit() else contract_num.strip()
+
     def transform_row_data(self, excel_row: Dict[str, Any]) -> Dict[str, Any]:
         """Transform Excel row data for Deedbacks workflow"""
         # Map Excel columns to internal fields
@@ -54,7 +61,10 @@ class FultonDeedbacksWorkflow(BaseWorkflow):
             transformed[internal_field] = str(value).strip().upper()
 
         # Apply Deedbacks-specific business rules
-        contract_num = transformed["contract_number"]
+        raw_contract_num = transformed["contract_number"]
+        contract_num = self.normalize_contract_number(raw_contract_num)
+        transformed["contract_number"] = contract_num
+        
         last_1 = transformed["grantor_1_last_name"]
 
         # Package naming convention
@@ -166,14 +176,21 @@ class FultonDeedbacksDocumentProcessor:
 
     def __init__(self, logger=None):
         self.logger = logger or Logger()
-        self.document_catalog = {}  # Cache of discovered documents
+        self.document_catalog = {}  # Cache of discovered documents indexed by normalized contract number
+
+    def normalize_contract_number(self, contract_num: str) -> str:
+        """Normalize contract number by removing leading zeros"""
+        if not contract_num:
+            return ""
+        # Remove leading zeros but keep the number as string
+        return str(int(contract_num)) if contract_num.isdigit() else contract_num.strip()
 
     def scan_documents_directory(self, documents_directory: str) -> Dict[str, Dict[str, str]]:
         """
-        Scan documents directory and catalog all PDF files
+        Scan documents directory and catalog all PDF files by normalized contract number
         
         Returns:
-            Dictionary mapping (last_name, contract_num) -> {deed_path, pt61_path, sat_path}
+            Dictionary mapping normalized_contract_num -> {deed_path, pt61_path, sat_path}
         """
         self.document_catalog = {}
         
@@ -185,87 +202,111 @@ class FultonDeedbacksDocumentProcessor:
         
         self.logger.info(f"Found {len(pdf_files)} PDF files in directory")
         
-        # Parse each PDF filename and catalog
+        # Parse each PDF filename and catalog by normalized contract number
         for pdf_file in pdf_files:
             file_path = os.path.join(documents_directory, pdf_file)
-            parsed = self._parse_filename(pdf_file)
+            parsed = self._parse_filename_by_contract(pdf_file)
             
             if parsed:
-                last_name, contract_num, doc_type = parsed
-                key = (last_name, contract_num)
+                raw_contract_num, doc_type = parsed
+                normalized_contract_num = self.normalize_contract_number(raw_contract_num)
                 
-                if key not in self.document_catalog:
-                    self.document_catalog[key] = {}
+                if normalized_contract_num not in self.document_catalog:
+                    self.document_catalog[normalized_contract_num] = {}
                 
-                self.document_catalog[key][doc_type] = file_path
-                self.logger.info(f"Cataloged: {last_name} {contract_num} -> {doc_type}")
+                self.document_catalog[normalized_contract_num][doc_type] = file_path
+                self.logger.info(f"Cataloged: {normalized_contract_num} -> {doc_type} ({pdf_file})")
             else:
                 self.logger.warning(f"Could not parse filename: {pdf_file}")
         
         self.logger.info(f"Cataloged {len(self.document_catalog)} document sets")
         return self.document_catalog
 
-    def _parse_filename(self, filename: str) -> Tuple[str, str, str] | None:
+    def _parse_filename_by_contract(self, filename: str) -> Optional[Tuple[str, str]]:
         """
-        Parse filename according to Deedbacks naming convention
+        Parse filename by contract number from the end of the filename
         
-        Expected patterns:
-        - {Last 1} DB {Contract Num} DB.pdf -> (last_name, contract_num, 'deed')
-        - {Last 1} DB {Contract Num} DB PT61.pdf -> (last_name, contract_num, 'pt61')
-        - {Last 1} DB {Contract Num} DB SAT.pdf -> (last_name, contract_num, 'sat')
+        Expected patterns (scanning from end):
+        - *{Contract Num} DB.pdf -> (contract_num, 'deed')
+        - *{Contract Num} DB PT61.pdf -> (contract_num, 'pt61')
+        - *{Contract Num} DB SAT.pdf -> (contract_num, 'sat')
         
         Returns:
-            Tuple of (last_name, contract_num, doc_type) or None if not parseable
+            Tuple of (contract_num, doc_type) or None if not parseable
         """
         # Remove .pdf extension
         basename = filename[:-4] if filename.lower().endswith('.pdf') else filename
         
-        # Pattern: {LASTNAME} DB {CONTRACT} DB {TYPE}
-        # Where TYPE is optional (empty), PT61, or SAT
-        
-        # Try SAT pattern first
-        sat_pattern = r'^(.+)\s+DB\s+(.+)\s+DB\s+SAT$'
-        match = re.match(sat_pattern, basename, re.IGNORECASE)
+        # Try SAT pattern first: ends with "{CONTRACT} DB SAT"
+        sat_pattern = r'(.+)\s+DB\s+SAT$'
+        match = re.search(sat_pattern, basename, re.IGNORECASE)
         if match:
-            last_name, contract_num = match.groups()
-            return (last_name.strip().upper(), contract_num.strip(), 'sat')
+            contract_part = match.group(1).strip()
+            # Extract just the contract number (last word/number sequence)
+            contract_num = self._extract_contract_number(contract_part)
+            if contract_num:
+                return (contract_num, 'sat')
         
-        # Try PT61 pattern
-        pt61_pattern = r'^(.+)\s+DB\s+(.+)\s+DB\s+PT61$'
-        match = re.match(pt61_pattern, basename, re.IGNORECASE)
+        # Try PT61 pattern: ends with "{CONTRACT} DB PT61"
+        pt61_pattern = r'(.+)\s+DB\s+PT61$'
+        match = re.search(pt61_pattern, basename, re.IGNORECASE)
         if match:
-            last_name, contract_num = match.groups()
-            return (last_name.strip().upper(), contract_num.strip(), 'pt61')
+            contract_part = match.group(1).strip()
+            # Extract just the contract number (last word/number sequence)
+            contract_num = self._extract_contract_number(contract_part)
+            if contract_num:
+                return (contract_num, 'pt61')
         
-        # Try basic deed pattern
-        deed_pattern = r'^(.+)\s+DB\s+(.+)\s+DB$'
-        match = re.match(deed_pattern, basename, re.IGNORECASE)
+        # Try basic deed pattern: ends with "{CONTRACT} DB"
+        deed_pattern = r'(.+)\s+DB$'
+        match = re.search(deed_pattern, basename, re.IGNORECASE)
         if match:
-            last_name, contract_num = match.groups()
-            return (last_name.strip().upper(), contract_num.strip(), 'deed')
+            contract_part = match.group(1).strip()
+            # Extract just the contract number (last word/number sequence)
+            contract_num = self._extract_contract_number(contract_part)
+            if contract_num:
+                return (contract_num, 'deed')
         
         return None
 
-    def get_documents_for_package(self, last_name: str, contract_num: str) -> Dict[str, str]:
+    def _extract_contract_number(self, contract_part: str) -> Optional[str]:
         """
-        Get document paths for a specific package
+        Extract contract number from the end of the contract part
+        Examples:
+        - "DEMAYO DB 392400442" -> "392400442"
+        - "060325 DB KING 202201353" -> "202201353"
+        - "KEMMERER DB 762401133" -> "762401133"
+        """
+        # Split by spaces and take the last part
+        parts = contract_part.split()
+        if parts:
+            last_part = parts[-1]
+            # Check if it looks like a contract number (digits)
+            if last_part.isdigit():
+                return last_part
+        
+        return None
+
+    def get_documents_for_package(self, contract_num: str) -> Dict[str, str]:
+        """
+        Get document paths for a specific contract number (normalized)
         
         Returns:
             Dictionary with 'deed_path', 'pt61_path', and optionally 'sat_path'
         """
-        key = (last_name.upper(), contract_num)
+        normalized_contract = self.normalize_contract_number(contract_num)
         
-        if key not in self.document_catalog:
-            raise Exception(f"No documents found for {last_name} {contract_num}")
+        if normalized_contract not in self.document_catalog:
+            raise Exception(f"No documents found for contract {contract_num} (normalized: {normalized_contract})")
         
-        docs = self.document_catalog[key]
+        docs = self.document_catalog[normalized_contract]
         
         # Check for required documents
         if 'deed' not in docs:
-            raise Exception(f"Missing deed document for {last_name} {contract_num}")
+            raise Exception(f"Missing deed document for contract {contract_num}")
         
         if 'pt61' not in docs:
-            raise Exception(f"Missing PT-61 document for {last_name} {contract_num}")
+            raise Exception(f"Missing PT-61 document for contract {contract_num}")
         
         result = {
             'deed_path': docs['deed'],
@@ -280,7 +321,7 @@ class FultonDeedbacksDocumentProcessor:
 
     def validate_documents_for_excel(self, excel_df: pd.DataFrame) -> Tuple[List[str], Dict[str, Any]]:
         """
-        Validate that all Excel rows have corresponding documents
+        Validate that all Excel rows have corresponding documents (matching by normalized contract number)
         
         Returns:
             (errors, summary_info)
@@ -295,31 +336,31 @@ class FultonDeedbacksDocumentProcessor:
             "document_matches": []
         }
         
-        excel_keys = set()
+        excel_contracts = set()
         
         # Check each Excel row for corresponding documents
         for index, row in excel_df.iterrows():
             row_number = index + 2  # +2 for 1-based indexing and header row
             
             try:
+                raw_contract_num = str(row.get("Contract Num", "")).strip()
+                contract_num = self.normalize_contract_number(raw_contract_num)
                 last_name = str(row.get("Last 1", "")).strip().upper()
-                contract_num = str(row.get("Contract Num", "")).strip()
                 
-                if not last_name or not contract_num:
+                if not contract_num:
                     continue  # Skip invalid rows
                 
-                key = (last_name, contract_num)
-                excel_keys.add(key)
+                excel_contracts.add(contract_num)
                 
-                if key in self.document_catalog:
-                    docs = self.document_catalog[key]
+                if contract_num in self.document_catalog:
+                    docs = self.document_catalog[contract_num]
                     
                     # Check for required documents
                     if 'deed' not in docs:
-                        errors.append(f"Row {row_number}: Missing deed document for {last_name} {contract_num}")
+                        errors.append(f"Row {row_number}: Missing deed document for contract {contract_num}")
                         summary["rows_missing_documents"] += 1
                     elif 'pt61' not in docs:
-                        errors.append(f"Row {row_number}: Missing PT-61 document for {last_name} {contract_num}")
+                        errors.append(f"Row {row_number}: Missing PT-61 document for contract {contract_num}")
                         summary["rows_missing_documents"] += 1
                     else:
                         summary["rows_with_documents"] += 1
@@ -328,6 +369,7 @@ class FultonDeedbacksDocumentProcessor:
                             "row_number": row_number,
                             "last_name": last_name,
                             "contract_num": contract_num,
+                            "raw_contract_num": raw_contract_num,
                             "has_deed": True,
                             "has_pt61": True,
                             "has_sat": 'sat' in docs
@@ -338,7 +380,7 @@ class FultonDeedbacksDocumentProcessor:
                             summary["rows_missing_sat"] += 1
                             # Don't log missing SAT as it's optional and will be shown in package output
                 else:
-                    errors.append(f"Row {row_number}: No documents found for {last_name} {contract_num}")
+                    errors.append(f"Row {row_number}: No documents found for contract {contract_num} (from Excel: {raw_contract_num})")
                     summary["rows_missing_documents"] += 1
                     
             except Exception as e:
@@ -346,14 +388,14 @@ class FultonDeedbacksDocumentProcessor:
                 summary["rows_missing_documents"] += 1
         
         # Check for orphaned documents
-        catalog_keys = set(self.document_catalog.keys())
-        orphaned_keys = catalog_keys - excel_keys
-        summary["orphaned_documents"] = len(orphaned_keys)
+        catalog_contracts = set(self.document_catalog.keys())
+        orphaned_contracts = catalog_contracts - excel_contracts
+        summary["orphaned_documents"] = len(orphaned_contracts)
         
-        if orphaned_keys:
-            self.logger.warning(f"Found {len(orphaned_keys)} orphaned document sets:")
-            for last_name, contract_num in orphaned_keys:
-                self.logger.warning(f"  - {last_name} {contract_num}")
+        if orphaned_contracts:
+            self.logger.warning(f"Found {len(orphaned_contracts)} orphaned document sets:")
+            for contract_num in orphaned_contracts:
+                self.logger.warning(f"  - Contract {contract_num}")
         
         return errors, summary
 
@@ -451,7 +493,7 @@ class FultonDeedbacksValidator:
                     
                     # Get the actual document filenames
                     try:
-                        docs = self.doc_processor.get_documents_for_package(last_name, contract_num)
+                        docs = self.doc_processor.get_documents_for_package(contract_num)
                         deed_filename = os.path.basename(docs['deed_path'])
                         pt61_filename = os.path.basename(docs['pt61_path'])
                         
@@ -468,7 +510,7 @@ class FultonDeedbacksValidator:
                         self.logger.info("")  # Empty line between packages
                         
                     except Exception as e:
-                        self.logger.warning(f"Error getting document details for {last_name} {contract_num}: {str(e)}")
+                        self.logger.warning(f"Error getting document details for contract {contract_num}: {str(e)}")
             
             if doc_errors:
                 errors.extend(doc_errors)
@@ -609,11 +651,11 @@ class FultonDeedbacksValidator:
                 continue
             
             try:
-                last_name = str(row.get("Last 1", "")).strip().upper()
-                contract_num = str(row.get("Contract Num", "")).strip()
+                raw_contract_num = str(row.get("Contract Num", "")).strip()
+                contract_num = self.workflow.normalize_contract_number(raw_contract_num)
                 
-                # Get documents for this package
-                documents = self.doc_processor.get_documents_for_package(last_name, contract_num)
+                # Get documents for this contract
+                documents = self.doc_processor.get_documents_for_package(contract_num)
                 
                 # Test reading each document
                 for doc_type, file_path in documents.items():

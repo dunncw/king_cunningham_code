@@ -82,8 +82,10 @@ class CountyWorkflowWidget(QGroupBox):
             for workflow_id, workflow_config in workflows.items():
                 self.workflow_combo.addItem(workflow_config["name"], workflow_id)
             
-            # Emit selection changed after updating workflows
-            self.emit_selection_changed()
+            # Auto-select first workflow and emit signal to initialize UI
+            if self.workflow_combo.count() > 0:
+                self.workflow_combo.setCurrentIndex(0)
+                self.emit_selection_changed()
                 
         except Exception as e:
             print(f"Error loading workflows for {county_id}: {str(e)}")
