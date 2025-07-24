@@ -1,10 +1,10 @@
-# ui/workers/processing_worker.py - Updated processing thread worker for dynamic workflows
+# ui/workers/processing_worker.py - Updated processing thread worker for Deedbacks support
 from PyQt6.QtCore import QThread, pyqtSignal
 from typing import Dict
 
 
 class ProcessingWorker(QThread):
-    """Worker thread for batch processing with dynamic workflow support"""
+    """Worker thread for batch processing with dynamic workflow support including Deedbacks"""
     
     # Signals
     log_message = pyqtSignal(str)  # Log message
@@ -67,6 +67,24 @@ class ProcessingWorker(QThread):
     
     def _process_directory_workflow(self):
         """Process directory-based workflows (like Deedbacks)"""
-        # For now, directory workflows only support validation/discovery
-        # This can be implemented later when actual processing is needed
-        self.error.emit("Directory-based workflows currently only support file discovery and validation.")
+        from ...workflows.fulton_deedbacks import FultonDeedbacksProcessor
+        from ...utils.logging import Logger
+        
+        # Create logger that emits to UI
+        logger = Logger(ui_callback=self.log_message.emit)
+        
+        # Create Deedbacks processor
+        processor = FultonDeedbacksProcessor(
+            api_token=self.api_token,
+            county_id=self.county_id,
+            logger=logger
+        )
+        
+        # Process the batch with directory-based file paths
+        results = processor.process_batch(
+            excel_path=self.file_paths.get("excel", ""),
+            documents_directory=self.file_paths.get("documents_directory", "")
+        )
+        
+        # Emit results
+        self.finished.emit(results)

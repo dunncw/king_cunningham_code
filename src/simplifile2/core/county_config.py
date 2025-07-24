@@ -1,4 +1,4 @@
-# simplifile2/county_config.py - Enhanced county configuration with workflow registry
+# core/county_config.py - Updated with processing support for Deedbacks
 from typing import Dict, List, Any
 
 
@@ -63,6 +63,7 @@ WORKFLOW_CONFIGS = {
             "name": "Foreclosure (FCL)",
             "description": "Foreclosure documents with PDF stacks",
             "input_type": "pdf_stacks",
+            "supports_processing": True,  # FCL supports full processing
             "required_files": [
                 {
                     "key": "excel",
@@ -98,6 +99,7 @@ WORKFLOW_CONFIGS = {
             "name": "Deedbacks",
             "description": "Deedback documents with directory input",
             "input_type": "directory",
+            "supports_processing": True,  # NOW ENABLED - Deedbacks supports full processing
             "required_files": [
                 {
                     "key": "excel",
