@@ -1,4 +1,4 @@
-# ui/workers/validation_worker.py - Updated validation thread worker for dynamic workflows
+# ui/workers/validation_worker.py - Updated validation thread worker for Horry MTG-FCL support
 from PyQt6.QtCore import QThread, pyqtSignal
 from typing import Dict, List, Any
 
@@ -24,10 +24,10 @@ class ValidationWorker(QThread):
             input_type = self.workflow_config.get('input_type', 'unknown')
             
             if input_type == 'pdf_stacks':
-                # Use existing stack-based validation (FCL workflow)
+                # Use stack-based validation (FCL and MTG-FCL workflows)
                 self._validate_stack_workflow()
             elif input_type == 'directory':
-                # Use new directory-based validation (Deedbacks workflow)
+                # Use directory-based validation (Deedbacks workflow)
                 self._validate_directory_workflow()
             else:
                 # Unsupported workflow type
@@ -38,7 +38,7 @@ class ValidationWorker(QThread):
             self.finished.emit(False, [f"Validation error: {str(e)}"], {})
     
     def _validate_stack_workflow(self):
-        """Validate traditional stack-based workflows (like FCL)"""
+        """Validate traditional stack-based workflows (like FCL and MTG-FCL)"""
         from ...core.validator import SimplifileValidator
         from ...utils.logging import Logger
         
@@ -53,12 +53,26 @@ class ValidationWorker(QThread):
         )
         
         # Run validation with expected file paths for stack workflows
-        is_valid, errors, summary = validator.validate_all(
-            excel_path=self.file_paths.get("excel", ""),
-            deed_path=self.file_paths.get("deed_stack", ""),
-            pt61_path=self.file_paths.get("pt61_stack", ""),
-            mortgage_path=self.file_paths.get("mortgage_stack", "")
-        )
+        # Map file paths based on workflow type
+        if self.workflow_id == "fcl":
+            # Fulton FCL: deed_stack, pt61_stack, mortgage_stack
+            is_valid, errors, summary = validator.validate_all(
+                excel_path=self.file_paths.get("excel", ""),
+                deed_path=self.file_paths.get("deed_stack", ""),
+                stack2_path=self.file_paths.get("pt61_stack", ""),
+                mortgage_path=self.file_paths.get("mortgage_stack", "")
+            )
+        elif self.workflow_id == "mtg_fcl":
+            # Horry MTG-FCL: deed_stack, affidavit_stack, mortgage_stack
+            is_valid, errors, summary = validator.validate_all(
+                excel_path=self.file_paths.get("excel", ""),
+                deed_path=self.file_paths.get("deed_stack", ""),
+                stack2_path=self.file_paths.get("affidavit_stack", ""),
+                mortgage_path=self.file_paths.get("mortgage_stack", "")
+            )
+        else:
+            # Unknown stack workflow
+            is_valid, errors, summary = False, [f"Unknown stack workflow: {self.workflow_id}"], {}
         
         # Cleanup
         validator.cleanup()

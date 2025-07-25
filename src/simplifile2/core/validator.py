@@ -1,4 +1,4 @@
-# core/validator.py - Pre-processing validation with new structure
+# core/validator.py - Pre-processing validation with Horry MTG-FCL support
 import os
 import pandas as pd
 from typing import Dict, List, Any, Tuple
@@ -26,6 +26,9 @@ class SimplifileValidator:
         if self.county_id == "GAC3TH" and self.workflow_type == "fcl":
             from ..workflows.fulton_fcl import FultonFCLWorkflow
             return FultonFCLWorkflow(self.county_config, self.logger)
+        elif self.county_id == "SCCP49" and self.workflow_type == "mtg_fcl":
+            from ..workflows.horry_mtg_fcl import HorryMTGFCLWorkflow
+            return HorryMTGFCLWorkflow(self.county_config, self.logger)
         else:
             raise ValueError(f"Workflow '{self.workflow_type}' not supported for county '{self.county_id}'")
     
@@ -34,10 +37,13 @@ class SimplifileValidator:
         if self.county_id == "GAC3TH" and self.workflow_type == "fcl":
             from ..workflows.fulton_fcl import FultonFCLPDFProcessor
             return FultonFCLPDFProcessor(self.logger)
+        elif self.county_id == "SCCP49" and self.workflow_type == "mtg_fcl":
+            from ..workflows.horry_mtg_fcl import HorryMTGFCLPDFProcessor
+            return HorryMTGFCLPDFProcessor(self.logger)
         else:
             raise ValueError(f"PDF processor not available for workflow '{self.workflow_type}' in county '{self.county_id}'")
     
-    def validate_all(self, excel_path: str, deed_path: str, pt61_path: str, mortgage_path: str) -> Tuple[bool, List[str], Dict[str, Any]]:
+    def validate_all(self, excel_path: str, deed_path: str, stack2_path: str, mortgage_path: str) -> Tuple[bool, List[str], Dict[str, Any]]:
         """Comprehensive validation of all inputs before processing"""
         errors = []
         validation_summary = {
@@ -53,7 +59,7 @@ class SimplifileValidator:
         
         # Step 1: File existence validation
         self.step_logger.start_step("Validating file existence")
-        file_errors = self._validate_file_existence(excel_path, deed_path, pt61_path, mortgage_path)
+        file_errors = self._validate_file_existence(excel_path, deed_path, stack2_path, mortgage_path)
         if file_errors:
             errors.extend(file_errors)
             return False, errors, validation_summary
@@ -63,7 +69,7 @@ class SimplifileValidator:
         
         # Step 2: PDF stack validation
         self.step_logger.start_step("Validating PDF stacks")
-        pdf_errors, pdf_summary = self._validate_pdf_stacks(deed_path, pt61_path, mortgage_path)
+        pdf_errors, pdf_summary = self._validate_pdf_stacks(deed_path, stack2_path, mortgage_path)
         if pdf_errors:
             errors.extend(pdf_errors)
             return False, errors, validation_summary
@@ -92,7 +98,7 @@ class SimplifileValidator:
         
         # Step 5: Sample package validation
         self.step_logger.start_step("Validating sample package generation")
-        package_errors = self._validate_sample_package_generation(excel_path, deed_path, pt61_path, mortgage_path)
+        package_errors = self._validate_sample_package_generation(excel_path, deed_path, stack2_path, mortgage_path)
         if package_errors:
             errors.extend(package_errors)
             return False, errors, validation_summary
@@ -102,14 +108,22 @@ class SimplifileValidator:
         self.logger.info("All validations passed successfully!")
         return True, [], validation_summary
     
-    def _validate_file_existence(self, excel_path: str, deed_path: str, pt61_path: str, mortgage_path: str) -> List[str]:
+    def _validate_file_existence(self, excel_path: str, deed_path: str, stack2_path: str, mortgage_path: str) -> List[str]:
         """Validate that all required files exist and are readable"""
         errors = []
+        
+        # Build file checks based on workflow type
+        if self.workflow_type == "fcl":
+            stack2_label = "PT-61 Stack PDF"
+        elif self.workflow_type == "mtg_fcl":
+            stack2_label = "Affidavit Stack PDF"
+        else:
+            stack2_label = "Second Stack PDF"
         
         file_checks = [
             (excel_path, "Excel file"),
             (deed_path, "Deed Stack PDF"),
-            (pt61_path, "PT-61 Stack PDF"), 
+            (stack2_path, stack2_label),
             (mortgage_path, "Mortgage Satisfaction Stack PDF")
         ]
         
@@ -138,25 +152,31 @@ class SimplifileValidator:
         
         return errors
     
-    def _validate_pdf_stacks(self, deed_path: str, pt61_path: str, mortgage_path: str) -> Tuple[List[str], Dict[str, Any]]:
+    def _validate_pdf_stacks(self, deed_path: str, stack2_path: str, mortgage_path: str) -> Tuple[List[str], Dict[str, Any]]:
         """Validate PDF stack structure and alignment"""
         try:
             # Validate stack alignment
-            pdf_errors = self.pdf_processor.validate_stacks(deed_path, pt61_path, mortgage_path)
+            pdf_errors = self.pdf_processor.validate_stacks(deed_path, stack2_path, mortgage_path)
             
             if pdf_errors:
                 return pdf_errors, {}
             
             # Get stack summary for validation info
-            summary = self.pdf_processor.get_stack_summary(deed_path, pt61_path, mortgage_path)
+            summary = self.pdf_processor.get_stack_summary(deed_path, stack2_path, mortgage_path)
             
             pdf_validation_summary = {
                 "pdf_documents": summary["max_packages"],
                 "deed_pages": summary["deed_stack"]["total_pages"],
-                "pt61_pages": summary["pt61_stack"]["total_pages"],
                 "mortgage_pages": summary["mortgage_stack"]["total_pages"],
-                "stacks_aligned": summary["all_stacks_aligned"]
+                "stacks_aligned": summary.get("all_stacks_aligned", False)
             }
+            
+            # Add workflow-specific stack info
+            if self.workflow_type == "fcl":
+                pdf_validation_summary["pt61_pages"] = summary["pt61_stack"]["total_pages"]
+            elif self.workflow_type == "mtg_fcl":
+                pdf_validation_summary["affidavit_pages"] = summary["affidavit_stack"]["total_pages"]
+                pdf_validation_summary["merged_documents"] = summary.get("merged_documents", False)
             
             return [], pdf_validation_summary
             
@@ -242,7 +262,7 @@ class SimplifileValidator:
         
         return errors
     
-    def _validate_sample_package_generation(self, excel_path: str, deed_path: str, pt61_path: str, mortgage_path: str) -> List[str]:
+    def _validate_sample_package_generation(self, excel_path: str, deed_path: str, stack2_path: str, mortgage_path: str) -> List[str]:
         """Test package generation with first valid row to catch any structural issues"""
         try:
             # Load Excel and find first valid row
@@ -265,7 +285,7 @@ class SimplifileValidator:
             package_data["document_index"] = 0  # Use first document set
             
             # Extract PDF documents
-            pdf_documents = self.pdf_processor.get_documents(0, deed_path, pt61_path, mortgage_path)
+            pdf_documents = self.pdf_processor.get_documents(0, deed_path, stack2_path, mortgage_path)
             
             # Test document building
             payload_builder = self._get_payload_builder()
@@ -289,6 +309,9 @@ class SimplifileValidator:
         if self.county_id == "GAC3TH" and self.workflow_type == "fcl":
             from ..workflows.fulton_fcl import FultonFCLPayloadBuilder
             return FultonFCLPayloadBuilder(self.county_config, self.logger)
+        elif self.county_id == "SCCP49" and self.workflow_type == "mtg_fcl":
+            from ..workflows.horry_mtg_fcl import HorryMTGFCLPayloadBuilder
+            return HorryMTGFCLPayloadBuilder(self.county_config, self.logger)
         else:
             raise ValueError(f"Payload builder not available for workflow '{self.workflow_type}' in county '{self.county_id}'")
     

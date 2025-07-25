@@ -1,4 +1,4 @@
-# core/processor.py - Main processing orchestrator with updated imports
+# core/processor.py - Main processing orchestrator with Horry MTG-FCL support
 import pandas as pd
 import requests
 import json
@@ -18,8 +18,8 @@ class SimplifileProcessor:
         
         Args:
             api_token: Simplifile API token
-            county_id: County identifier (e.g., "GAC3TH")
-            workflow_type: Workflow type (e.g., "fcl")
+            county_id: County identifier (e.g., "GAC3TH", "SCCP49")
+            workflow_type: Workflow type (e.g., "fcl", "mtg_fcl")
             logger: Logger instance for output
         """
         self.api_token = api_token
@@ -52,6 +52,9 @@ class SimplifileProcessor:
         if self.county_id == "GAC3TH" and self.workflow_type == "fcl":
             from ..workflows.fulton_fcl import FultonFCLWorkflow
             return FultonFCLWorkflow(self.county_config, self.logger)
+        elif self.county_id == "SCCP49" and self.workflow_type == "mtg_fcl":
+            from ..workflows.horry_mtg_fcl import HorryMTGFCLWorkflow
+            return HorryMTGFCLWorkflow(self.county_config, self.logger)
         else:
             raise ValueError(f"Workflow '{self.workflow_type}' not supported for county '{self.county_id}'")
     
@@ -60,6 +63,9 @@ class SimplifileProcessor:
         if self.county_id == "GAC3TH" and self.workflow_type == "fcl":
             from ..workflows.fulton_fcl import FultonFCLPDFProcessor
             return FultonFCLPDFProcessor(self.logger)
+        elif self.county_id == "SCCP49" and self.workflow_type == "mtg_fcl":
+            from ..workflows.horry_mtg_fcl import HorryMTGFCLPDFProcessor
+            return HorryMTGFCLPDFProcessor(self.logger)
         else:
             raise ValueError(f"PDF processor not available for workflow '{self.workflow_type}' in county '{self.county_id}'")
     
@@ -68,17 +74,20 @@ class SimplifileProcessor:
         if self.county_id == "GAC3TH" and self.workflow_type == "fcl":
             from ..workflows.fulton_fcl import FultonFCLPayloadBuilder
             return FultonFCLPayloadBuilder(self.county_config, self.logger)
+        elif self.county_id == "SCCP49" and self.workflow_type == "mtg_fcl":
+            from ..workflows.horry_mtg_fcl import HorryMTGFCLPayloadBuilder
+            return HorryMTGFCLPayloadBuilder(self.county_config, self.logger)
         else:
             raise ValueError(f"Payload builder not available for workflow '{self.workflow_type}' in county '{self.county_id}'")
     
-    def process_batch(self, excel_path: str, deed_path: str, pt61_path: str, mortgage_path: str) -> Dict[str, Any]:
+    def process_batch(self, excel_path: str, deed_path: str, stack2_path: str, mortgage_path: str) -> Dict[str, Any]:
         """
         Process complete batch from Excel and PDF files
         
         Args:
             excel_path: Path to Excel file with package data
             deed_path: Path to deed stack PDF
-            pt61_path: Path to PT-61 stack PDF
+            stack2_path: Path to second stack PDF (PT-61 for Fulton, Affidavit for Horry)
             mortgage_path: Path to mortgage satisfaction stack PDF
         
         Returns:
@@ -91,7 +100,7 @@ class SimplifileProcessor:
             
             # Step 1: Validate PDF stacks
             self.step_logger.start_step("Validating PDF stacks")
-            pdf_errors = self._validate_pdf_stacks(deed_path, pt61_path, mortgage_path)
+            pdf_errors = self._validate_pdf_stacks(deed_path, stack2_path, mortgage_path)
             if pdf_errors:
                 for error in pdf_errors:
                     self.step_logger.step_error(error)
@@ -116,7 +125,7 @@ class SimplifileProcessor:
             
             # Step 4: Generate API payloads and upload
             self.step_logger.start_step("Generating API payloads and uploading")
-            upload_results = self._upload_packages(valid_packages_data, deed_path, pt61_path, mortgage_path)
+            upload_results = self._upload_packages(valid_packages_data, deed_path, stack2_path, mortgage_path)
             
             # Step 5: Generate final results
             end_time = datetime.now()
@@ -146,16 +155,22 @@ class SimplifileProcessor:
             if hasattr(self.pdf_processor, 'cleanup'):
                 self.pdf_processor.cleanup()
     
-    def _validate_pdf_stacks(self, deed_path: str, pt61_path: str, mortgage_path: str) -> List[str]:
+    def _validate_pdf_stacks(self, deed_path: str, stack2_path: str, mortgage_path: str) -> List[str]:
         """Validate PDF stack alignment and structure"""
         try:
-            errors = self.pdf_processor.validate_stacks(deed_path, pt61_path, mortgage_path)
+            errors = self.pdf_processor.validate_stacks(deed_path, stack2_path, mortgage_path)
             
             if not errors:
                 # Get stack summary for logging
-                summary = self.pdf_processor.get_stack_summary(deed_path, pt61_path, mortgage_path)
+                summary = self.pdf_processor.get_stack_summary(deed_path, stack2_path, mortgage_path)
                 self.logger.info(f"Deed Stack: {summary['deed_stack']['complete_documents']} documents ({summary['deed_stack']['total_pages']} pages)")
-                self.logger.info(f"PT-61 Stack: {summary['pt61_stack']['complete_documents']} documents ({summary['pt61_stack']['total_pages']} pages)")
+                
+                # Log second stack based on workflow type
+                if self.workflow_type == "fcl":
+                    self.logger.info(f"PT-61 Stack: {summary['pt61_stack']['complete_documents']} documents ({summary['pt61_stack']['total_pages']} pages)")
+                elif self.workflow_type == "mtg_fcl":
+                    self.logger.info(f"Affidavit Stack: {summary['affidavit_stack']['complete_documents']} documents ({summary['affidavit_stack']['total_pages']} pages)")
+                
                 self.logger.info(f"Mortgage Stack: {summary['mortgage_stack']['complete_documents']} documents ({summary['mortgage_stack']['total_pages']} pages)")
                 self.logger.info(f"Maximum packages: {summary['max_packages']}")
             
@@ -232,7 +247,7 @@ class SimplifileProcessor:
         
         return valid_packages
     
-    def _upload_packages(self, packages_data: List[Dict[str, Any]], deed_path: str, pt61_path: str, mortgage_path: str) -> List[Dict[str, Any]]:
+    def _upload_packages(self, packages_data: List[Dict[str, Any]], deed_path: str, stack2_path: str, mortgage_path: str) -> List[Dict[str, Any]]:
         """Upload packages to Simplifile API"""
         upload_results = []
         
@@ -245,7 +260,7 @@ class SimplifileProcessor:
                 
                 # Extract PDF documents for this package
                 pdf_documents = self.pdf_processor.get_documents(
-                    document_index, deed_path, pt61_path, mortgage_path
+                    document_index, deed_path, stack2_path, mortgage_path
                 )
                 
                 # Build API payload

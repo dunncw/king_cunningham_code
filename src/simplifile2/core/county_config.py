@@ -1,4 +1,4 @@
-# core/county_config.py - Updated with processing support for Deedbacks
+# core/county_config.py - Updated with Horry County configuration
 from typing import Dict, List, Any
 
 
@@ -56,6 +56,25 @@ class FultonCountyConfig(CountyConfig):
     FIXED_SAT_GRANTEE = "CENTENNIAL PARK DEVELOPMENT LLC"
 
 
+class HorryCountyConfig(CountyConfig):
+    """Horry County, SC configuration"""
+    
+    COUNTY_ID = "SCCP49"
+    COUNTY_NAME = "Horry County, SC"
+    
+    # Document types specific to Horry County
+    DEED_DOCUMENT_TYPE = "Deed - Timeshare"
+    MORTGAGE_DOCUMENT_TYPE = "Mortgage Satisfaction"
+    
+    # Supported workflows
+    SUPPORTED_WORKFLOWS = ["mtg_fcl"]
+    
+    # No fixed values for Horry - all come from Excel data
+    FIXED_PARCEL_ID = None
+    FIXED_TAX_EXEMPT = None
+    FIXED_DEED_GRANTEE = None
+
+
 # Workflow configurations per county
 WORKFLOW_CONFIGS = {
     "GAC3TH": {  # Fulton County
@@ -63,7 +82,7 @@ WORKFLOW_CONFIGS = {
             "name": "Foreclosure (FCL)",
             "description": "Foreclosure documents with PDF stacks",
             "input_type": "pdf_stacks",
-            "supports_processing": True,  # FCL supports full processing
+            "supports_processing": True,
             "required_files": [
                 {
                     "key": "excel",
@@ -99,7 +118,7 @@ WORKFLOW_CONFIGS = {
             "name": "Deedbacks",
             "description": "Deedback documents with directory input",
             "input_type": "directory",
-            "supports_processing": True,  # NOW ENABLED - Deedbacks supports full processing
+            "supports_processing": True,
             "required_files": [
                 {
                     "key": "excel",
@@ -117,13 +136,52 @@ WORKFLOW_CONFIGS = {
                 }
             ]
         }
+    },
+    "SCCP49": {  # Horry County
+        "mtg_fcl": {
+            "name": "Timeshare Deed (MTG-FCL)",
+            "description": "Horry County timeshare deed and mortgage satisfaction documents",
+            "input_type": "pdf_stacks",
+            "supports_processing": True,
+            "required_files": [
+                {
+                    "key": "excel",
+                    "label": "Excel File",
+                    "placeholder": "Select Excel file with package data",
+                    "filter": "Excel Files (*.xlsx *.xls)",
+                    "type": "file"
+                },
+                {
+                    "key": "deed_stack",
+                    "label": "Deed Stack PDF",
+                    "placeholder": "Select deed stack PDF (2 pages per document)",
+                    "filter": "PDF Files (*.pdf)",
+                    "type": "file"
+                },
+                {
+                    "key": "affidavit_stack",
+                    "label": "Affidavit Stack PDF",
+                    "placeholder": "Select affidavit stack PDF (2 pages per document)",
+                    "filter": "PDF Files (*.pdf)",
+                    "type": "file"
+                },
+                {
+                    "key": "mortgage_stack",
+                    "label": "Mortgage Satisfaction Stack PDF",
+                    "placeholder": "Select mortgage satisfaction stack PDF (1 page per document)",
+                    "filter": "PDF Files (*.pdf)",
+                    "type": "file"
+                }
+            ]
+        }
     }
 }
 
 
 # Registry of available counties
 COUNTY_CONFIGS = {
-    "GAC3TH": FultonCountyConfig
+    "GAC3TH": FultonCountyConfig,
+    "SCCP49": HorryCountyConfig
 }
 
 
