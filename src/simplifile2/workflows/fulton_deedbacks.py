@@ -234,6 +234,7 @@ class FultonDeedbacksDocumentProcessor:
         - *{Contract Num} DB.pdf -> (contract_num, 'deed')
         - *{Contract Num} DB PT61.pdf -> (contract_num, 'pt61')
         - *{Contract Num} DB SAT.pdf -> (contract_num, 'sat')
+        - *{Contract Num}_PT61.pdf -> (contract_num, 'pt61')
         
         Returns:
             Tuple of (contract_num, doc_type) or None if not parseable
@@ -242,31 +243,36 @@ class FultonDeedbacksDocumentProcessor:
         basename = filename[:-4] if filename.lower().endswith('.pdf') else filename
         
         # Try SAT pattern first: ends with "{CONTRACT} DB SAT"
-        sat_pattern = r'(.+)\s+DB\s+SAT'
+        sat_pattern = r'(.+)\s+DB\s+SAT$'
         match = re.search(sat_pattern, basename, re.IGNORECASE)
         if match:
             contract_part = match.group(1).strip()
-            # Extract just the contract number (last word/number sequence)
             contract_num = self._extract_contract_number(contract_part)
             if contract_num:
                 return (contract_num, 'sat')
         
         # Try PT61 pattern: ends with "{CONTRACT} DB PT61"
-        pt61_pattern = r'(.+)\s+DB\s+PT61'
+        pt61_pattern = r'(.+)\s+DB\s+PT61$'
         match = re.search(pt61_pattern, basename, re.IGNORECASE)
         if match:
             contract_part = match.group(1).strip()
-            # Extract just the contract number (last word/number sequence)
             contract_num = self._extract_contract_number(contract_part)
             if contract_num:
                 return (contract_num, 'pt61')
         
+        # Try underscore PT61 pattern: ends with "{CONTRACT}_PT61"
+        pt61_underscore_pattern = r'(.+)_(\d+)_PT61$'
+        match = re.search(pt61_underscore_pattern, basename, re.IGNORECASE)
+        if match:
+            contract_num = match.group(2)  # Extract the numeric part directly
+            if contract_num:
+                return (contract_num, 'pt61')
+        
         # Try basic deed pattern: ends with "{CONTRACT} DB"
-        deed_pattern = r'(.+)\s+DB'
+        deed_pattern = r'(.+)\s+DB$'
         match = re.search(deed_pattern, basename, re.IGNORECASE)
         if match:
             contract_part = match.group(1).strip()
-            # Extract just the contract number (last word/number sequence)
             contract_num = self._extract_contract_number(contract_part)
             if contract_num:
                 return (contract_num, 'deed')
@@ -697,7 +703,6 @@ class FultonDeedbacksValidator:
         """Clean up resources"""
         if hasattr(self.doc_processor, 'cleanup'):
             self.doc_processor.cleanup()
-
 
 class FultonDeedbacksProcessor:
     """Main processor for Fulton Deedbacks workflow - handles complete batch processing"""
