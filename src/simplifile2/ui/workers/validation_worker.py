@@ -82,7 +82,7 @@ class ValidationWorker(QThread):
     
     def _validate_directory_workflow(self):
         """Validate directory-based workflows (like Deedbacks)"""
-        from ...workflows.fulton_deedbacks import FultonDeedbacksValidator
+        from ...workflows.fulton_county.deedbacks.workflow import FultonDeedbacksValidator
         from ...utils.logging import Logger
         
         # Create logger that emits to UI

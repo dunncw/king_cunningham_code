@@ -4,8 +4,8 @@ import base64
 from typing import Dict, List, Any, Optional
 from PyPDF2 import PdfReader
 
-from .base import BasePDFProcessor
-from ..utils.logging import Logger
+from ...base.workflow import BasePDFProcessor
+from ....utils.logging import Logger
 
 
 class FultonDeedbacksPDFProcessor(BasePDFProcessor):

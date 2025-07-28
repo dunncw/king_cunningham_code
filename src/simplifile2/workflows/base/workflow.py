@@ -2,8 +2,8 @@
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional
 import pandas as pd
-from ..core.county_config import CountyConfig
-from ..utils.logging import Logger
+from ...core.county_config import CountyConfig
+from ...utils.logging import Logger
 
 
 class BaseWorkflow(ABC):
