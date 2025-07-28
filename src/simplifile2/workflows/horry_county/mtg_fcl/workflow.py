@@ -3,7 +3,7 @@ import re
 from typing import Dict, List, Any
 import pandas as pd
 
-from ....base.workflow import BaseWorkflow, BasePDFProcessor, BasePayloadBuilder
+from ...base.workflow import BaseWorkflow, BasePDFProcessor, BasePayloadBuilder
 
 
 class HorryMTGFCLWorkflow(BaseWorkflow):

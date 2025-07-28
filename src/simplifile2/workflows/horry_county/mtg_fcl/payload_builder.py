@@ -1,7 +1,7 @@
 import re
 from typing import Dict, List, Any
 
-from ....base.workflow import BasePayloadBuilder
+from ...base.workflow import BasePayloadBuilder
 
 class HorryMTGFCLPayloadBuilder(BasePayloadBuilder):
     """Payload builder for Horry MTG-FCL workflow"""
