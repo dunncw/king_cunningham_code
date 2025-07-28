@@ -86,7 +86,7 @@ class ProcessingWorker(QThread):
     
     def _process_directory_workflow(self):
         """Process directory-based workflows (like Deedbacks)"""
-        from ...workflows.fulton_deedbacks import FultonDeedbacksProcessor
+        from ...workflows.fulton_county.deedbacks.workflow import FultonDeedbacksProcessor
         from ...utils.logging import Logger
         
         # Create logger that emits to UI

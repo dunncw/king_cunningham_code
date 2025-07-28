@@ -5,13 +5,13 @@ import base64
 from typing import Dict, List, Any, Tuple, Optional
 import pandas as pd
 
-from .base import BaseWorkflow
-from ..core.county_config import CountyConfig
-from ..utils.logging import Logger, StepLogger
+from ...base.workflow import BaseWorkflow
+from ....core.county_config import CountyConfig
+from ....utils.logging import Logger, StepLogger
 
 # Import the new components
-from .fulton_deedbacks_pdf import FultonDeedbacksPDFProcessor
-from .fulton_deedbacks_payload import FultonDeedbacksPayloadBuilder
+from .pdf_processor import FultonDeedbacksPDFProcessor
+from .payload_builder import FultonDeedbacksPayloadBuilder
 
 
 class FultonDeedbacksWorkflow(BaseWorkflow):
@@ -436,7 +436,7 @@ class FultonDeedbacksValidator:
         self.step_logger = StepLogger(logger)
         
         # Initialize components
-        from ..core.county_config import get_county_config
+        from ....core.county_config import get_county_config
         self.county_config = get_county_config(county_id)
         self.workflow = FultonDeedbacksWorkflow(self.county_config, self.logger)
         self.doc_processor = FultonDeedbacksDocumentProcessor(self.logger)
@@ -714,7 +714,7 @@ class FultonDeedbacksProcessor:
         self.step_logger = StepLogger(logger)
         
         # Initialize components
-        from ..core.county_config import get_county_config
+        from ....core.county_config import get_county_config
         self.county_config = get_county_config(county_id)
         self.workflow = FultonDeedbacksWorkflow(self.county_config, self.logger)
         self.doc_processor = FultonDeedbacksDocumentProcessor(self.logger)

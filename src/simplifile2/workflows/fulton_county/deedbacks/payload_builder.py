@@ -1,8 +1,8 @@
 # workflows/fulton_deedbacks_payload.py - API payload builder for Deedbacks workflow
 from typing import Dict, List, Any
-from .base import BasePayloadBuilder
-from ..core.county_config import CountyConfig
-from ..utils.logging import Logger
+from ...base.workflow import BasePayloadBuilder
+from ....core.county_config import CountyConfig
+from ....utils.logging import Logger
 
 
 class FultonDeedbacksPayloadBuilder(BasePayloadBuilder):

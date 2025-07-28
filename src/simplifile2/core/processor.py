@@ -50,10 +50,10 @@ class SimplifileProcessor:
     def _get_workflow(self):
         """Get workflow instance for county/workflow type"""
         if self.county_id == "GAC3TH" and self.workflow_type == "fcl":
-            from ..workflows.fulton_fcl import FultonFCLWorkflow
+            from ..workflows.fulton_county.fcl.workflow import FultonFCLWorkflow
             return FultonFCLWorkflow(self.county_config, self.logger)
         elif self.county_id == "SCCP49" and self.workflow_type == "mtg_fcl":
-            from ..workflows.horry_mtg_fcl import HorryMTGFCLWorkflow
+            from ..workflows.fulton_county.horry_county.mtg_fcl.workflow import HorryMTGFCLWorkflow
             return HorryMTGFCLWorkflow(self.county_config, self.logger)
         else:
             raise ValueError(f"Workflow '{self.workflow_type}' not supported for county '{self.county_id}'")
@@ -61,10 +61,10 @@ class SimplifileProcessor:
     def _get_pdf_processor(self):
         """Get PDF processor for workflow"""
         if self.county_id == "GAC3TH" and self.workflow_type == "fcl":
-            from ..workflows.fulton_fcl import FultonFCLPDFProcessor
+            from ..workflows.fulton_county.fcl.pdf_processor import FultonFCLPDFProcessor
             return FultonFCLPDFProcessor(self.logger)
         elif self.county_id == "SCCP49" and self.workflow_type == "mtg_fcl":
-            from ..workflows.horry_mtg_fcl import HorryMTGFCLPDFProcessor
+            from ..workflows.fulton_county.horry_county.mtg_fcl.pdf_processor import HorryMTGFCLPDFProcessor
             return HorryMTGFCLPDFProcessor(self.logger)
         else:
             raise ValueError(f"PDF processor not available for workflow '{self.workflow_type}' in county '{self.county_id}'")
@@ -72,10 +72,10 @@ class SimplifileProcessor:
     def _get_payload_builder(self):
         """Get payload builder for workflow"""
         if self.county_id == "GAC3TH" and self.workflow_type == "fcl":
-            from ..workflows.fulton_fcl import FultonFCLPayloadBuilder
+            from ..workflows.fulton_county.fcl.payload_builder import FultonFCLPayloadBuilder
             return FultonFCLPayloadBuilder(self.county_config, self.logger)
         elif self.county_id == "SCCP49" and self.workflow_type == "mtg_fcl":
-            from ..workflows.horry_mtg_fcl import HorryMTGFCLPayloadBuilder
+            from ..workflows.fulton_county.horry_county.mtg_fcl.payload_builder import HorryMTGFCLPayloadBuilder
             return HorryMTGFCLPayloadBuilder(self.county_config, self.logger)
         else:
             raise ValueError(f"Payload builder not available for workflow '{self.workflow_type}' in county '{self.county_id}'")
