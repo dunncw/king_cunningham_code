@@ -53,7 +53,7 @@ class SimplifileProcessor:
             from ..workflows.fulton_county.fcl.workflow import FultonFCLWorkflow
             return FultonFCLWorkflow(self.county_config, self.logger)
         elif self.county_id == "SCCP49" and self.workflow_type == "mtg_fcl":
-            from ..workflows.fulton_county.horry_county.mtg_fcl.workflow import HorryMTGFCLWorkflow
+            from ..workflows.horry_county.mtg_fcl.workflow import HorryMTGFCLWorkflow
             return HorryMTGFCLWorkflow(self.county_config, self.logger)
         else:
             raise ValueError(f"Workflow '{self.workflow_type}' not supported for county '{self.county_id}'")
@@ -64,7 +64,7 @@ class SimplifileProcessor:
             from ..workflows.fulton_county.fcl.pdf_processor import FultonFCLPDFProcessor
             return FultonFCLPDFProcessor(self.logger)
         elif self.county_id == "SCCP49" and self.workflow_type == "mtg_fcl":
-            from ..workflows.fulton_county.horry_county.mtg_fcl.pdf_processor import HorryMTGFCLPDFProcessor
+            from ..workflows.horry_county.mtg_fcl.pdf_processor import HorryMTGFCLPDFProcessor
             return HorryMTGFCLPDFProcessor(self.logger)
         else:
             raise ValueError(f"PDF processor not available for workflow '{self.workflow_type}' in county '{self.county_id}'")
@@ -75,7 +75,7 @@ class SimplifileProcessor:
             from ..workflows.fulton_county.fcl.payload_builder import FultonFCLPayloadBuilder
             return FultonFCLPayloadBuilder(self.county_config, self.logger)
         elif self.county_id == "SCCP49" and self.workflow_type == "mtg_fcl":
-            from ..workflows.fulton_county.horry_county.mtg_fcl.payload_builder import HorryMTGFCLPayloadBuilder
+            from ..workflows.horry_county.mtg_fcl.payload_builder import HorryMTGFCLPayloadBuilder
             return HorryMTGFCLPayloadBuilder(self.county_config, self.logger)
         else:
             raise ValueError(f"Payload builder not available for workflow '{self.workflow_type}' in county '{self.county_id}'")
