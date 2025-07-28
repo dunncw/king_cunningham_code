@@ -2,7 +2,7 @@
 import re
 from typing import Dict, List, Any
 
-from ....base.workflow import BasePDFProcessor
+from ...base.workflow import BasePDFProcessor
 
 
 
@@ -14,7 +14,7 @@ class HorryMTGFCLPDFProcessor(BasePDFProcessor):
 
     def validate_stacks(self, deed_path: str, affidavit_path: str, mortgage_path: str) -> List[str]:
         """Validate all three Horry MTG-FCL PDF stacks"""
-        from .....core.pdf_stack_processor import PDFStackProcessor
+        from ....core.pdf_stack_processor import PDFStackProcessor
 
         stack_processor = PDFStackProcessor()
 
@@ -40,7 +40,7 @@ class HorryMTGFCLPDFProcessor(BasePDFProcessor):
 
     def get_documents(self, document_index: int, deed_path: str, affidavit_path: str, mortgage_path: str) -> Dict[str, str]:
         """Get all documents for a specific Horry MTG-FCL package with deed+affidavit merging"""
-        from .....core.pdf_stack_processor import PDFStackProcessor
+        from ....core.pdf_stack_processor import PDFStackProcessor
         import io
         from PyPDF2 import PdfReader, PdfWriter
         import base64
@@ -113,7 +113,7 @@ class HorryMTGFCLPDFProcessor(BasePDFProcessor):
 
     def get_stack_summary(self, deed_path: str, affidavit_path: str, mortgage_path: str) -> Dict[str, Any]:
         """Get summary information about all Horry MTG-FCL stacks"""
-        from .....core.pdf_stack_processor import PDFStackProcessor
+        from ....core.pdf_stack_processor import PDFStackProcessor
 
         try:
             stack_processor = PDFStackProcessor()
