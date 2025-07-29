@@ -40,7 +40,8 @@ class BeaufortMTGFCLWorkflow(BaseWorkflow):
             "Account", 
             "Last Name #1",
             "First Name #1",
-            "GRANTOR/GRANTEE"
+            "GRANTOR/GRANTEE",
+            "Consideration"
         ]
 
     def get_excel_mapping(self) -> Dict[str, str]:
@@ -53,7 +54,8 @@ class BeaufortMTGFCLWorkflow(BaseWorkflow):
             "&": "has_second_owner",
             "Last Name #2": "owner_2_last_name", 
             "First Name #2": "owner_2_first_name",
-            "GRANTOR/GRANTEE": "grantor_grantee_entity"
+            "GRANTOR/GRANTEE": "grantor_grantee_entity",
+            "Consideration": "consideration_amount"
         }
 
     def get_document_types(self) -> List[str]:
@@ -92,6 +94,11 @@ class BeaufortMTGFCLWorkflow(BaseWorkflow):
         transformed["package_name"] = package_name_prefix
         transformed["package_id"] = f"{kc_file_no}-{account_number}"
 
+        # Clean consideration amount
+        consideration = transformed["consideration_amount"]
+        cleaned_consideration = self._clean_consideration(consideration)
+        transformed["consideration_amount"] = cleaned_consideration
+
         # Process second owner logic (& column indicates second owner)
         has_second = transformed["has_second_owner"] == "&"
         transformed["has_second_owner"] = has_second
@@ -109,6 +116,19 @@ class BeaufortMTGFCLWorkflow(BaseWorkflow):
         transformed["satisfaction_document_name"] = f"{doc_name_prefix} SAT"
 
         return transformed
+
+    def _clean_consideration(self, consideration_str: str) -> float:
+        """Clean consideration amount by removing $ and commas, return as float"""
+        if not consideration_str:
+            return 0.0
+
+        # Remove $ and commas, keep only digits and decimal point
+        cleaned = re.sub(r'[\$,]', '', str(consideration_str))
+
+        try:
+            return float(cleaned)
+        except ValueError:
+            return 0.0
 
     def validate_excel_data(self, df: pd.DataFrame) -> List[str]:
         """Beaufort-specific validation - simplified requirements"""
@@ -174,7 +194,8 @@ class BeaufortMTGFCLWorkflow(BaseWorkflow):
             "Account": excel_row.get("Account"),
             "Last Name #1": excel_row.get("Last Name #1"),
             "First Name #1": excel_row.get("First Name #1"),
-            "GRANTOR/GRANTEE": excel_row.get("GRANTOR/GRANTEE")
+            "GRANTOR/GRANTEE": excel_row.get("GRANTOR/GRANTEE"),
+            "Consideration": excel_row.get("Consideration")
         }
 
         # Check for empty required fields
@@ -191,6 +212,13 @@ class BeaufortMTGFCLWorkflow(BaseWorkflow):
                 return False, "Has '&' indicator but missing 'First Name #2'"
             if pd.isna(last_2) or str(last_2).strip() == "":
                 return False, "Has '&' indicator but missing 'Last Name #2'"
+
+        # Validate consideration amount format (allow 0.00 for Beaufort)
+        consideration = str(excel_row.get("Consideration", "")).strip()
+        cleaned_consideration = self._clean_consideration(consideration)
+        # Allow 0.00 for Beaufort workflow - just check it's a valid number
+        if cleaned_consideration < 0:
+            return False, f"Invalid consideration: {consideration}"
 
         # NOTE: Beaufort County does not require execution dates, legal descriptions,
         # consideration amounts, or reference information - much simpler validation

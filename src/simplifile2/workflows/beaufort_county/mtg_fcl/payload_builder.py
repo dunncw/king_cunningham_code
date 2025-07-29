@@ -109,13 +109,14 @@ class BeaufortMTGFCLPayloadBuilder(BasePayloadBuilder):
             "type": "Organization"
         }]
 
-        # Build complete DEED document - SIMPLIFIED for Beaufort
-        # No execution date, consideration, legal descriptions, or reference information required
+        # Build complete DEED document - SIMPLIFIED for Beaufort but includes consideration
+        # No execution date, legal descriptions, or reference information required
         deed_document = {
             "submitterDocumentID": workflow_data["deed_document_id"],
             "name": workflow_data["deed_document_name"],
             "kindOfInstrument": [self.county.DEED_DOCUMENT_TYPE],
             "indexingData": {
+                "consideration": float(workflow_data["consideration_amount"]),
                 "grantors": grantors,
                 "grantees": grantees
             },
@@ -211,7 +212,15 @@ class BeaufortMTGFCLPayloadBuilder(BasePayloadBuilder):
         indexing_data = document.get("indexingData", {})
 
         if doc_type == self.county.DEED_DOCUMENT_TYPE:
-            # Validate DEED document - simplified for Beaufort
+            # Validate DEED document - simplified for Beaufort but includes consideration
+            
+            # Check for consideration - allow 0.00 for Beaufort workflow
+            if "consideration" not in indexing_data:
+                errors.append(f"{doc_prefix}: DEED missing consideration")
+            elif not isinstance(indexing_data["consideration"], (int, float)):
+                errors.append(f"{doc_prefix}: DEED consideration must be numeric")
+            elif indexing_data["consideration"] < 0:  # Allow 0.00, just not negative
+                errors.append(f"{doc_prefix}: DEED consideration cannot be negative")
             
             # Check for KING CUNNINGHAM LLC TR in grantors
             grantors = indexing_data.get("grantors", [])
@@ -225,8 +234,8 @@ class BeaufortMTGFCLPayloadBuilder(BasePayloadBuilder):
             if not has_king_cunningham:
                 errors.append(f"{doc_prefix}: DEED missing required grantor 'KING CUNNINGHAM LLC TR'")
 
-            # Note: Beaufort does NOT require consideration, execution date, 
-            # legal descriptions, or reference information per spec
+            # Note: Beaufort does NOT require execution date, legal descriptions, 
+            # or reference information per spec
 
         elif doc_type == self.county.MORTGAGE_DOCUMENT_TYPE:
             # Validate SATISFACTION document - simplified for Beaufort
@@ -271,6 +280,7 @@ class BeaufortMTGFCLPayloadBuilder(BasePayloadBuilder):
 
             # Add specific info for each document type
             if doc_summary["type"] == self.county.DEED_DOCUMENT_TYPE:
+                doc_summary["has_consideration"] = "consideration" in indexing_data
                 doc_summary["simplified_requirements"] = True  # Beaufort simplification
                 doc_summary["merged_document"] = True  # Always merged deed+affidavit
             elif doc_summary["type"] == self.county.MORTGAGE_DOCUMENT_TYPE:
