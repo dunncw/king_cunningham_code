@@ -1,4 +1,4 @@
-# ui/workers/validation_worker.py - Updated validation thread worker for Horry MTG-FCL support
+# ui/workers/validation_worker.py - Updated validation thread worker for Horry MTG-FCL and HOA-FCL support
 from PyQt6.QtCore import QThread, pyqtSignal
 from typing import Dict, List, Any
 
@@ -24,7 +24,7 @@ class ValidationWorker(QThread):
             input_type = self.workflow_config.get('input_type', 'unknown')
             
             if input_type == 'pdf_stacks':
-                # Use stack-based validation (FCL and MTG-FCL workflows)
+                # Use stack-based validation (FCL, MTG-FCL, and HOA-FCL workflows)
                 self._validate_stack_workflow()
             elif input_type == 'directory':
                 # Use directory-based validation (Deedbacks workflow)
@@ -38,7 +38,7 @@ class ValidationWorker(QThread):
             self.finished.emit(False, [f"Validation error: {str(e)}"], {})
     
     def _validate_stack_workflow(self):
-        """Validate traditional stack-based workflows (like FCL and MTG-FCL)"""
+        """Validate traditional stack-based workflows (like FCL, MTG-FCL, and HOA-FCL)"""
         from ...core.validator import SimplifileValidator
         from ...utils.logging import Logger
         
@@ -69,6 +69,14 @@ class ValidationWorker(QThread):
                 deed_path=self.file_paths.get("deed_stack", ""),
                 stack2_path=self.file_paths.get("affidavit_stack", ""),
                 mortgage_path=self.file_paths.get("mortgage_stack", "")
+            )
+        elif self.workflow_id == "hoa_fcl":
+            # Horry HOA-FCL: deed_stack, affidavit_stack, condo_lien_stack
+            is_valid, errors, summary = validator.validate_all(
+                excel_path=self.file_paths.get("excel", ""),
+                deed_path=self.file_paths.get("deed_stack", ""),
+                stack2_path=self.file_paths.get("affidavit_stack", ""),
+                mortgage_path=self.file_paths.get("condo_lien_stack", "")
             )
         else:
             # Unknown stack workflow

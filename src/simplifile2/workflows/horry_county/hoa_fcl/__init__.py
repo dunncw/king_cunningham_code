@@ -1,4 +1,4 @@
-# workflows/horry_mtg_fcl.py - Horry County MTG-FCL workflow implementation
+# workflows/horry_county/hoa_fcl/workflow.py - Horry County HOA-FCL workflow implementation
 import re
 from typing import Dict, List, Any
 import pandas as pd
@@ -6,35 +6,16 @@ import pandas as pd
 from ...base.workflow import BaseWorkflow
 
 
-class HorryMTGFCLWorkflow(BaseWorkflow):
-    """Horry County Timeshare Deed (MTG-FCL) workflow"""
+class HorryHOAFCLWorkflow(BaseWorkflow):
+    """Horry County HOA Foreclosure (HOA-FCL) workflow"""
 
-    def __init__(self, county_config, workflow_config=None, logger=None):
+    def __init__(self, county_config, workflow_config: Dict[str, Any], logger=None):
         super().__init__(county_config, logger)
-        # Handle backward compatibility - workflow_config is optional
-        if workflow_config is None:
-            # Use legacy document types from county config
-            self.document_types = {
-                "DEED_DOCUMENT_TYPE": county_config.DEED_DOCUMENT_TYPE,
-                "MORTGAGE_DOCUMENT_TYPE": county_config.MORTGAGE_DOCUMENT_TYPE
-            }
-        else:
-            # Use workflow-specific document types
-            self.document_types = workflow_config.get("document_types", {
-                "DEED_DOCUMENT_TYPE": county_config.DEED_DOCUMENT_TYPE,
-                "MORTGAGE_DOCUMENT_TYPE": county_config.MORTGAGE_DOCUMENT_TYPE
-            })
-
-    def get_deed_document_type(self) -> str:
-        """Get deed document type for this workflow"""
-        return self.document_types.get("DEED_DOCUMENT_TYPE", "Deed - Timeshare")
-
-    def get_mortgage_document_type(self) -> str:
-        """Get mortgage document type for this workflow"""
-        return self.document_types.get("MORTGAGE_DOCUMENT_TYPE", "Mortgage Satisfaction")
+        self.workflow_config = workflow_config
+        self.document_types = workflow_config.get("document_types", {})
 
     def get_required_excel_columns(self) -> List[str]:
-        """Required columns for Horry MTG-FCL workflow"""
+        """Required columns for Horry HOA-FCL workflow"""
         return [
             "KC File No.",
             "Account", 
@@ -43,12 +24,13 @@ class HorryMTGFCLWorkflow(BaseWorkflow):
             "Deed Book",
             "Deed Page",
             "Recorded Date",
-            "Mortgage Book", 
-            "Mortgage Page",
+            "Mortgage Book",  # Reused for condo lien book
+            "Mortgage Page",  # Reused for condo lien page
             "Suite",
             "Consideration",
             "Execution Date",
-            "GRANTOR/GRANTEE",
+            "GRANTOR",  # Separate from grantee
+            "GRANTEE",  # Separate from grantor
             "LEGAL DESCRIPTION"
         ]
 
@@ -65,21 +47,33 @@ class HorryMTGFCLWorkflow(BaseWorkflow):
             "Deed Book": "deed_book",
             "Deed Page": "deed_page",
             "Recorded Date": "recorded_date",
-            "Mortgage Book": "mortgage_book",
-            "Mortgage Page": "mortgage_page",
+            "Mortgage Book": "condo_lien_book",  # Reused column for condo lien
+            "Mortgage Page": "condo_lien_page",  # Reused column for condo lien
             "Suite": "suite_number",
             "Consideration": "consideration_amount",
             "Execution Date": "execution_date",
-            "GRANTOR/GRANTEE": "grantor_grantee_entity",
+            "GRANTOR": "grantor_entity",  # Separate grantor
+            "GRANTEE": "grantee_entity",  # Separate grantee
             "LEGAL DESCRIPTION": "legal_description"
         }
 
     def get_document_types(self) -> List[str]:
-        """Horry MTG-FCL creates both deed and mortgage satisfaction documents"""
-        return [self.county.DEED_DOCUMENT_TYPE, self.county.MORTGAGE_DOCUMENT_TYPE]
+        """HOA-FCL creates both deed and condo lien satisfaction documents"""
+        return [
+            self.document_types.get("DEED_DOCUMENT_TYPE", "Deed - Timeshare"),
+            self.document_types.get("SATISFACTION_DOCUMENT_TYPE", "Condo Lien Satisfaction")
+        ]
+
+    def get_deed_document_type(self) -> str:
+        """Get deed document type for this workflow"""
+        return self.document_types.get("DEED_DOCUMENT_TYPE", "Deed - Timeshare")
+
+    def get_satisfaction_document_type(self) -> str:
+        """Get satisfaction document type for this workflow"""
+        return self.document_types.get("SATISFACTION_DOCUMENT_TYPE", "Condo Lien Satisfaction")
 
     def transform_row_data(self, excel_row: Dict[str, Any]) -> Dict[str, Any]:
-        """Transform Excel row data for Horry MTG-FCL workflow"""
+        """Transform Excel row data for Horry HOA-FCL workflow"""
         # Map Excel columns to internal fields
         mapping = self.get_excel_mapping()
         transformed = {}
@@ -90,13 +84,13 @@ class HorryMTGFCLWorkflow(BaseWorkflow):
                 value = ""
             transformed[internal_field] = str(value).strip().upper()
 
-        # Apply Horry-specific business rules
+        # Apply HOA-FCL-specific business rules
         account_number = transformed["account_number"]
         kc_file_no = transformed["kc_file_no"]
         last_1 = transformed["owner_1_last_name"]
         first_1 = transformed["owner_1_first_name"]
 
-        # Handle organization naming (ORG: prefix logic from old code)
+        # Handle organization naming (ORG: prefix logic)
         if last_1.startswith("ORG:"):
             # Organization case: use first name as the display name
             package_name_prefix = f"{account_number} {first_1} TD {kc_file_no}"
@@ -110,7 +104,7 @@ class HorryMTGFCLWorkflow(BaseWorkflow):
         transformed["package_name"] = package_name_prefix
         transformed["package_id"] = f"{kc_file_no}-{account_number}"
 
-        # Clean consideration amount
+        # Clean consideration amount - STRICT validation for HOA-FCL
         consideration = transformed["consideration_amount"]
         cleaned_consideration = self._clean_consideration(consideration)
         transformed["consideration_amount"] = cleaned_consideration
@@ -141,11 +135,11 @@ class HorryMTGFCLWorkflow(BaseWorkflow):
         # Suite becomes parcel_id for API
         transformed["parcel_id"] = suite
 
-        # Document naming
+        # Document naming - Using "CLS" for Condo Lien Satisfaction
         transformed["deed_document_id"] = f"D-{account_number}-TD"
         transformed["deed_document_name"] = f"{doc_name_prefix} TD"
-        transformed["satisfaction_document_id"] = f"D-{account_number}-SAT" 
-        transformed["satisfaction_document_name"] = f"{doc_name_prefix} SAT"
+        transformed["satisfaction_document_id"] = f"D-{account_number}-CLS"  # CLS for Condo Lien Satisfaction
+        transformed["satisfaction_document_name"] = f"{doc_name_prefix} CLS"
 
         return transformed
 
@@ -186,10 +180,16 @@ class HorryMTGFCLWorkflow(BaseWorkflow):
                 return datetime.now().strftime('%Y-%m-%d')
 
     def validate_excel_data(self, df: pd.DataFrame) -> List[str]:
-        """Additional Horry-specific validation"""
+        """Additional HOA-FCL-specific validation"""
         errors = super().validate_excel_data(df)
 
-        # NOTE: For Horry workflow, consideration can be 0.00, so we skip consideration validation
+        # STRICT consideration validation for HOA-FCL workflow
+        if "Consideration" in df.columns:
+            for idx, value in df["Consideration"].items():
+                if pd.notna(value):
+                    cleaned = self._clean_consideration(str(value))
+                    if cleaned <= 0:
+                        errors.append(f"Invalid consideration at row {idx + 2}: must be greater than 0 for HOA-FCL workflow (found: {value})")
 
         # Check for proper name formatting (ALL CAPS)
         name_columns = ["First Name #1", "Last Name #1", "First Name #2", "Last Name #2"]
@@ -230,16 +230,22 @@ class HorryMTGFCLWorkflow(BaseWorkflow):
                 elif has_second_owner_data and not has_ampersand:
                     errors.append(f"Row {row_num}: Has second owner information but missing '&' indicator")
 
-
-        # Validate GRANTOR/GRANTEE field
-        if "GRANTOR/GRANTEE" in df.columns:
-            for idx, value in df["GRANTOR/GRANTEE"].items():
+        # Validate separate GRANTOR and GRANTEE fields - KEY DIFFERENCE from MTG-FCL
+        if "GRANTOR" in df.columns:
+            for idx, value in df["GRANTOR"].items():
                 if pd.isna(value) or str(value).strip() == "":
-                    errors.append(f"Missing 'GRANTOR/GRANTEE' value at row {idx + 2}")
+                    errors.append(f"Missing 'GRANTOR' value at row {idx + 2}")
                 elif str(value) != str(value).upper():
-                    errors.append(f"'GRANTOR/GRANTEE' at row {idx + 2} should be in ALL CAPS: '{value}'")
+                    errors.append(f"'GRANTOR' at row {idx + 2} should be in ALL CAPS: '{value}'")
 
-        # Validate execution date format - FIXED to handle datetime strings
+        if "GRANTEE" in df.columns:
+            for idx, value in df["GRANTEE"].items():
+                if pd.isna(value) or str(value).strip() == "":
+                    errors.append(f"Missing 'GRANTEE' value at row {idx + 2}")
+                elif str(value) != str(value).upper():
+                    errors.append(f"'GRANTEE' at row {idx + 2} should be in ALL CAPS: '{value}'")
+
+        # Validate execution date format
         if "Execution Date" in df.columns:
             for idx, value in df["Execution Date"].items():
                 if pd.notna(value) and str(value).strip():
@@ -262,8 +268,8 @@ class HorryMTGFCLWorkflow(BaseWorkflow):
         return errors
 
     def is_row_valid(self, excel_row: Dict[str, Any]) -> tuple[bool, str]:
-        """Check if a row has all required data for Horry MTG-FCL processing"""
-        # Get all required fields from the spec
+        """Check if a row has all required data for Horry HOA-FCL processing"""
+        # Get all required fields from the spec - INCLUDING separate GRANTOR/GRANTEE
         required_fields = {
             "KC File No.": excel_row.get("KC File No."),
             "Account": excel_row.get("Account"),
@@ -272,12 +278,13 @@ class HorryMTGFCLWorkflow(BaseWorkflow):
             "Deed Book": excel_row.get("Deed Book"),
             "Deed Page": excel_row.get("Deed Page"),
             "Recorded Date": excel_row.get("Recorded Date"),
-            "Mortgage Book": excel_row.get("Mortgage Book"),
-            "Mortgage Page": excel_row.get("Mortgage Page"),
+            "Mortgage Book": excel_row.get("Mortgage Book"),  # Condo lien book
+            "Mortgage Page": excel_row.get("Mortgage Page"),  # Condo lien page
             "Suite": excel_row.get("Suite"),
             "Consideration": excel_row.get("Consideration"),
             "Execution Date": excel_row.get("Execution Date"),
-            "GRANTOR/GRANTEE": excel_row.get("GRANTOR/GRANTEE"),
+            "GRANTOR": excel_row.get("GRANTOR"),  # Required and separate
+            "GRANTEE": excel_row.get("GRANTEE"),  # Required and separate
             "LEGAL DESCRIPTION": excel_row.get("LEGAL DESCRIPTION")
         }
 
@@ -296,12 +303,10 @@ class HorryMTGFCLWorkflow(BaseWorkflow):
             if pd.isna(last_2) or str(last_2).strip() == "":
                 return False, "Has '&' indicator but missing 'Last Name #2'"
 
-        # NOTE: For Horry workflow, consideration can be 0.00, so we allow it
-        # Just validate that it's a valid number format
+        # STRICT consideration validation for HOA-FCL workflow
         consideration = str(excel_row.get("Consideration", "")).strip()
         cleaned_consideration = self._clean_consideration(consideration)
-        # Allow 0.00 for Horry workflow - just check it's a valid number
-        if cleaned_consideration < 0:
-            return False, f"Invalid consideration: {consideration}"
+        if cleaned_consideration <= 0:
+            return False, f"Invalid consideration: {consideration} (must be greater than 0 for HOA-FCL workflow)"
 
         return True, ""
