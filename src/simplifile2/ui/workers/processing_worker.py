@@ -64,8 +64,16 @@ class ProcessingWorker(QThread):
                 stack2_path=self.file_paths.get("pt61_stack", ""),
                 mortgage_path=self.file_paths.get("mortgage_stack", "")
             )
-        elif self.workflow_id == "mtg_fcl":
+        elif self.workflow_id == "mtg_fcl" and self.county_id == "SCCP49":
             # Horry MTG-FCL: deed_stack, affidavit_stack, mortgage_stack
+            results = processor.process_batch(
+                excel_path=self.file_paths.get("excel", ""),
+                deed_path=self.file_paths.get("deed_stack", ""),
+                stack2_path=self.file_paths.get("affidavit_stack", ""),
+                mortgage_path=self.file_paths.get("mortgage_stack", "")
+            )
+        elif self.workflow_id == "mtg_fcl" and self.county_id == "SCCY4G":
+            # Beaufort MTG-FCL: deed_stack, affidavit_stack, mortgage_stack
             results = processor.process_batch(
                 excel_path=self.file_paths.get("excel", ""),
                 deed_path=self.file_paths.get("deed_stack", ""),

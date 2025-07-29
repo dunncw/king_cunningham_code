@@ -1,4 +1,4 @@
-# core/processor.py - Main processing orchestrator with Horry MTG-FCL and HOA-FCL support
+# core/processor.py - Main processing orchestrator with Beaufort MTG-FCL support
 import pandas as pd
 import requests
 import json
@@ -18,7 +18,7 @@ class SimplifileProcessor:
         
         Args:
             api_token: Simplifile API token
-            county_id: County identifier (e.g., "GAC3TH", "SCCP49")
+            county_id: County identifier (e.g., "GAC3TH", "SCCP49", "SCCY4G")
             workflow_type: Workflow type (e.g., "fcl", "mtg_fcl", "hoa_fcl")
             logger: Logger instance for output
         """
@@ -62,6 +62,9 @@ class SimplifileProcessor:
         elif self.county_id == "SCCP49" and self.workflow_type == "hoa_fcl":
             from ..workflows.horry_county.hoa_fcl.workflow import HorryHOAFCLWorkflow
             return HorryHOAFCLWorkflow(self.county_config, workflow_config, self.logger)
+        elif self.county_id == "SCCY4G" and self.workflow_type == "mtg_fcl":
+            from ..workflows.beaufort_county.mtg_fcl.workflow import BeaufortMTGFCLWorkflow
+            return BeaufortMTGFCLWorkflow(self.county_config, workflow_config, self.logger)
         else:
             raise ValueError(f"Workflow '{self.workflow_type}' not supported for county '{self.county_id}'")
     
@@ -76,6 +79,9 @@ class SimplifileProcessor:
         elif self.county_id == "SCCP49" and self.workflow_type == "hoa_fcl":
             from ..workflows.horry_county.hoa_fcl.pdf_processor import HorryHOAFCLPDFProcessor
             return HorryHOAFCLPDFProcessor(self.logger)
+        elif self.county_id == "SCCY4G" and self.workflow_type == "mtg_fcl":
+            from ..workflows.beaufort_county.mtg_fcl.pdf_processor import BeaufortMTGFCLPDFProcessor
+            return BeaufortMTGFCLPDFProcessor(self.logger)
         else:
             raise ValueError(f"PDF processor not available for workflow '{self.workflow_type}' in county '{self.county_id}'")
     
@@ -94,6 +100,9 @@ class SimplifileProcessor:
         elif self.county_id == "SCCP49" and self.workflow_type == "hoa_fcl":
             from ..workflows.horry_county.hoa_fcl.payload_builder import HorryHOAFCLPayloadBuilder
             return HorryHOAFCLPayloadBuilder(self.county_config, workflow_config, self.logger)
+        elif self.county_id == "SCCY4G" and self.workflow_type == "mtg_fcl":
+            from ..workflows.beaufort_county.mtg_fcl.payload_builder import BeaufortMTGFCLPayloadBuilder
+            return BeaufortMTGFCLPayloadBuilder(self.county_config, workflow_config, self.logger)
         else:
             raise ValueError(f"Payload builder not available for workflow '{self.workflow_type}' in county '{self.county_id}'")
     
@@ -104,7 +113,7 @@ class SimplifileProcessor:
         Args:
             excel_path: Path to Excel file with package data
             deed_path: Path to deed stack PDF
-            stack2_path: Path to second stack PDF (PT-61 for Fulton, Affidavit for Horry)
+            stack2_path: Path to second stack PDF (PT-61 for Fulton, Affidavit for Horry/Beaufort)
             mortgage_path: Path to mortgage satisfaction stack PDF (or condo lien for HOA-FCL)
         
         Returns:
