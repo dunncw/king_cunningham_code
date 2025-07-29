@@ -1,4 +1,4 @@
-# core/county_config.py - Updated with workflow-specific document types and HOA-FCL support
+# core/county_config.py - Updated with Beaufort County support
 from typing import Dict, List, Any
 
 
@@ -70,6 +70,25 @@ class HorryCountyConfig(CountyConfig):
     SUPPORTED_WORKFLOWS = ["mtg_fcl", "hoa_fcl"]
     
     # No fixed values for Horry - all come from Excel data
+    FIXED_PARCEL_ID = None
+    FIXED_TAX_EXEMPT = None
+    FIXED_DEED_GRANTEE = None
+
+
+class BeaufortCountyConfig(CountyConfig):
+    """Beaufort County, SC configuration"""
+    
+    COUNTY_ID = "SCCY4G"
+    COUNTY_NAME = "Beaufort County, SC"
+    
+    # Document types specific to Beaufort County
+    DEED_DOCUMENT_TYPE = "DEED - HILTON HEAD TIMESHARE"
+    MORTGAGE_DOCUMENT_TYPE = "MORT - SATISFACTION"
+    
+    # Supported workflows
+    SUPPORTED_WORKFLOWS = ["mtg_fcl"]
+    
+    # No fixed values for Beaufort - all come from Excel data
     FIXED_PARCEL_ID = None
     FIXED_TAX_EXEMPT = None
     FIXED_DEED_GRANTEE = None
@@ -226,6 +245,48 @@ WORKFLOW_CONFIGS = {
                 }
             ]
         }
+    },
+    "SCCY4G": {  # Beaufort County
+        "mtg_fcl": {
+            "name": "Hilton Head Timeshare (MTG-FCL)",
+            "description": "Beaufort County Hilton Head timeshare deed and mortgage satisfaction documents (simplified requirements)",
+            "input_type": "pdf_stacks",
+            "supports_processing": True,
+            "document_types": {
+                "DEED_DOCUMENT_TYPE": "DEED - HILTON HEAD TIMESHARE",
+                "MORTGAGE_DOCUMENT_TYPE": "MORT - SATISFACTION"
+            },
+            "required_files": [
+                {
+                    "key": "excel",
+                    "label": "Excel File",
+                    "placeholder": "Select Excel file with package data",
+                    "filter": "Excel Files (*.xlsx *.xls)",
+                    "type": "file"
+                },
+                {
+                    "key": "deed_stack",
+                    "label": "Deed Stack PDF",
+                    "placeholder": "Select deed stack PDF (2 pages per document)",
+                    "filter": "PDF Files (*.pdf)",
+                    "type": "file"
+                },
+                {
+                    "key": "affidavit_stack",
+                    "label": "Affidavit Stack PDF",
+                    "placeholder": "Select affidavit stack PDF (2 pages per document)",
+                    "filter": "PDF Files (*.pdf)",
+                    "type": "file"
+                },
+                {
+                    "key": "mortgage_stack",
+                    "label": "Mortgage Satisfaction Stack PDF",
+                    "placeholder": "Select mortgage satisfaction stack PDF (1 page per document)",
+                    "filter": "PDF Files (*.pdf)",
+                    "type": "file"
+                }
+            ]
+        }
     }
 }
 
@@ -233,7 +294,8 @@ WORKFLOW_CONFIGS = {
 # Registry of available counties
 COUNTY_CONFIGS = {
     "GAC3TH": FultonCountyConfig,
-    "SCCP49": HorryCountyConfig
+    "SCCP49": HorryCountyConfig,
+    "SCCY4G": BeaufortCountyConfig
 }
 
 

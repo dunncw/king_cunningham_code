@@ -1,4 +1,4 @@
-# core/validator.py - Pre-processing validation with Horry MTG-FCL and HOA-FCL support
+# core/validator.py - Pre-processing validation with Beaufort MTG-FCL support
 import os
 import pandas as pd
 from typing import Dict, List, Any, Tuple
@@ -36,6 +36,9 @@ class SimplifileValidator:
         elif self.county_id == "SCCP49" and self.workflow_type == "hoa_fcl":
             from ..workflows.horry_county.hoa_fcl.workflow import HorryHOAFCLWorkflow
             return HorryHOAFCLWorkflow(self.county_config, workflow_config, self.logger)
+        elif self.county_id == "SCCY4G" and self.workflow_type == "mtg_fcl":
+            from ..workflows.beaufort_county.mtg_fcl.workflow import BeaufortMTGFCLWorkflow
+            return BeaufortMTGFCLWorkflow(self.county_config, workflow_config, self.logger)
         else:
             raise ValueError(f"Workflow '{self.workflow_type}' not supported for county '{self.county_id}'")
     
@@ -50,6 +53,9 @@ class SimplifileValidator:
         elif self.county_id == "SCCP49" and self.workflow_type == "hoa_fcl":
             from ..workflows.horry_county.hoa_fcl.pdf_processor import HorryHOAFCLPDFProcessor
             return HorryHOAFCLPDFProcessor(self.logger)
+        elif self.county_id == "SCCY4G" and self.workflow_type == "mtg_fcl":
+            from ..workflows.beaufort_county.mtg_fcl.pdf_processor import BeaufortMTGFCLPDFProcessor
+            return BeaufortMTGFCLPDFProcessor(self.logger)
         else:
             raise ValueError(f"PDF processor not available for workflow '{self.workflow_type}' in county '{self.county_id}'")
     
@@ -126,7 +132,7 @@ class SimplifileValidator:
         if self.workflow_type == "fcl":
             stack2_label = "PT-61 Stack PDF"
             stack3_label = "Mortgage Satisfaction Stack PDF"
-        elif self.workflow_type == "mtg_fcl":
+        elif self.workflow_type == "mtg_fcl" and self.county_id in ["SCCP49", "SCCY4G"]:
             stack2_label = "Affidavit Stack PDF"
             stack3_label = "Mortgage Satisfaction Stack PDF"
         elif self.workflow_type == "hoa_fcl":
@@ -190,7 +196,7 @@ class SimplifileValidator:
             if self.workflow_type == "fcl":
                 pdf_validation_summary["pt61_pages"] = summary["pt61_stack"]["total_pages"]
                 pdf_validation_summary["mortgage_pages"] = summary["mortgage_stack"]["total_pages"]
-            elif self.workflow_type == "mtg_fcl":
+            elif self.workflow_type == "mtg_fcl" and self.county_id in ["SCCP49", "SCCY4G"]:
                 pdf_validation_summary["affidavit_pages"] = summary["affidavit_stack"]["total_pages"]
                 pdf_validation_summary["mortgage_pages"] = summary["mortgage_stack"]["total_pages"]
                 pdf_validation_summary["merged_documents"] = summary.get("merged_documents", False)
@@ -340,6 +346,9 @@ class SimplifileValidator:
         elif self.county_id == "SCCP49" and self.workflow_type == "hoa_fcl":
             from ..workflows.horry_county.hoa_fcl.payload_builder import HorryHOAFCLPayloadBuilder
             return HorryHOAFCLPayloadBuilder(self.county_config, workflow_config, self.logger)
+        elif self.county_id == "SCCY4G" and self.workflow_type == "mtg_fcl":
+            from ..workflows.beaufort_county.mtg_fcl.payload_builder import BeaufortMTGFCLPayloadBuilder
+            return BeaufortMTGFCLPayloadBuilder(self.county_config, workflow_config, self.logger)
         else:
             raise ValueError(f"Payload builder not available for workflow '{self.workflow_type}' in county '{self.county_id}'")
     
