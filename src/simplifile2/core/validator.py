@@ -1,4 +1,4 @@
-# core/validator.py - Pre-processing validation with Horry MTG-FCL support
+# core/validator.py - Pre-processing validation with Horry MTG-FCL and HOA-FCL support
 import os
 import pandas as pd
 from typing import Dict, List, Any, Tuple
@@ -22,13 +22,20 @@ class SimplifileValidator:
     
     def _get_workflow(self):
         """Get workflow instance for county/workflow type"""
+        # Get workflow configuration for document types
+        from .county_config import get_workflow_config
+        workflow_config = get_workflow_config(self.county_id, self.workflow_type)
+        
         # Import based on county and workflow
         if self.county_id == "GAC3TH" and self.workflow_type == "fcl":
             from ..workflows.fulton_county.fcl.workflow import FultonFCLWorkflow
             return FultonFCLWorkflow(self.county_config, self.logger)
         elif self.county_id == "SCCP49" and self.workflow_type == "mtg_fcl":
             from ..workflows.horry_county.mtg_fcl.workflow import HorryMTGFCLWorkflow
-            return HorryMTGFCLWorkflow(self.county_config, self.logger)
+            return HorryMTGFCLWorkflow(self.county_config, workflow_config, self.logger)
+        elif self.county_id == "SCCP49" and self.workflow_type == "hoa_fcl":
+            from ..workflows.horry_county.hoa_fcl.workflow import HorryHOAFCLWorkflow
+            return HorryHOAFCLWorkflow(self.county_config, workflow_config, self.logger)
         else:
             raise ValueError(f"Workflow '{self.workflow_type}' not supported for county '{self.county_id}'")
     
@@ -40,6 +47,9 @@ class SimplifileValidator:
         elif self.county_id == "SCCP49" and self.workflow_type == "mtg_fcl":
             from ..workflows.horry_county.mtg_fcl.pdf_processor import HorryMTGFCLPDFProcessor
             return HorryMTGFCLPDFProcessor(self.logger)
+        elif self.county_id == "SCCP49" and self.workflow_type == "hoa_fcl":
+            from ..workflows.horry_county.hoa_fcl.pdf_processor import HorryHOAFCLPDFProcessor
+            return HorryHOAFCLPDFProcessor(self.logger)
         else:
             raise ValueError(f"PDF processor not available for workflow '{self.workflow_type}' in county '{self.county_id}'")
     
@@ -115,16 +125,22 @@ class SimplifileValidator:
         # Build file checks based on workflow type
         if self.workflow_type == "fcl":
             stack2_label = "PT-61 Stack PDF"
+            stack3_label = "Mortgage Satisfaction Stack PDF"
         elif self.workflow_type == "mtg_fcl":
             stack2_label = "Affidavit Stack PDF"
+            stack3_label = "Mortgage Satisfaction Stack PDF"
+        elif self.workflow_type == "hoa_fcl":
+            stack2_label = "Affidavit Stack PDF"
+            stack3_label = "Condo Lien Satisfaction Stack PDF"
         else:
             stack2_label = "Second Stack PDF"
+            stack3_label = "Third Stack PDF"
         
         file_checks = [
             (excel_path, "Excel file"),
             (deed_path, "Deed Stack PDF"),
             (stack2_path, stack2_label),
-            (mortgage_path, "Mortgage Satisfaction Stack PDF")
+            (mortgage_path, stack3_label)
         ]
         
         for file_path, file_type in file_checks:
@@ -167,15 +183,20 @@ class SimplifileValidator:
             pdf_validation_summary = {
                 "pdf_documents": summary["max_packages"],
                 "deed_pages": summary["deed_stack"]["total_pages"],
-                "mortgage_pages": summary["mortgage_stack"]["total_pages"],
                 "stacks_aligned": summary.get("all_stacks_aligned", False)
             }
             
             # Add workflow-specific stack info
             if self.workflow_type == "fcl":
                 pdf_validation_summary["pt61_pages"] = summary["pt61_stack"]["total_pages"]
+                pdf_validation_summary["mortgage_pages"] = summary["mortgage_stack"]["total_pages"]
             elif self.workflow_type == "mtg_fcl":
                 pdf_validation_summary["affidavit_pages"] = summary["affidavit_stack"]["total_pages"]
+                pdf_validation_summary["mortgage_pages"] = summary["mortgage_stack"]["total_pages"]
+                pdf_validation_summary["merged_documents"] = summary.get("merged_documents", False)
+            elif self.workflow_type == "hoa_fcl":
+                pdf_validation_summary["affidavit_pages"] = summary["affidavit_stack"]["total_pages"]
+                pdf_validation_summary["condo_lien_pages"] = summary["condo_lien_stack"]["total_pages"]
                 pdf_validation_summary["merged_documents"] = summary.get("merged_documents", False)
             
             return [], pdf_validation_summary
@@ -306,12 +327,19 @@ class SimplifileValidator:
     
     def _get_payload_builder(self):
         """Get payload builder for workflow"""
+        # Get workflow configuration for document types
+        from .county_config import get_workflow_config
+        workflow_config = get_workflow_config(self.county_id, self.workflow_type)
+        
         if self.county_id == "GAC3TH" and self.workflow_type == "fcl":
             from ..workflows.fulton_county.fcl.payload_builder import FultonFCLPayloadBuilder
             return FultonFCLPayloadBuilder(self.county_config, self.logger)
         elif self.county_id == "SCCP49" and self.workflow_type == "mtg_fcl":
             from ..workflows.horry_county.mtg_fcl.payload_builder import HorryMTGFCLPayloadBuilder
-            return HorryMTGFCLPayloadBuilder(self.county_config, self.logger)
+            return HorryMTGFCLPayloadBuilder(self.county_config, workflow_config, self.logger)
+        elif self.county_id == "SCCP49" and self.workflow_type == "hoa_fcl":
+            from ..workflows.horry_county.hoa_fcl.payload_builder import HorryHOAFCLPayloadBuilder
+            return HorryHOAFCLPayloadBuilder(self.county_config, workflow_config, self.logger)
         else:
             raise ValueError(f"Payload builder not available for workflow '{self.workflow_type}' in county '{self.county_id}'")
     

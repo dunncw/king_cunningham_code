@@ -1,10 +1,10 @@
-# ui/workers/processing_worker.py - Updated processing thread worker for Deedbacks support
+# ui/workers/processing_worker.py - Updated processing thread worker for Horry MTG-FCL and HOA-FCL support
 from PyQt6.QtCore import QThread, pyqtSignal
 from typing import Dict
 
 
 class ProcessingWorker(QThread):
-    """Worker thread for batch processing with dynamic workflow support including Deedbacks"""
+    """Worker thread for batch processing with dynamic workflow support including MTG-FCL and HOA-FCL"""
     
     # Signals
     log_message = pyqtSignal(str)  # Log message
@@ -26,7 +26,7 @@ class ProcessingWorker(QThread):
             input_type = self.workflow_config.get('input_type', 'unknown')
             
             if input_type == 'pdf_stacks':
-                # Use existing stack-based processing (FCL workflow)
+                # Use existing stack-based processing (FCL, MTG-FCL, and HOA-FCL workflows)
                 self._process_stack_workflow()
             elif input_type == 'directory':
                 # Use new directory-based processing (Deedbacks workflow)
@@ -39,50 +39,58 @@ class ProcessingWorker(QThread):
             self.error.emit(f"Processing error: {str(e)}")
     
     def _process_stack_workflow(self):
-            """Process traditional stack-based workflows (like FCL and MTG-FCL)"""
-            from ...core.processor import SimplifileProcessor
-            from ...utils.logging import Logger
-            
-            # Create logger that emits to UI
-            logger = Logger(ui_callback=self.log_message.emit)
-            
-            # Create processor
-            processor = SimplifileProcessor(
-                api_token=self.api_token,
-                county_id=self.county_id,
-                workflow_type=self.workflow_id,
-                logger=logger
+        """Process traditional stack-based workflows (like FCL, MTG-FCL, and HOA-FCL)"""
+        from ...core.processor import SimplifileProcessor
+        from ...utils.logging import Logger
+        
+        # Create logger that emits to UI
+        logger = Logger(ui_callback=self.log_message.emit)
+        
+        # Create processor
+        processor = SimplifileProcessor(
+            api_token=self.api_token,
+            county_id=self.county_id,
+            workflow_type=self.workflow_id,
+            logger=logger
+        )
+        
+        # Process the batch with expected file paths for stack workflows
+        # Map file paths based on workflow type
+        if self.workflow_id == "fcl":
+            # Fulton FCL: deed_stack, pt61_stack, mortgage_stack
+            results = processor.process_batch(
+                excel_path=self.file_paths.get("excel", ""),
+                deed_path=self.file_paths.get("deed_stack", ""),
+                stack2_path=self.file_paths.get("pt61_stack", ""),
+                mortgage_path=self.file_paths.get("mortgage_stack", "")
             )
-            
-            # Process the batch with expected file paths for stack workflows
-            # Map file paths based on workflow type
-            if self.workflow_id == "fcl":
-                # Fulton FCL: deed_stack, pt61_stack, mortgage_stack
-                results = processor.process_batch(
-                    excel_path=self.file_paths.get("excel", ""),
-                    deed_path=self.file_paths.get("deed_stack", ""),
-                    stack2_path=self.file_paths.get("pt61_stack", ""),
-                    mortgage_path=self.file_paths.get("mortgage_stack", "")
-                )
-            elif self.workflow_id == "mtg_fcl":
-                # Horry MTG-FCL: deed_stack, affidavit_stack, mortgage_stack
-                results = processor.process_batch(
-                    excel_path=self.file_paths.get("excel", ""),
-                    deed_path=self.file_paths.get("deed_stack", ""),
-                    stack2_path=self.file_paths.get("affidavit_stack", ""),
-                    mortgage_path=self.file_paths.get("mortgage_stack", "")
-                )
-            else:
-                # Unknown stack workflow - use generic parameter names
-                results = processor.process_batch(
-                    excel_path=self.file_paths.get("excel", ""),
-                    deed_path=self.file_paths.get("deed_stack", ""),
-                    stack2_path=self.file_paths.get("stack2", ""),
-                    mortgage_path=self.file_paths.get("mortgage_stack", "")
-                )
-            
-            # Emit results
-            self.finished.emit(results)
+        elif self.workflow_id == "mtg_fcl":
+            # Horry MTG-FCL: deed_stack, affidavit_stack, mortgage_stack
+            results = processor.process_batch(
+                excel_path=self.file_paths.get("excel", ""),
+                deed_path=self.file_paths.get("deed_stack", ""),
+                stack2_path=self.file_paths.get("affidavit_stack", ""),
+                mortgage_path=self.file_paths.get("mortgage_stack", "")
+            )
+        elif self.workflow_id == "hoa_fcl":
+            # Horry HOA-FCL: deed_stack, affidavit_stack, condo_lien_stack
+            results = processor.process_batch(
+                excel_path=self.file_paths.get("excel", ""),
+                deed_path=self.file_paths.get("deed_stack", ""),
+                stack2_path=self.file_paths.get("affidavit_stack", ""),
+                mortgage_path=self.file_paths.get("condo_lien_stack", "")
+            )
+        else:
+            # Unknown stack workflow - use generic parameter names
+            results = processor.process_batch(
+                excel_path=self.file_paths.get("excel", ""),
+                deed_path=self.file_paths.get("deed_stack", ""),
+                stack2_path=self.file_paths.get("stack2", ""),
+                mortgage_path=self.file_paths.get("mortgage_stack", "")
+            )
+        
+        # Emit results
+        self.finished.emit(results)
     
     def _process_directory_workflow(self):
         """Process directory-based workflows (like Deedbacks)"""

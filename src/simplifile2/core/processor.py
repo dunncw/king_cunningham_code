@@ -1,4 +1,4 @@
-# core/processor.py - Main processing orchestrator with Horry MTG-FCL support
+# core/processor.py - Main processing orchestrator with Horry MTG-FCL and HOA-FCL support
 import pandas as pd
 import requests
 import json
@@ -19,7 +19,7 @@ class SimplifileProcessor:
         Args:
             api_token: Simplifile API token
             county_id: County identifier (e.g., "GAC3TH", "SCCP49")
-            workflow_type: Workflow type (e.g., "fcl", "mtg_fcl")
+            workflow_type: Workflow type (e.g., "fcl", "mtg_fcl", "hoa_fcl")
             logger: Logger instance for output
         """
         self.api_token = api_token
@@ -49,12 +49,19 @@ class SimplifileProcessor:
     
     def _get_workflow(self):
         """Get workflow instance for county/workflow type"""
+        # Get workflow configuration for document types
+        from .county_config import get_workflow_config
+        workflow_config = get_workflow_config(self.county_id, self.workflow_type)
+        
         if self.county_id == "GAC3TH" and self.workflow_type == "fcl":
             from ..workflows.fulton_county.fcl.workflow import FultonFCLWorkflow
             return FultonFCLWorkflow(self.county_config, self.logger)
         elif self.county_id == "SCCP49" and self.workflow_type == "mtg_fcl":
             from ..workflows.horry_county.mtg_fcl.workflow import HorryMTGFCLWorkflow
-            return HorryMTGFCLWorkflow(self.county_config, self.logger)
+            return HorryMTGFCLWorkflow(self.county_config, workflow_config, self.logger)
+        elif self.county_id == "SCCP49" and self.workflow_type == "hoa_fcl":
+            from ..workflows.horry_county.hoa_fcl.workflow import HorryHOAFCLWorkflow
+            return HorryHOAFCLWorkflow(self.county_config, workflow_config, self.logger)
         else:
             raise ValueError(f"Workflow '{self.workflow_type}' not supported for county '{self.county_id}'")
     
@@ -66,17 +73,27 @@ class SimplifileProcessor:
         elif self.county_id == "SCCP49" and self.workflow_type == "mtg_fcl":
             from ..workflows.horry_county.mtg_fcl.pdf_processor import HorryMTGFCLPDFProcessor
             return HorryMTGFCLPDFProcessor(self.logger)
+        elif self.county_id == "SCCP49" and self.workflow_type == "hoa_fcl":
+            from ..workflows.horry_county.hoa_fcl.pdf_processor import HorryHOAFCLPDFProcessor
+            return HorryHOAFCLPDFProcessor(self.logger)
         else:
             raise ValueError(f"PDF processor not available for workflow '{self.workflow_type}' in county '{self.county_id}'")
     
     def _get_payload_builder(self):
         """Get payload builder for workflow"""
+        # Get workflow configuration for document types
+        from .county_config import get_workflow_config
+        workflow_config = get_workflow_config(self.county_id, self.workflow_type)
+        
         if self.county_id == "GAC3TH" and self.workflow_type == "fcl":
             from ..workflows.fulton_county.fcl.payload_builder import FultonFCLPayloadBuilder
             return FultonFCLPayloadBuilder(self.county_config, self.logger)
         elif self.county_id == "SCCP49" and self.workflow_type == "mtg_fcl":
             from ..workflows.horry_county.mtg_fcl.payload_builder import HorryMTGFCLPayloadBuilder
-            return HorryMTGFCLPayloadBuilder(self.county_config, self.logger)
+            return HorryMTGFCLPayloadBuilder(self.county_config, workflow_config, self.logger)
+        elif self.county_id == "SCCP49" and self.workflow_type == "hoa_fcl":
+            from ..workflows.horry_county.hoa_fcl.payload_builder import HorryHOAFCLPayloadBuilder
+            return HorryHOAFCLPayloadBuilder(self.county_config, workflow_config, self.logger)
         else:
             raise ValueError(f"Payload builder not available for workflow '{self.workflow_type}' in county '{self.county_id}'")
     
@@ -88,7 +105,7 @@ class SimplifileProcessor:
             excel_path: Path to Excel file with package data
             deed_path: Path to deed stack PDF
             stack2_path: Path to second stack PDF (PT-61 for Fulton, Affidavit for Horry)
-            mortgage_path: Path to mortgage satisfaction stack PDF
+            mortgage_path: Path to mortgage satisfaction stack PDF (or condo lien for HOA-FCL)
         
         Returns:
             Dictionary with processing results and statistics
@@ -168,10 +185,15 @@ class SimplifileProcessor:
                 # Log second stack based on workflow type
                 if self.workflow_type == "fcl":
                     self.logger.info(f"PT-61 Stack: {summary['pt61_stack']['complete_documents']} documents ({summary['pt61_stack']['total_pages']} pages)")
-                elif self.workflow_type == "mtg_fcl":
+                elif self.workflow_type in ["mtg_fcl", "hoa_fcl"]:
                     self.logger.info(f"Affidavit Stack: {summary['affidavit_stack']['complete_documents']} documents ({summary['affidavit_stack']['total_pages']} pages)")
                 
-                self.logger.info(f"Mortgage Stack: {summary['mortgage_stack']['complete_documents']} documents ({summary['mortgage_stack']['total_pages']} pages)")
+                # Log third stack based on workflow type
+                if self.workflow_type in ["fcl", "mtg_fcl"]:
+                    self.logger.info(f"Mortgage Stack: {summary['mortgage_stack']['complete_documents']} documents ({summary['mortgage_stack']['total_pages']} pages)")
+                elif self.workflow_type == "hoa_fcl":
+                    self.logger.info(f"Condo Lien Satisfaction Stack: {summary['condo_lien_stack']['complete_documents']} documents ({summary['condo_lien_stack']['total_pages']} pages)")
+                
                 self.logger.info(f"Maximum packages: {summary['max_packages']}")
             
             return errors

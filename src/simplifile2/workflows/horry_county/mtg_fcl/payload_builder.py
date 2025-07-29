@@ -6,6 +6,22 @@ from ...base.workflow import BasePayloadBuilder
 class HorryMTGFCLPayloadBuilder(BasePayloadBuilder):
     """Payload builder for Horry MTG-FCL workflow"""
 
+    def __init__(self, county_config, workflow_config=None, logger=None):
+        super().__init__(county_config, logger)
+        # Handle backward compatibility - workflow_config is optional
+        if workflow_config is None:
+            # Use legacy document types from county config
+            self.document_types = {
+                "DEED_DOCUMENT_TYPE": county_config.DEED_DOCUMENT_TYPE,
+                "MORTGAGE_DOCUMENT_TYPE": county_config.MORTGAGE_DOCUMENT_TYPE
+            }
+        else:
+            # Use workflow-specific document types
+            self.document_types = workflow_config.get("document_types", {
+                "DEED_DOCUMENT_TYPE": county_config.DEED_DOCUMENT_TYPE,
+                "MORTGAGE_DOCUMENT_TYPE": county_config.MORTGAGE_DOCUMENT_TYPE
+            })
+
     def build_package(self, workflow_data: Dict[str, Any], pdf_documents: Dict[str, str]) -> Dict[str, Any]:
         """Build complete Horry MTG-FCL package for API submission"""
         # Build the documents array

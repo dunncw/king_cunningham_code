@@ -1,4 +1,4 @@
-# core/county_config.py - Updated with Horry County configuration
+# core/county_config.py - Updated with workflow-specific document types and HOA-FCL support
 from typing import Dict, List, Any
 
 
@@ -9,7 +9,7 @@ class CountyConfig:
     COUNTY_ID = ""
     COUNTY_NAME = ""
     
-    # Document types
+    # Legacy document types (for backward compatibility)
     DEED_DOCUMENT_TYPE = ""
     MORTGAGE_DOCUMENT_TYPE = ""
     
@@ -62,12 +62,12 @@ class HorryCountyConfig(CountyConfig):
     COUNTY_ID = "SCCP49"
     COUNTY_NAME = "Horry County, SC"
     
-    # Document types specific to Horry County
+    # Legacy document types (for backward compatibility with old code)
     DEED_DOCUMENT_TYPE = "Deed - Timeshare"
     MORTGAGE_DOCUMENT_TYPE = "Mortgage Satisfaction"
     
     # Supported workflows
-    SUPPORTED_WORKFLOWS = ["mtg_fcl"]
+    SUPPORTED_WORKFLOWS = ["mtg_fcl", "hoa_fcl"]
     
     # No fixed values for Horry - all come from Excel data
     FIXED_PARCEL_ID = None
@@ -75,7 +75,7 @@ class HorryCountyConfig(CountyConfig):
     FIXED_DEED_GRANTEE = None
 
 
-# Workflow configurations per county
+# Workflow configurations per county with document types
 WORKFLOW_CONFIGS = {
     "GAC3TH": {  # Fulton County
         "fcl": {
@@ -83,6 +83,10 @@ WORKFLOW_CONFIGS = {
             "description": "Foreclosure documents with PDF stacks",
             "input_type": "pdf_stacks",
             "supports_processing": True,
+            "document_types": {
+                "DEED_DOCUMENT_TYPE": "DEED",
+                "MORTGAGE_DOCUMENT_TYPE": "SATISFACTION"
+            },
             "required_files": [
                 {
                     "key": "excel",
@@ -119,6 +123,10 @@ WORKFLOW_CONFIGS = {
             "description": "Deedback documents with directory input",
             "input_type": "directory",
             "supports_processing": True,
+            "document_types": {
+                "DEED_DOCUMENT_TYPE": "DEED",
+                "MORTGAGE_DOCUMENT_TYPE": "SATISFACTION"
+            },
             "required_files": [
                 {
                     "key": "excel",
@@ -143,6 +151,10 @@ WORKFLOW_CONFIGS = {
             "description": "Horry County timeshare deed and mortgage satisfaction documents",
             "input_type": "pdf_stacks",
             "supports_processing": True,
+            "document_types": {
+                "DEED_DOCUMENT_TYPE": "Deed - Timeshare",
+                "MORTGAGE_DOCUMENT_TYPE": "Mortgage Satisfaction"
+            },
             "required_files": [
                 {
                     "key": "excel",
@@ -169,6 +181,46 @@ WORKFLOW_CONFIGS = {
                     "key": "mortgage_stack",
                     "label": "Mortgage Satisfaction Stack PDF",
                     "placeholder": "Select mortgage satisfaction stack PDF (1 page per document)",
+                    "filter": "PDF Files (*.pdf)",
+                    "type": "file"
+                }
+            ]
+        },
+        "hoa_fcl": {
+            "name": "HOA Foreclosure (HOA-FCL)",
+            "description": "HOA foreclosure with condo lien satisfaction documents",
+            "input_type": "pdf_stacks",
+            "supports_processing": True,
+            "document_types": {
+                "DEED_DOCUMENT_TYPE": "Deed - Timeshare",
+                "SATISFACTION_DOCUMENT_TYPE": "Condo Lien Satisfaction"
+            },
+            "required_files": [
+                {
+                    "key": "excel",
+                    "label": "Excel File",
+                    "placeholder": "Select Excel file with package data",
+                    "filter": "Excel Files (*.xlsx *.xls)",
+                    "type": "file"
+                },
+                {
+                    "key": "deed_stack",
+                    "label": "Deed Stack PDF",
+                    "placeholder": "Select deed stack PDF (2 pages per document)",
+                    "filter": "PDF Files (*.pdf)",
+                    "type": "file"
+                },
+                {
+                    "key": "affidavit_stack",
+                    "label": "Affidavit Stack PDF",
+                    "placeholder": "Select affidavit stack PDF (2 pages per document)",
+                    "filter": "PDF Files (*.pdf)",
+                    "type": "file"
+                },
+                {
+                    "key": "condo_lien_stack",
+                    "label": "Condo Lien Satisfaction Stack PDF",
+                    "placeholder": "Select condo lien satisfaction stack PDF (1 page per document)",
                     "filter": "PDF Files (*.pdf)",
                     "type": "file"
                 }
@@ -213,6 +265,12 @@ def get_workflow_config(county_id: str, workflow_id: str) -> Dict[str, Any]:
     if workflow_id not in workflows:
         raise ValueError(f"Workflow '{workflow_id}' not supported for county '{county_id}'")
     return workflows[workflow_id]
+
+
+def get_workflow_document_types(county_id: str, workflow_id: str) -> Dict[str, str]:
+    """Get document types for a specific workflow"""
+    workflow_config = get_workflow_config(county_id, workflow_id)
+    return workflow_config.get("document_types", {})
 
 
 def is_county_supported(county_id: str) -> bool:

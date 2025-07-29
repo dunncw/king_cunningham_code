@@ -9,6 +9,30 @@ from ...base.workflow import BaseWorkflow
 class HorryMTGFCLWorkflow(BaseWorkflow):
     """Horry County Timeshare Deed (MTG-FCL) workflow"""
 
+    def __init__(self, county_config, workflow_config=None, logger=None):
+        super().__init__(county_config, logger)
+        # Handle backward compatibility - workflow_config is optional
+        if workflow_config is None:
+            # Use legacy document types from county config
+            self.document_types = {
+                "DEED_DOCUMENT_TYPE": county_config.DEED_DOCUMENT_TYPE,
+                "MORTGAGE_DOCUMENT_TYPE": county_config.MORTGAGE_DOCUMENT_TYPE
+            }
+        else:
+            # Use workflow-specific document types
+            self.document_types = workflow_config.get("document_types", {
+                "DEED_DOCUMENT_TYPE": county_config.DEED_DOCUMENT_TYPE,
+                "MORTGAGE_DOCUMENT_TYPE": county_config.MORTGAGE_DOCUMENT_TYPE
+            })
+
+    def get_deed_document_type(self) -> str:
+        """Get deed document type for this workflow"""
+        return self.document_types.get("DEED_DOCUMENT_TYPE", "Deed - Timeshare")
+
+    def get_mortgage_document_type(self) -> str:
+        """Get mortgage document type for this workflow"""
+        return self.document_types.get("MORTGAGE_DOCUMENT_TYPE", "Mortgage Satisfaction")
+
     def get_required_excel_columns(self) -> List[str]:
         """Required columns for Horry MTG-FCL workflow"""
         return [
