@@ -138,23 +138,10 @@ class HorryHOAFCLPayloadBuilder(BasePayloadBuilder):
         return deed_document
 
     def _build_condo_lien_satisfaction_document(self, workflow_data: Dict[str, Any], pdf_documents: Dict[str, str]) -> Dict[str, Any]:
-        """Build CONDO LIEN SATISFACTION document according to Horry HOA-FCL requirements"""
-        # Build grantors - INCLUDES KING CUNNINGHAM LLC TR for condo lien satisfaction (per spec)
+        """Build CONDO LIEN SATISFACTION document according to client requirements (individual owners only)"""
+        # Build grantors - Individual owners ONLY (same as MTG-FCL mortgage satisfaction)
         grantors = []
 
-        # 1. KING CUNNINGHAM LLC TR (Organization) - INCLUDED for condo lien satisfaction
-        grantors.append({
-            "nameUnparsed": "KING CUNNINGHAM LLC TR",
-            "type": "Organization"
-        })
-
-        # 2. Entity from GRANTOR column (Organization)
-        grantors.append({
-            "nameUnparsed": workflow_data["grantor_entity"],
-            "type": "Organization"
-        })
-
-        # 3. Individual owners from Excel
         # First owner
         grantor_1 = {
             "firstName": workflow_data["owner_1_first_name"],
@@ -301,17 +288,13 @@ class HorryHOAFCLPayloadBuilder(BasePayloadBuilder):
             if "referenceInformation" not in indexing_data or not indexing_data["referenceInformation"]:
                 errors.append(f"{doc_prefix}: CONDO LIEN SATISFACTION missing reference information")
 
-            # Check that KING CUNNINGHAM LLC TR IS a grantor for condo lien satisfaction (differs from MTG-FCL)
+            # Check that KING CUNNINGHAM LLC TR is NOT a grantor for condo lien satisfaction (matches client requirement)
             grantors = indexing_data.get("grantors", [])
-            has_king_cunningham = False
             for grantor in grantors:
                 if (grantor.get("type") == "Organization" and 
                     "KING CUNNINGHAM LLC TR" in grantor.get("nameUnparsed", "")):
-                    has_king_cunningham = True
+                    errors.append(f"{doc_prefix}: CONDO LIEN SATISFACTION should not have 'KING CUNNINGHAM LLC TR' as grantor")
                     break
-            
-            if not has_king_cunningham:
-                errors.append(f"{doc_prefix}: CONDO LIEN SATISFACTION missing required grantor 'KING CUNNINGHAM LLC TR'")
 
         return errors
 
