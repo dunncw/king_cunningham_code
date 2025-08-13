@@ -1,0 +1,221 @@
+{
+    "recipientRequirements": {
+        "acceptsCommentForRecipient": {
+            "label": "Comments for Recipient",
+            "path": "commentForRecipient",
+            "required": "NOT_REQUIRED",
+            "type": "STRING"
+        },
+        "apiRequirementsNotes": [],
+        "enumerations": [
+            {
+                "options": [
+                    "Individual",
+                    "Organization"
+                ],
+                "path": "grantors[].type"
+            },
+            {
+                "options": [
+                    "Individual",
+                    "Organization"
+                ],
+                "path": "grantees[].type"
+            }
+        ],
+        "instructions": [
+            {
+                "html": "Effective July 1, 2023 - For more information on Security Deed Perpetration <a href=\"https://simplifile.com/sf/docstore/GA_HB974_information.pdf\" target=\"Security Deed Perpetration\">click here</a>,<br><br>Information requirements that need to appear on the first page of all security deeds.<br><br>1. The date of the document. <br>2. The names of the signatories of the document. <br>3. The grantee's mailing address. <br>4. Map and parcel identification information, if applicable. <br>5. The original loan amount or the amount of any outstanding principal and additional advance pursuant to a loan modification. <br>6. The initial maturity date or dates for such debt. <br>7. The amount, if any, of the intangible recording tax imposed on such deed to secure deed. <br>8. The amount, if any, of intangible recording tax imposed for an additional advance by a security deed. <br>9. If no intangible tax is imposed, a citation to the authority providing for an exemption of such tax."
+            }
+        ],
+        "instruments": [
+            {
+                "instrument": "DEED",
+                "requirements": [
+                    {
+                        "label": "Grantor Type",
+                        "path": "grantors[].type",
+                        "required": "ALWAYS",
+                        "type": "ENUMERATED"
+                    },
+                    {
+                        "label": "Grantor Name",
+                        "path": "grantors[].nameUnparsed",
+                        "required": "CONDITIONAL",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "Grantor First",
+                        "path": "grantors[].firstName",
+                        "required": "CONDITIONAL",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "Grantor Middle",
+                        "path": "grantors[].middleName",
+                        "required": "CONDITIONAL",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "Grantor Last",
+                        "path": "grantors[].lastName",
+                        "required": "CONDITIONAL",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "Grantor Suffix",
+                        "path": "grantors[].nameSuffix",
+                        "required": "CONDITIONAL",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "Grantee Type",
+                        "path": "grantees[].type",
+                        "required": "ALWAYS",
+                        "type": "ENUMERATED"
+                    },
+                    {
+                        "label": "Grantee Name",
+                        "path": "grantees[].nameUnparsed",
+                        "required": "CONDITIONAL",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "Grantee First",
+                        "path": "grantees[].firstName",
+                        "required": "CONDITIONAL",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "Grantee Middle",
+                        "path": "grantees[].middleName",
+                        "required": "CONDITIONAL",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "Grantee Last",
+                        "path": "grantees[].lastName",
+                        "required": "CONDITIONAL",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "Grantee Suffix",
+                        "path": "grantees[].nameSuffix",
+                        "required": "CONDITIONAL",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "Consideration",
+                        "path": "consideration",
+                        "required": "ALWAYS",
+                        "type": "DECIMAL"
+                    },
+                    {
+                        "label": "Tax Exempt",
+                        "path": "exempt",
+                        "required": "IF_AVAILABLE",
+                        "type": "BOOLEAN"
+                    },
+                    {
+                        "label": "Parcel ID",
+                        "path": "legalDescriptions[].parcelId",
+                        "required": "ALWAYS",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "PT-61",
+                        "required": "IF_AVAILABLE",
+                        "type": "HELPER_DOCUMENT"
+                    }
+                ]
+            },
+            {
+                "instrument": "SATISFACTION",
+                "requirements": [
+                    {
+                        "label": "Grantor Type",
+                        "path": "grantors[].type",
+                        "required": "ALWAYS",
+                        "type": "ENUMERATED"
+                    },
+                    {
+                        "label": "Grantor Name",
+                        "path": "grantors[].nameUnparsed",
+                        "required": "CONDITIONAL",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "Grantor First",
+                        "path": "grantors[].firstName",
+                        "required": "CONDITIONAL",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "Grantor Middle",
+                        "path": "grantors[].middleName",
+                        "required": "CONDITIONAL",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "Grantor Last",
+                        "path": "grantors[].lastName",
+                        "required": "CONDITIONAL",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "Grantor Suffix",
+                        "path": "grantors[].nameSuffix",
+                        "required": "CONDITIONAL",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "Grantee Type",
+                        "path": "grantees[].type",
+                        "required": "ALWAYS",
+                        "type": "ENUMERATED"
+                    },
+                    {
+                        "label": "Grantee Name",
+                        "path": "grantees[].nameUnparsed",
+                        "required": "CONDITIONAL",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "Grantee First",
+                        "path": "grantees[].firstName",
+                        "required": "CONDITIONAL",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "Grantee Middle",
+                        "path": "grantees[].middleName",
+                        "required": "CONDITIONAL",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "Grantee Last",
+                        "path": "grantees[].lastName",
+                        "required": "CONDITIONAL",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "Grantee Suffix",
+                        "path": "grantees[].nameSuffix",
+                        "required": "CONDITIONAL",
+                        "type": "STRING"
+                    },
+                    {
+                        "label": "Reference Count",
+                        "path": "referenceCount",
+                        "required": "IF_AVAILABLE",
+                        "type": "INTEGER"
+                    }
+                ]
+            }
+        ]
+    },
+    "responseMillis": 46,
+    "resultCode": "SUCCESS",
+    "resultType": "RECIPIENT_REQUIREMENTS",
+    "timestamp": "2025-07-09T20:32:25.850Z"
+}

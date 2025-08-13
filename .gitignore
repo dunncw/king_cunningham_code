@@ -4,4 +4,14 @@ build/*
 dist/*
 dist.zip
 videos/*
-task/*
+*.xlsx
+*.xlsm
+*.pdf
+*.zip
+*.docx
+**/data/**
+task/pacer_scra/docs/*
+task/pacer_scra/shannon_task/*
+task/simplifile/docs/explore_simplifile_api.py
+task/simplifile/timeline/5-21-25/api_key.txt
+task/simplifile/timeline/5-21-25/all_24/sample_output.txt
