@@ -18,6 +18,7 @@ from .pacer_automation_ui import PACERAutomationUI
 from .simplifile_ui import SimplifileUI
 from simplifile.batch_processor import run_simplifile_batch_thread
 from simplifile2.ui.main_window import SimplifileMainWindow as Simplifile2UI
+from simplifile3.ui.main_window import Simplifile3MainWindow
 
 def get_resource_path(relative_path):
     try:
@@ -166,6 +167,11 @@ class MainWindow(QMainWindow):
                 "name": "Simplifile 2",
                 "description": "Electronic document recording (New)",
                 "action": self.show_simplifile2
+            },
+                        {
+                "name": "Simplifile 3",
+                "description": "Workflow-first document recording",
+                "action": self.show_simplifile3
             }
         ]
         
@@ -235,6 +241,13 @@ class MainWindow(QMainWindow):
         if hasattr(self.simplifile2_ui, 'layout'):
             self.simplifile2_ui.layout().addWidget(back_button)
 
+        self.simplifile3_ui = Simplifile3MainWindow()
+        back_button = QPushButton("← Back to Main Menu")
+        back_button.clicked.connect(self.show_main_menu)
+        # Add back button to the UI layout
+        if hasattr(self.simplifile3_ui, 'layout'):
+            self.simplifile3_ui.layout().addWidget(back_button)
+
         # Add widgets to stacked widget
         self.central_widget.addWidget(self.main_menu)
         self.central_widget.addWidget(self.doc_processor)
@@ -244,6 +257,7 @@ class MainWindow(QMainWindow):
         self.central_widget.addWidget(self.pacer_automation)
         self.central_widget.addWidget(self.simplifile_ui)
         self.central_widget.addWidget(self.simplifile2_ui)
+        self.central_widget.addWidget(self.simplifile3_ui)
 
         self.show_main_menu()
     
@@ -343,6 +357,10 @@ class MainWindow(QMainWindow):
     
     def show_simplifile2(self):
         self.central_widget.setCurrentWidget(self.simplifile2_ui)
+        self.resize(1000, 800)
+
+    def show_simplifile3(self):
+        self.central_widget.setCurrentWidget(self.simplifile3_ui)
         self.resize(1000, 800)
 
 

@@ -1,4 +1,19 @@
-# Beaufort/Horry Multi-County Deedback Workflow Specification
+## Multi-Unit Contract Example
+
+For contracts with multiple units/weeks (same Project + Number):
+
+### Input Rows:
+```
+Row 1: Project 93, Number 512565, Unit 210, Week 13, OEB Code B
+Row 2: Project 93, Number 512565, Unit 300, Week 19, OEB Code B
+```
+
+### Processing Result:
+- **Single Package Created**: Using first row's data for package name
+- **Package Name**: `CROXALL 210-13B 93-512565`
+- **PDF Used**: Only the 6-page document from Row 1 (Row 2's PDF is skipped)
+- **Legal Description**: `ANDERSON OCEAN CLUB HPR UNIT 210 WK 13B; UNIT 300 WK 19B`
+- **TMS Numbers**: `18104152410; 18104154830`# Beaufort/Horry Multi-County Deedback Workflow Specification
 
 ## Overview
 The Multi-County Deedback Workflow processes Excel data and a single PDF document stack containing variable-length deed documents to create Simplifile packages for both Beaufort County and Horry County, SC. This workflow handles cross-county uploads based on project numbers.
@@ -25,10 +40,20 @@ Unlike previous workflows with fixed page counts, this workflow uses the `DB Pag
   - Update `current_position += DB_Pages`
   - Continue to next row
 
-## Package Naming Convention
-**Format**: `{LEAD 1 LAST} {Unit Code}-{Week}{OEB Code} {Project}-{Number}`
+### Multi-Unit/Week Handling (Same Contract Number)
+When multiple rows share the same `Project` and `Number` (contract number):
+1. **Group Detection**: Scan Excel to identify all rows with matching Project + Number combinations
+2. **Single Package Creation**: Create ONE package using the first row's data
+3. **PDF Selection**: Use ONLY the first row's PDF document (subsequent PDFs for same contract are duplicates)
+4. **Legal Description Combination**: Combine all units/weeks into a single legal description with semicolon separators
+5. **Package Naming**: Use the first row's unit/week for the package name
 
-**Note**: Package names will be generated automatically by the system. The `Package Name` column in the Excel file (if present) will be ignored.
+## Package Naming Convention
+**Two Options Available:**
+1. **Auto-Generated Format**: `{LEAD 1 LAST} {Unit Code}-{Week}{OEB Code} {Project}-{Number}`
+2. **From Excel**: Use value from `Package Name` column (AK) if provided
+
+**Note**: For multi-unit contracts, the package name uses the first row's data.
 
 ## County-Specific Requirements
 
@@ -37,7 +62,7 @@ Unlike previous workflows with fixed page counts, this workflow uses the `DB Pag
 #### Document Configuration
 - **County ID**: `SCCY4G`
 - **Document Type**: `DEED - HILTON HEAD TIMESHARE`
-- **Package Naming**: Auto-generated as described above
+- **Package Naming**: Auto-generated or from Excel column AK
 
 #### Indexing Data
 - **Grantors** (Individual type):
@@ -46,17 +71,14 @@ Unlike previous workflows with fixed page counts, this workflow uses the `DB Pag
 - **Grantees** (Organization type):
   - Always `HII DEVELOPMENT LLC`
 - **Consideration**: Value from `Consideration` column (e.g., "$5,484.76")
-
-<mark>**Questions for Client**:</mark>
-1. Should we include execution date from the spreadsheet?
-2. Are book/page references needed for Beaufort County?
+- **No Additional Fields Required**: Beaufort only needs Grantor(s), Grantee, and Consideration
 
 ### Horry County (Projects 93, 94, 96)
 
 #### Document Configuration
 - **County ID**: `SCCP49`
 - **Document Type**: `Deed - Timeshare`
-- **Package Naming**: Auto-generated as described above
+- **Package Naming**: Auto-generated or from Excel column AK
 
 #### Indexing Data
 - **Grantors** (Individual type):
@@ -66,32 +88,26 @@ Unlike previous workflows with fixed page counts, this workflow uses the `DB Pag
   - Based on project number (see below)
 - **Execution Date**: From `DB Date` column (format: "6/17/2025")
 - **Consideration**: Value from `Consideration` column
-- **Legal Description**: Project-specific (see below)
-- **TMS/Parcel ID**: Project-specific (see below)
-- **Reference Information**: Book/page from Excel columns (see mapping)
-
-<mark>**Questions for Client**:</mark>
-1. For Project 96, should the grantee be exactly `NUM 1600 DEVELOPMENT LLC` or is "NUM" pulled from somewhere?
+- **Legal Description**: Project-specific, combined for multi-unit contracts
+- **TMS/Parcel ID**: Project-specific, combined for multi-unit contracts
+- **Reference Information**: Book/page from Excel columns
 
 ## Horry County Project-Specific Rules
 
 ### Project 93 - Anderson Ocean Club
 - **Grantee**: `OCEAN CLUB VACATIONS LLC`
-- **Legal Description**: `ANDERSON OCEAN CLUB HPR UNIT {Unit Code} WK {Week}{OEB Code}`
+- **Legal Description**: `ANDERSON OCEAN CLUB HPR UNIT {Unit Code} WK {Week}{OEB Code}` for additional units append `;UNIT {Unit Code} WK {Week}{OEB Code}`
 - **TMS #**: Use unit-to-TMS conversion table (see reference section)
-- **Multiple Units**: Separate with semicolon (e.g., `UNIT 1512 WK 12B; UNIT 1512 WK 13B`)
 
 ### Project 94 - Ocean 22
 - **Grantee**: `OCEAN 22 DEVELOPMENT LLC`
-- **Legal Description**: `OCEAN 22 VACATION SUITES U {Unit Code} W {Week}`
+- **Legal Description**: `OCEAN 22 VACATION SUITES U {Unit Code} W {Week}` for additional units append `;U {Unit Code} W {Week}`
 - **TMS #**: Always `1810418003`
-- **Multiple Units**: Separate with semicolon (e.g., `U 905 W 12; U 905 W 13`)
 
 ### Project 96 - OE Vacation Suites
-- **Grantee**: `NUM 1600 DEVELOPMENT LLC` (needs clarification)
-- **Legal Description**: `OE VACATION SUITES U {Unit Code} W {Week}`
+- **Grantee**: `NUM 1600 DEVELOPMENT LLC`
+- **Legal Description**: `OE VACATION SUITES U {Unit Code} W {Week}` for additional units append `;U {Unit Code} W {Week}`
 - **TMS #**: Always `1810732008`
-- **Multiple Units**: Separate with semicolon (e.g., `U 905 W 12; U 905 W 13`)
 
 ## Excel Column Mapping
 
@@ -110,10 +126,6 @@ Unlike previous workflows with fixed page counts, this workflow uses the `DB Pag
 | `DB Date` | `execution_date` | Document execution date (Horry only) |
 | `DB Pages` | `document_pages` | Number of pages for this document |
 | `Consideration` | `consideration` | Monetary consideration |
-| `MTG BOOK` | `mortgage_book` | Mortgage book reference |
-| `MTG PAGE` | `mortgage_page` | Mortgage page reference |
-| `Ref DEED BOOK` | `deed_book` | Deed book reference |
-| `Ref DEED PAGE` | `deed_page` | Deed page reference |
 
 ## API Payload Structure
 
@@ -123,7 +135,7 @@ Unlike previous workflows with fixed page counts, this workflow uses the `DB Pag
   "documents": [
     {
       "submitterDocumentID": "D-{contract_number}",
-      "name": "{lead_1_last} {unit_code}-{week}{oeb_code} {project_number}-{contract_number}",
+      "name": "{package_name}",
       "kindOfInstrument": ["DEED - HILTON HEAD TIMESHARE"],
       "indexingData": {
         "grantors": [
@@ -151,7 +163,7 @@ Unlike previous workflows with fixed page counts, this workflow uses the `DB Pag
   ],
   "recipient": "SCCY4G",
   "submitterPackageID": "P-{contract_number}",
-  "name": "{lead_1_last} {unit_code}-{week}{oeb_code} {project_number}-{contract_number}",
+  "name": "{package_name}",
   "operations": {
     "draftOnErrors": true,
     "submitImmediately": false,
@@ -166,7 +178,7 @@ Unlike previous workflows with fixed page counts, this workflow uses the `DB Pag
   "documents": [
     {
       "submitterDocumentID": "D-{contract_number}",
-      "name": "{lead_1_last} {unit_code}-{week}{oeb_code} {project_number}-{contract_number}",
+      "name": "{package_name}",
       "kindOfInstrument": ["Deed - Timeshare"],
       "indexingData": {
         "executionDate": "{execution_date}",
@@ -191,8 +203,8 @@ Unlike previous workflows with fixed page counts, this workflow uses the `DB Pag
         ],
         "legalDescriptions": [
           {
-            "description": "{project_specific_legal_description}",
-            "parcelId": "{project_specific_tms}"
+            "description": "{combined_legal_description}",
+            "parcelId": "{combined_tms_numbers}"
           }
         ],
         "referenceInformation": [
@@ -203,12 +215,12 @@ Unlike previous workflows with fixed page counts, this workflow uses the `DB Pag
           }
         ]
       },
-      "fileBytes": ["{extracted_pdf}"]
+      "fileBytes": ["{extracted_pdf_from_first_row_only}"]
     }
   ],
   "recipient": "SCCP49",
   "submitterPackageID": "P-{contract_number}",
-  "name": "{lead_1_last} {unit_code}-{week}{oeb_code} {project_number}-{contract_number}",
+  "name": "{package_name}",
   "operations": {
     "draftOnErrors": true,
     "submitImmediately": false,
@@ -228,10 +240,11 @@ Unlike previous workflows with fixed page counts, this workflow uses the `DB Pag
 6. Invalid date format in `DB Date` (Horry County)
 7. Invalid unit code for TMS lookup (Project 93)
 
-### Skip Row Scenarios
-1. Project number = 98
+### Skip Row/PDF Scenarios
+1. Project number = 98 (skip entire row)
 2. Empty required fields for the specific county
 3. Invalid or missing page count
+4. Duplicate contract (same Project + Number) - skip PDF extraction for 2nd+ occurrences
 
 ## Special Handling
 
@@ -247,8 +260,17 @@ Unlike previous workflows with fixed page counts, this workflow uses the `DB Pag
 - Convert `DB Date` from "M/D/YYYY" to "MM/DD/YYYY" format
 
 ### Package Name Generation
-- System will auto-generate package names using the format specified
-- Empty OEB Code for non-Project 93 entries will be handled gracefully (no trailing dash)
+- Check Excel column AK (`Package Name`) first
+- If empty, auto-generate using format specified
+- For multi-unit contracts, always use first row's package name
+
+### Multi-Unit Contract Processing
+1. **Pre-scan Excel**: Identify all rows with duplicate Project + Number combinations
+2. **Group Processing**: Process each unique Project + Number once
+3. **PDF Extraction**: Only extract PDF for the first occurrence
+4. **Legal Description Building**: Concatenate all units/weeks with semicolons
+5. **TMS Handling**: Concatenate all TMS numbers with semicolons (Project 93 only)
+6. **Skip Duplicate PDFs**: Advance the PDF position counter for duplicate rows but don't extract
 
 ## Reference Data
 
@@ -430,21 +452,13 @@ unit_to_tms = {
 }
 ```
 
-## <mark>Outstanding Questions for Client</mark>
-
-1. **Beaufort County Fields**: Should we include:
-   - Execution date from the Excel?
-   - Book/page references in the indexing data?
-   - Legal description?
-
-2. **Project 96 Grantee**: Should the grantee be exactly `NUM 1600 DEVELOPMENT LLC` or is "NUM" a variable pulled from the spreadsheet?
-
-3. **Multiple Properties**: How should we handle rows that might have multiple units/weeks? Should these create separate documents or be combined in the legal description?
 
 ## Implementation Notes
 
-- This is the first workflow with variable-length documents requiring dynamic page extraction
-- Cross-county routing adds complexity but follows clear project number rules
+- First workflow with variable-length documents requiring dynamic page extraction
+- Cross-county routing based on project numbers
 - Unit-to-TMS conversion table must be used for Project 93 (Anderson Ocean Club)
-- Package names are auto-generated - no need for client to provide in Excel
-- All other validation and error handling follows established patterns from previous workflows
+- Multi-unit contract detection and combination is critical for proper processing
+- Only first PDF used for duplicate contracts (all deedbacks are identical)
+- Package names can come from Excel or be auto-generated
+- All validation and error handling follows established patterns from previous workflows
