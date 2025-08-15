@@ -1,19 +1,4 @@
-## Multi-Unit Contract Example
-
-For contracts with multiple units/weeks (same Project + Number):
-
-### Input Rows:
-```
-Row 1: Project 93, Number 512565, Unit 210, Week 13, OEB Code B
-Row 2: Project 93, Number 512565, Unit 300, Week 19, OEB Code B
-```
-
-### Processing Result:
-- **Single Package Created**: Using first row's data for package name
-- **Package Name**: `CROXALL 210-13B 93-512565`
-- **PDF Used**: Only the 6-page document from Row 1 (Row 2's PDF is skipped)
-- **Legal Description**: `ANDERSON OCEAN CLUB HPR UNIT 210 WK 13B; UNIT 300 WK 19B`
-- **TMS Numbers**: `18104152410; 18104154830`# Beaufort/Horry Multi-County Deedback Workflow Specification
+# Beaufort/Horry Multi-County Deedback Workflow Specification
 
 ## Overview
 The Multi-County Deedback Workflow processes Excel data and a single PDF document stack containing variable-length deed documents to create Simplifile packages for both Beaufort County and Horry County, SC. This workflow handles cross-county uploads based on project numbers.
@@ -108,6 +93,23 @@ When multiple rows share the same `Project` and `Number` (contract number):
 - **Grantee**: `NUM 1600 DEVELOPMENT LLC`
 - **Legal Description**: `OE VACATION SUITES U {Unit Code} W {Week}` for additional units append `;U {Unit Code} W {Week}`
 - **TMS #**: Always `1810732008`
+
+## Multi-Unit Contract Example
+
+For contracts with multiple units/weeks (same Project + Number):
+
+### Input Rows:
+```
+Row 1: Project 93, Number 512565, Unit 210, Week 13, OEB Code B
+Row 2: Project 93, Number 512565, Unit 300, Week 19, OEB Code B
+```
+
+### Processing Result:
+- **Single Package Created**: Using first row's data for package name
+- **Package Name**: `CROXALL 210-13B 93-512565`
+- **PDF Used**: Only the 6-page document from Row 1 (Row 2's PDF is skipped)
+- **Legal Description**: `ANDERSON OCEAN CLUB HPR UNIT 210 WK 13B; UNIT 300 WK 19B`
+- **TMS Numbers**: `18104152410; 18104154830`
 
 ## Excel Column Mapping
 
