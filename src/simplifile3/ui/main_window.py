@@ -9,8 +9,7 @@ from typing import Dict, Any, List
 from .components.api_config import APIConfigWidget
 from .components.workflow_selector import WorkflowSelectorWidget
 from .components.file_inputs import FileInputsWidget
-from .workers.validation_worker import ValidationWorker
-from .workers.processing_worker import ProcessingWorker
+from .workers.workflow_worker import WorkflowWorker
 
 
 class Simplifile3MainWindow(QWidget):
@@ -18,8 +17,7 @@ class Simplifile3MainWindow(QWidget):
     
     def __init__(self):
         super().__init__()
-        self.validation_worker = None
-        self.processing_worker = None
+        self.worker = None
         self.validation_passed = False
         self.validation_summary = {}
         self.current_workflow_config = {}
@@ -157,14 +155,16 @@ class Simplifile3MainWindow(QWidget):
         self.log_validation_header()
         
         # Start validation worker
-        self.validation_worker = ValidationWorker(
+        self.worker = WorkflowWorker(
+            mode="validate",
+            api_token="",  # Not needed for validation
             workflow_id=self.workflow_selector.get_workflow_id(),
             workflow_config=self.current_workflow_config,
             file_paths=self.file_inputs.get_file_paths()
         )
         
-        self.validation_worker.log_message.connect(self.log_output)
-        self.validation_worker.finished.connect(self.on_validation_finished)
+        self.worker.log_message.connect(self.log_output)
+        self.worker.finished.connect(self.on_validation_finished)
         
         # Update UI state
         self.validate_button.setEnabled(False)
@@ -172,10 +172,11 @@ class Simplifile3MainWindow(QWidget):
         self.process_button.setEnabled(False)
         self.progress_bar.setVisible(True)
         
-        self.validation_worker.start()
+        self.worker.start()
     
-    def on_validation_finished(self, is_valid: bool, errors: List[str], summary: Dict[str, Any]):
+    def on_validation_finished(self, result):
         """Handle validation completion"""
+        is_valid, errors, summary = result
         self.progress_bar.setVisible(False)
         self.log_output("-" * 60)
         
@@ -246,16 +247,17 @@ class Simplifile3MainWindow(QWidget):
         self.log_output("BATCH PROCESSING STARTED")
         
         # Start processing worker
-        self.processing_worker = ProcessingWorker(
+        self.worker = WorkflowWorker(
+            mode="process",
             api_token=self.api_config.get_api_token(),
             workflow_id=self.workflow_selector.get_workflow_id(),
             workflow_config=self.current_workflow_config,
             file_paths=self.file_inputs.get_file_paths()
         )
         
-        self.processing_worker.log_message.connect(self.log_output)
-        self.processing_worker.finished.connect(self.on_processing_finished)
-        self.processing_worker.error.connect(self.on_processing_error)
+        self.worker.log_message.connect(self.log_output)
+        self.worker.finished.connect(self.on_processing_finished)
+        self.worker.error.connect(self.on_processing_error)
         
         # Update UI state
         self.validate_button.setEnabled(False)
@@ -263,7 +265,7 @@ class Simplifile3MainWindow(QWidget):
         self.process_button.setText("Processing...")
         self.progress_bar.setVisible(True)
         
-        self.processing_worker.start()
+        self.worker.start()
     
     def on_processing_finished(self, results: Dict[str, Any]):
         """Handle processing completion"""
@@ -354,6 +356,7 @@ class Simplifile3MainWindow(QWidget):
             input_type = workflow_config.get('input_type', 'unknown')
             supported_counties = workflow_config.get('supported_counties', [])
             self.log_output(f"Input Type: {input_type}")
+            self.log_output(f"Supported Counties: {', '.join(supported_counties)}")
         
         self.log_output("-" * 60)
     

@@ -22,7 +22,8 @@ class FileInputWidget(QHBoxLayout):
         
         # Path display
         self.path_edit = QLineEdit()
-        self.path_edit.setPlaceholderText(file_config['placeholder'])
+        if 'placeholder' in file_config:
+            self.path_edit.setPlaceholderText(file_config['placeholder'])
         self.path_edit.setReadOnly(True)
         self.path_edit.textChanged.connect(self.file_changed.emit)
         self.addWidget(self.path_edit)

@@ -1,5 +1,4 @@
 # simplifile3/ui/workers/__init__.py
-from .validation_worker import ValidationWorker
-from .processing_worker import ProcessingWorker
+from .workflow_worker import WorkflowWorker
 
-__all__ = ["ValidationWorker", "ProcessingWorker"]
+__all__ = ["WorkflowWorker"]
