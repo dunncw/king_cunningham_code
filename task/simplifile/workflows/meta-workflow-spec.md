@@ -189,8 +189,3 @@ Conditions that cause individual rows to be skipped:
 - Invalid row data
 - Unable to route to county
 - Missing required fields for specific row
-
-#### Warning Scenarios
-Conditions that generate warnings but don't stop processing:
-- Non-standard data formats
-- Optional field validation issues
