@@ -9,10 +9,10 @@ from ...workflows.base import BaseWorkflow
 
 class BeaHorCountysDeedbackWorkflow(BaseWorkflow):
     """Beaufort/Horry Multi-County Deedback workflow"""
-    
+
     def __init__(self, logger=None):
         super().__init__(logger)
-        
+
         # Unit to TMS conversion table for Project 93 (Anderson Ocean Club)
         # NOTE: This is where the full conversion table should be added
         self.unit_to_tms_93 = {
@@ -189,18 +189,20 @@ class BeaHorCountysDeedbackWorkflow(BaseWorkflow):
             "PH10": "18104154630",
             "PH11": "18104154640"
         }
-    
+
     def get_workflow_id(self) -> str:
         return "bea_hor_countys_deedback"
-    
+
+
     def get_supported_counties(self) -> List[str]:
         return ["SCCP49", "SCCY4G"]  # Horry and Beaufort
-    
+
+
     def get_required_excel_columns(self) -> List[str]:
         """Required columns for BEA-HOR-COUNTYS-DEEDBACK workflow"""
         return [
             "Project",
-            "Number", 
+            "Number",
             "Lead 1 First",
             "LEAD 1 LAST",
             "Unit Code",
@@ -209,7 +211,8 @@ class BeaHorCountysDeedbackWorkflow(BaseWorkflow):
             "DB Pages",
             "Consideration"
         ]
-    
+
+
     def get_excel_mapping(self) -> Dict[str, str]:
         """Map Excel columns to internal field names"""
         return {
@@ -227,12 +230,13 @@ class BeaHorCountysDeedbackWorkflow(BaseWorkflow):
             "Consideration": "consideration",
             "Package Name": "package_name_excel"  # Column AK - optional
         }
-    
+
+
     def route_to_county(self, excel_row: Dict[str, Any]) -> str:
         """Route based on Project number per spec"""
         try:
             project = int(excel_row.get("Project", 0))
-            
+
             if project in [93, 94, 96]:
                 return "SCCP49"  # Horry County
             elif project == 95:
@@ -241,7 +245,7 @@ class BeaHorCountysDeedbackWorkflow(BaseWorkflow):
                 return "SKIP"  # Skip processing
             else:
                 raise ValueError(f"Invalid project number: {project}")
-                
+
         except (ValueError, TypeError):
             raise ValueError(f"Invalid or missing project number: {excel_row.get('Project')}")
 
@@ -251,21 +255,21 @@ class BeaHorCountysDeedbackWorkflow(BaseWorkflow):
         if len(grouped_rows) == 1:
             # Single unit - use full description
             return self._build_single_legal_description(grouped_rows[0])
-        
+
         # Multi-unit - first gets full description, rest get abbreviated
         descriptions = []
         first_row = grouped_rows[0]
-        
+
         # First unit gets full description
         descriptions.append(self._build_single_legal_description(first_row))
-        
+
         # Additional units get abbreviated format
         for row in grouped_rows[1:]:
             unit_code = row["unit_code"]
-            week = row["week"] 
+            week = row["week"]
             oeb_code = row.get("oeb_code", "")
             descriptions.append(f"UNIT {unit_code} WK {week}{oeb_code}")
-        
+
         return "; ".join(descriptions)
 
 
@@ -275,7 +279,7 @@ class BeaHorCountysDeedbackWorkflow(BaseWorkflow):
         unit_code = row_data["unit_code"]
         week = row_data["week"]
         oeb_code = row_data.get("oeb_code", "")
-        
+
         if project == "93":
             return f"ANDERSON OCEAN CLUB HPR UNIT {unit_code} WK {week}{oeb_code}"
         elif project == "94":
@@ -286,13 +290,66 @@ class BeaHorCountysDeedbackWorkflow(BaseWorkflow):
             return f"UNIT {unit_code} WK {week}{oeb_code}"
 
 
+    def transform_row_data(self, excel_row: Dict[str, Any], target_county: str) -> Dict[str, Any]:
+        """Transform Excel row data for target county"""
+        # Map Excel columns to internal fields
+        mapping = self.get_excel_mapping()
+        transformed = {}
+
+        for excel_col, internal_field in mapping.items():
+            value = excel_row.get(excel_col, "")
+            if pd.isna(value):
+                value = ""
+            transformed[internal_field] = str(value).strip()
+
+        # Convert and validate key fields
+        try:
+            transformed["project_number"] = int(transformed["project_number"])
+            transformed["document_pages"] = int(transformed["document_pages"])
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Invalid numeric field in Excel row: {str(e)}")
+
+        # Uppercase names
+        transformed["lead_1_first"] = transformed["lead_1_first"].upper()
+        transformed["lead_1_last"] = transformed["lead_1_last"].upper()
+        transformed["lead_2_first"] = transformed["lead_2_first"].upper()
+        transformed["lead_2_last"] = transformed["lead_2_last"].upper()
+
+        # Determine if second lead exists
+        transformed["has_second_lead"] = bool(
+            transformed["lead_2_first"] and transformed["lead_2_last"]
+        )
+
+        # Generate package name
+        transformed["package_name"] = self._generate_package_name(transformed)
+
+        # Package and document IDs
+        transformed["package_id"] = f"P-{transformed['contract_number']}"
+        transformed["document_id"] = f"D-{transformed['contract_number']}"
+
+        # Clean consideration amount
+        transformed["consideration_amount"] = self._clean_consideration(transformed["consideration"])
+
+        # County-specific processing
+        if target_county == "SCCP49":  # Horry County
+            transformed.update(self._process_horry_specific(transformed))
+        elif target_county == "SCCY4G":  # Beaufort County
+            transformed.update(self._process_beaufort_specific(transformed))
+
+        # Format execution date for API
+        if target_county == "SCCP49":  # Only Horry needs execution date
+            transformed["execution_date_formatted"] = self._format_date_for_api(transformed["execution_date"])
+
+        return transformed
+
+
     def _generate_package_name(self, data: Dict[str, Any]) -> str:
         """Generate package name - Excel column AK takes precedence"""
         # Check if package name provided in Excel (column AK)
         excel_package_name = data.get("package_name_excel", "").strip()
         if excel_package_name:
             return excel_package_name
-        
+
         # Auto-generate package name
         last_name = data["lead_1_last"]
         unit_code = data["unit_code"]
@@ -300,17 +357,18 @@ class BeaHorCountysDeedbackWorkflow(BaseWorkflow):
         oeb_code = data.get("oeb_code", "")
         project = data["project_number"]
         contract = data["contract_number"]
-        
+
         if data["project_number"] == 93:  # Anderson Ocean Club includes OEB Code
             return f"{last_name} {unit_code}-{week}{oeb_code} {project}-{contract}"
         else:
             return f"{last_name} {unit_code}-{week} {project}-{contract}"
-    
+
+
     def _process_horry_specific(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Process Horry County specific requirements"""
         result = {}
         project = data["project_number"]
-        
+
         # Determine grantee and legal description based on project
         if project == 93:  # Anderson Ocean Club
             result["grantee_organization"] = "OCEAN CLUB VACATIONS LLC"
@@ -326,28 +384,30 @@ class BeaHorCountysDeedbackWorkflow(BaseWorkflow):
             result["tms_number"] = "1810732008"
         else:
             raise ValueError(f"Unsupported Horry project: {project}")
-        
+
         # Document type for Horry
         county_config = self.get_county_config("SCCP49")
         result["document_type"] = county_config.DOCUMENT_TYPES["DEED_TIMESHARE"]
-        
+
         return result
-    
+
+
     def _process_beaufort_specific(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Process Beaufort County specific requirements"""
         result = {}
-        
+
         # Beaufort is always HII DEVELOPMENT LLC
         result["grantee_organization"] = "HII DEVELOPMENT LLC"
-        
+
         # Document type for Beaufort
         county_config = self.get_county_config("SCCY4G")
         result["document_type"] = county_config.DOCUMENT_TYPES["DEED_HILTON_HEAD_TIMESHARE"]
-        
+
         # Beaufort doesn't need legal description, TMS, or execution date
-        
+
         return result
-    
+
+
     def _get_tms_for_unit_93(self, unit_code: str) -> str:
         """Get TMS number for Anderson Ocean Club unit"""
         try:
@@ -362,25 +422,27 @@ class BeaHorCountysDeedbackWorkflow(BaseWorkflow):
                 return self.unit_to_tms_93[unit_code]
             else:
                 raise ValueError(f"Unknown unit code for Project 93: {unit_code}")
-    
+
+
     def _clean_consideration(self, consideration_str: str) -> float:
         """Clean consideration amount by removing $ and commas"""
         if not consideration_str:
             return 0.0
-        
+
         # Remove $ and commas, keep only digits and decimal point
         cleaned = re.sub(r'[\$,]', '', str(consideration_str))
-        
+
         try:
             return float(cleaned)
         except ValueError:
             return 0.0
-    
+
+
     def _format_date_for_api(self, date_str: str) -> str:
         """Format date string for API (MM/DD/YYYY format)"""
         if not date_str:
             return datetime.now().strftime('%m/%d/%Y')
-        
+
         try:
             # Input format from DB Date should be M/D/YYYY, output MM/DD/YYYY
             date_obj = datetime.strptime(date_str, '%m/%d/%Y')
@@ -393,7 +455,8 @@ class BeaHorCountysDeedbackWorkflow(BaseWorkflow):
             except ValueError:
                 # Return current date as fallback
                 return datetime.now().strftime('%m/%d/%Y')
-    
+
+
     def is_row_valid(self, excel_row: Dict[str, Any]) -> Tuple[bool, str]:
         """Check if a row has all required data and should be processed"""
         # Check routing first
@@ -403,7 +466,7 @@ class BeaHorCountysDeedbackWorkflow(BaseWorkflow):
                 return False, "Project 98 - skipping per specification"
         except Exception as e:
             return False, f"County routing failed: {str(e)}"
-        
+
         # Check required fields
         required_fields = {
             "Project": excel_row.get("Project"),
@@ -415,11 +478,11 @@ class BeaHorCountysDeedbackWorkflow(BaseWorkflow):
             "DB Pages": excel_row.get("DB Pages"),
             "Consideration": excel_row.get("Consideration")
         }
-        
+
         for field_name, value in required_fields.items():
             if pd.isna(value) or str(value).strip() == "":
                 return False, f"Missing required field: {field_name}"
-        
+
         # Validate DB Pages is numeric and positive
         try:
             pages = int(excel_row.get("DB Pages", 0))
@@ -427,36 +490,38 @@ class BeaHorCountysDeedbackWorkflow(BaseWorkflow):
                 return False, "DB Pages must be a positive number"
         except (ValueError, TypeError):
             return False, "DB Pages must be a valid number"
-        
+
         # Additional validation for Horry County (execution date required)
         if target_county == "SCCP49":
             db_date = excel_row.get("DB Date")
             if pd.isna(db_date) or str(db_date).strip() == "":
                 return False, "DB Date is required for Horry County"
-        
+
         return True, ""
-    
+
+
     def group_multi_unit_contracts(self, excel_data: List[Dict[str, Any]]) -> Dict[str, List[int]]:
         """
         Identify multi-unit contracts (same Project + Number)
-        
+
         Returns:
             Dictionary mapping "project-number" to list of row indices
         """
         contract_groups = {}
-        
+
         for i, row in enumerate(excel_data):
             project = row.get("Project", "")
             number = row.get("Number", "")
             contract_key = f"{project}-{number}"
-            
+
             if contract_key not in contract_groups:
                 contract_groups[contract_key] = []
             contract_groups[contract_key].append(i)
-        
+
         # Return only groups with multiple rows
         return {k: v for k, v in contract_groups.items() if len(v) > 1}
-    
+
+
     def combine_multi_unit_data(self, rows: List[Dict[str, Any]], target_county: str) -> Dict[str, Any]:
         """
         Combine multiple rows for same contract into single package
@@ -464,22 +529,44 @@ class BeaHorCountysDeedbackWorkflow(BaseWorkflow):
         """
         if not rows:
             raise ValueError("No rows provided for combination")
-        
+
         # Use first row as base
         base_row = rows[0]
         combined_data = self.transform_row_data(base_row, target_county)
-        
+
         if target_county == "SCCP49":  # Only Horry needs legal description combination
             # Combine legal descriptions and TMS numbers with semicolons
             legal_descriptions = []
             tms_numbers = []
-            
-            for row in rows:
+
+            for i, row in enumerate(rows):
                 row_data = self.transform_row_data(row, target_county)
-                legal_descriptions.append(row_data["legal_description"])
+
+                if i == 0:
+                    # First entry gets the full legal description
+                    legal_descriptions.append(row_data["legal_description"])
+                else:
+                    # Subsequent entries get abbreviated format
+                    project = row_data["project_number"]
+                    unit_code = row.get("Unit Code", "")
+                    week = row.get("Week", "")
+                    oeb_code = row.get("OEB Code", "")
+
+                    if project == 93:  # Anderson Ocean Club
+                        abbreviated = f"UNIT {unit_code} WK {week}{oeb_code}"
+                    elif project == 94:  # Ocean 22
+                        abbreviated = f"U {unit_code} W {week}"
+                    elif project == 96:  # OE Vacation Suites
+                        abbreviated = f"U {unit_code} W {week}"
+                    else:
+                        # Fallback to full description if unknown project
+                        abbreviated = row_data["legal_description"]
+
+                    legal_descriptions.append(abbreviated)
+
                 tms_numbers.append(row_data["tms_number"])
-            
+
             combined_data["legal_description"] = "; ".join(legal_descriptions)
             combined_data["tms_number"] = "; ".join(tms_numbers)
-        
+
         return combined_data
