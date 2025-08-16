@@ -33,7 +33,6 @@ class WorkflowSelectorWidget(QGroupBox):
         # Workflow description as clickable link
         self.description_label = QLabel("")
         self.description_label.setWordWrap(True)
-        self.description_label.setStyleSheet("color: #a0a0a0; font-style: italic; margin-top: 5px;")
         self.description_label.setOpenExternalLinks(True)  # Enable clickable links
         layout.addWidget(self.description_label)
 
