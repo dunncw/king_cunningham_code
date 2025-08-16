@@ -19,6 +19,6 @@ from .workflows.registry import WorkflowRegistry
 
 __all__ = [
     "Simplifile3Processor",
-    "Simplifile3Validator", 
+    "Simplifile3Validator",
     "WorkflowRegistry"
 ]

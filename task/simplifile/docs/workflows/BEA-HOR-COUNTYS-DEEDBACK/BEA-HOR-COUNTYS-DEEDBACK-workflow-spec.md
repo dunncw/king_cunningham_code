@@ -1,278 +1,307 @@
-# Beaufort/Horry Multi-County Deedback Workflow Specification
+# `BEA-HOR-COUNTYS-DEEDBACK` Specification
 
 ## Overview
-The Multi-County Deedback Workflow processes Excel data and a single PDF document stack containing variable-length deed documents to create Simplifile packages for both Beaufort County and Horry County, SC. This workflow handles cross-county uploads based on project numbers.
 
-**Workflow Name**: `BEA-HOR-COUNTYS-DEEDBACK`
+### Purpose
+The BEA-HOR-COUNTYS-DEEDBACK workflow processes timeshare deedback documents across multiple counties based on project numbers. It handles variable-length PDF documents and automatically routes submissions to either Beaufort County or Horry County based on the project type, while consolidating multi-unit contracts into single packages.
 
-## Input Files (2 total)
-1. **Excel File**: Row data for each package with document page counts
-2. **Deed Stack PDF**: All deed documents concatenated (variable page lengths per document)
+### User Expectations
+**Input Requirements**: Excel file with package data including page counts, and a single PDF stack containing all deed documents with variable page lengths
 
-## County Routing Logic
-Based on the `Project` column value:
-- **93, 94, 96**: Route to Horry County
-- **95**: Route to Beaufort County  
-- **98**: Skip these rows entirely (do not process)
+**Processing Results**: Creates Simplifile packages containing deed documents submitted to either Beaufort County (Project 95) or Horry County (Projects 93, 94, 96). Project 98 entries are skipped. Multi-unit contracts are automatically consolidated into single packages.
 
-## PDF Processing Strategy
+---
 
-### Variable Page Document Extraction
-Unlike previous workflows with fixed page counts, this workflow uses the `DB Pages` column to determine document length:
-- Track current position in PDF stack (starting at page 1)
-- For each row N in Excel:
-  - Extract pages from `current_position` to `current_position + DB_Pages - 1`
-  - Update `current_position += DB_Pages`
-  - Continue to next row
+## Specification
 
-### Multi-Unit/Week Handling (Same Contract Number)
-When multiple rows share the same `Project` and `Number` (contract number):
-1. **Group Detection**: Scan Excel to identify all rows with matching Project + Number combinations
-2. **Single Package Creation**: Create ONE package using the first row's data
-3. **PDF Selection**: Use ONLY the first row's PDF document (subsequent PDFs for same contract are duplicates)
-4. **Legal Description Combination**: Combine all units/weeks into a single legal description with semicolon separators
-5. **Package Naming**: Use the first row's unit/week for the package name
+### Input Requirements
 
-## Package Naming Convention
-**Two Options Available:**
-1. **Auto-Generated Format**: `{LEAD 1 LAST} {Unit Code}-{Week}{OEB Code} {Project}-{Number}`
-2. **From Excel**: Use value from `Package Name` column (AK) if provided
+#### Excel Document
+**File Description**: Excel spreadsheet containing one row per deedback document with contract details, unit information, and PDF page counts for variable-length document extraction.
 
-**Note**: For multi-unit contracts, the package name uses the first row's data.
+##### Required Columns
+| Column Name | Data Type | Description | Validation Rules |
+|-------------|-----------|-------------|------------------|
+| `Project` | Integer | Project number for county routing | Must be 93, 94, 95, 96, or 98 |
+| `Number` | String | Contract number for package grouping | Required, non-empty |
+| `Lead 1 First` | String | Primary grantor first name | Required, converted to UPPERCASE |
+| `LEAD 1 LAST` | String | Primary grantor last name | Required, converted to UPPERCASE |
+| `Lead 2 First` | String | Secondary grantor first name | Optional |
+| `Lead 2 Last` | String | Secondary grantor last name | Optional |
+| `Unit Code` | String | Property unit identifier | Required, non-empty |
+| `Week` | String | Timeshare week | Required, non-empty |
+| `OEB Code` | String | Additional identifier for Project 93 | Optional, used only for Anderson Ocean Club |
+| `DB Date` | String | Document execution date (M/D/YYYY) | Required for Horry County projects |
+| `DB Pages` | Integer | Number of pages for this document | Required, must be positive integer |
+| `Consideration` | String | Monetary consideration amount | Required, $ and commas removed during processing |
+| `Package Name` | String | Custom package name (Column AK) | Optional, auto-generated if empty |
 
-## County-Specific Requirements
+##### Column Processing Rules
+**Project**: 
+- 93, 94, 96 → Route to Horry County (SCCP49)
+- 95 → Route to Beaufort County (SCCY4G)
+- 98 → Skip processing entirely
 
-### Beaufort County (Project 95)
+**Number**: 
+- Combined with Project to create contract key for multi-unit grouping
+- Used in package ID generation
 
-#### Document Configuration
-- **County ID**: `SCCY4G`
-- **Document Type**: `DEED - HILTON HEAD TIMESHARE`
-- **Package Naming**: Auto-generated or from Excel column AK
+**Lead Names**: 
+- All names converted to UPPERCASE
+- Lead 2 names optional but both first and last required if either provided
+- Used as grantors in API payload
 
-#### Indexing Data
-- **Grantors** (Individual type):
-  - `{Lead 1 First} {LEAD 1 LAST}`
-  - `{Lead 2 First} {Lead 2 Last}` (if present)
-- **Grantees** (Organization type):
-  - Always `HII DEVELOPMENT LLC`
-- **Consideration**: Value from `Consideration` column (e.g., "$5,484.76")
-- **No Additional Fields Required**: Beaufort only needs Grantor(s), Grantee, and Consideration
+**Consideration**: 
+- Dollar signs and commas removed
+- Converted to decimal format for API
 
-### Horry County (Projects 93, 94, 96)
+**Package Name**: 
+- If Column AK (Package Name) provided, use that value
+- Otherwise auto-generate: `{LEAD 1 LAST} {Unit Code}-{Week}{OEB Code} {Project}-{Number}`
 
-#### Document Configuration
-- **County ID**: `SCCP49`
-- **Document Type**: `Deed - Timeshare`
-- **Package Naming**: Auto-generated or from Excel column AK
+##### Excel Validation
+- **Structure Validation**: All required columns must be present
+- **Data Validation**: Required fields must not be empty, Project must be valid integer, DB Pages must be positive
+- **Row Validation**: Each row must have valid project number and complete required data for target county
 
-#### Indexing Data
-- **Grantors** (Individual type):
-  - `{Lead 1 First} {LEAD 1 LAST}`
-  - `{Lead 2 First} {Lead 2 Last}` (if present)
-- **Grantees** (Organization type):
-  - Based on project number (see below)
-- **Execution Date**: From `DB Date` column (format: "6/17/2025")
-- **Consideration**: Value from `Consideration` column
-- **Legal Description**: Project-specific, combined for multi-unit contracts
-- **TMS/Parcel ID**: Project-specific, combined for multi-unit contracts
-- **Reference Information**: Book/page from Excel columns
+##### Multi-Row Processing Rules
+**Single Record Processing**: Each row represents one deedback document with specified page count
 
-## Horry County Project-Specific Rules
+**Grouped Processing**: 
+- Rows with same Project + Number combination are treated as multi-unit contracts
+- Only first row's PDF is extracted (subsequent PDFs are identical duplicates)
+- Legal descriptions are combined with abbreviated format for additional units
+- Package name always uses first row's unit information
 
-### Project 93 - Anderson Ocean Club
-- **Grantee**: `OCEAN CLUB VACATIONS LLC`
-- **Legal Description**: `ANDERSON OCEAN CLUB HPR UNIT {Unit Code} WK {Week}{OEB Code}` for additional units append `;UNIT {Unit Code} WK {Week}{OEB Code}`
-- **TMS #**: Use unit-to-TMS conversion table (see reference section)
+**Skip Conditions**: 
+- Project = 98 (per specification)
+- Missing required fields for target county
+- Invalid page count values
 
-### Project 94 - Ocean 22
-- **Grantee**: `OCEAN 22 DEVELOPMENT LLC`
-- **Legal Description**: `OCEAN 22 VACATION SUITES U {Unit Code} W {Week}` for additional units append `;U {Unit Code} W {Week}`
-- **TMS #**: Always `1810418003`
+#### Document Files
 
-### Project 96 - OE Vacation Suites
-- **Grantee**: `NUM 1600 DEVELOPMENT LLC`
-- **Legal Description**: `OE VACATION SUITES U {Unit Code} W {Week}` for additional units append `;U {Unit Code} W {Week}`
-- **TMS #**: Always `1810732008`
+##### Document Structure
+**File Type**: Variable PDF Stack
+**Organization**: Single PDF file containing all deed documents concatenated in row order, with each document having the page count specified in the corresponding Excel row's DB Pages column
+
+##### Document Requirements
+- **Deed Documents**: Variable pages per document (1-6+ pages typical), contains complete deedback deed document
+
+##### Document Validation
+- **File Existence**: Deed Stack PDF must exist and be readable
+- **Document Alignment**: Total PDF pages must equal or exceed sum of all DB Pages values for valid rows
+- **Page Count Validation**: Each DB Pages value must be positive integer
+
+##### Document Processing Rules
+- **Extraction Method**: Use DB Pages column to determine document boundaries, extract pages sequentially starting from page 1
+- **Multi-Unit Handling**: For duplicate contracts (same Project + Number), skip PDF extraction for 2nd+ occurrences but advance position counter
+- **Special Handling**: Variable page lengths require dynamic position tracking through PDF stack
+
+### Payload Requirements
+
+#### Data Gathering Rules
+Data from Excel rows and extracted PDF documents are combined to create county-specific API payloads with project-based routing and business rule application.
+
+##### County Routing
+**Routing Logic**: Project number determines target county
+- Projects 93, 94, 96 → Horry County (SCCP49)
+- Project 95 → Beaufort County (SCCY4G)
+- Project 98 → Skip (no processing)
+
+##### Data Transformation
+**Field Mapping**: Excel columns mapped to internal fields, names converted to UPPERCASE, consideration cleaned of currency symbols
+**Business Logic**: Project-specific grantee assignment, legal description formatting, TMS number lookup for Project 93
+
+##### Package Organization
+**Package Naming**: Custom name from Excel Column AK or auto-generated format using first row data for multi-unit contracts
+**Document Grouping**: One deed document per package, multi-unit contracts consolidated into single package with combined legal descriptions
+**Metadata**: Package ID format P-{Contract Number}, Document ID format D-{Contract Number}
+
+##### Payload Validation
+- **Package Structure**: Valid JSON with required Simplifile API fields
+- **Required Fields**: County-specific required fields must be present and properly formatted
+- **Document Attachments**: Base64 PDF data must be present and valid
+
+#### County-Specific Requirements
+
+##### Horry County (Projects 93, 94, 96)
+**County ID**: SCCP49
+**Document Types**: 
+- Deed Document: "Deed - Timeshare"
+
+**Required Fields**:
+- Execution Date: DB Date → executionDate (MM/DD/YYYY format)
+- Consideration: Consideration → consideration (decimal format)
+- Legal Description: Project-specific format → legalDescriptions[0].description
+- TMS/Parcel ID: Project-specific lookup → legalDescriptions[0].parcelId
+- Reference Information: Ref DEED BOOK/PAGE → referenceInformation
+
+**Project-Specific Business Rules**:
+
+**Project 93 (Anderson Ocean Club)**:
+- Grantee: "OCEAN CLUB VACATIONS LLC"
+- Legal Description: "ANDERSON OCEAN CLUB HPR UNIT {Unit Code} WK {Week}{OEB Code}"
+- Additional Units: "; UNIT {Unit Code} WK {Week}{OEB Code}"
+- TMS Number: Unit-to-TMS conversion table lookup
+
+**Project 94 (Ocean 22)**:
+- Grantee: "OCEAN 22 DEVELOPMENT LLC"  
+- Legal Description: "OCEAN 22 VACATION SUITES U {Unit Code} W {Week}"
+- Additional Units: "; U {Unit Code} W {Week}"
+- TMS Number: Always "1810418003"
+
+**Project 96 (OE Vacation Suites)**:
+- Grantee: "NUM 1600 DEVELOPMENT LLC"
+- Legal Description: "OE VACATION SUITES U {Unit Code} W {Week}" 
+- Additional Units: "; U {Unit Code} W {Week}"
+- TMS Number: Always "1810732008"
+
+##### Beaufort County (Project 95)
+**County ID**: SCCY4G
+**Document Types**: 
+- Deed Document: "DEED - HILTON HEAD TIMESHARE"
+
+**Required Fields**:
+- Consideration: Consideration → consideration (decimal format)
+- Grantors: Lead names → grantors (Individual type)
+- Grantees: Fixed organization → grantees (Organization type)
+
+**Business Rules**:
+- Grantee: Always "HII DEVELOPMENT LLC"
+- Simplified Requirements: No execution date, legal descriptions, or reference information required
+- No project-specific variations
+
+### API Payload Structure
+
+#### Package-Level Structure
+```json
+{
+  "documents": [/* Single deed document */],
+  "recipient": "{SCCP49 or SCCY4G}",
+  "submitterPackageID": "P-{Contract Number}",
+  "name": "{Package Name from Excel or auto-generated}",
+  "operations": {
+    "draftOnErrors": true,
+    "submitImmediately": false,
+    "verifyPageMargins": true
+  }
+}
+```
+
+#### Document Structure Templates
+
+##### Horry County Deed Document
+```json
+{
+  "submitterDocumentID": "D-{Contract Number}",
+  "name": "{Package Name}",
+  "kindOfInstrument": ["Deed - Timeshare"],
+  "indexingData": {
+    "executionDate": "{DB Date in MM/DD/YYYY format}",
+    "consideration": "{Cleaned consideration as decimal}",
+    "grantors": [
+      {
+        "firstName": "{Lead 1 First}",
+        "lastName": "{LEAD 1 LAST}",
+        "type": "Individual"
+      },
+      {
+        "firstName": "{Lead 2 First}",
+        "lastName": "{Lead 2 Last}",
+        "type": "Individual"
+      }
+    ],
+    "grantees": [
+      {
+        "nameUnparsed": "{Project-specific grantee organization}",
+        "type": "Organization"
+      }
+    ],
+    "legalDescriptions": [
+      {
+        "description": "{Project-specific legal description, combined for multi-unit}",
+        "parcelId": "{TMS number(s), semicolon-separated for multi-unit}"
+      }
+    ],
+    "referenceInformation": [
+      {
+        "documentType": "Deed - Timeshare",
+        "book": "{Ref DEED BOOK}",
+        "page": "{Ref DEED PAGE as integer}"
+      }
+    ]
+  },
+  "fileBytes": ["{Base64 PDF data from deed stack}"]
+}
+```
+
+##### Beaufort County Deed Document
+```json
+{
+  "submitterDocumentID": "D-{Contract Number}",
+  "name": "{Package Name}",
+  "kindOfInstrument": ["DEED - HILTON HEAD TIMESHARE"],
+  "indexingData": {
+    "consideration": "{Cleaned consideration as decimal}",
+    "grantors": [
+      {
+        "firstName": "{Lead 1 First}",
+        "lastName": "{LEAD 1 LAST}",
+        "type": "Individual"
+      },
+      {
+        "firstName": "{Lead 2 First}",
+        "lastName": "{Lead 2 Last}",
+        "type": "Individual"
+      }
+    ],
+    "grantees": [
+      {
+        "nameUnparsed": "HII DEVELOPMENT LLC",
+        "type": "Organization"
+      }
+    ]
+  },
+  "fileBytes": ["{Base64 PDF data from deed stack}"]
+}
+```
+
+### Error Handling
+
+#### Fail-Fast Scenarios
+Conditions that stop processing immediately:
+- Missing Excel file or Deed Stack PDF
+- Invalid Excel structure (missing required columns)
+- PDF page count mismatch (insufficient pages for all documents)
+- Invalid project numbers outside allowed range
+
+#### Skip Scenarios
+Conditions that cause individual rows to be skipped:
+- Project = 98 (per specification)
+- Missing required fields for target county (e.g., DB Date for Horry projects)
+- Invalid DB Pages value (non-numeric or negative)
+- Unable to route row to supported county
+
+#### Warning Scenarios
+Conditions that generate warnings but don't stop processing:
+- Non-standard name formatting (not all UPPERCASE)
+- Missing optional fields (Lead 2 names, OEB Code for non-Project 93)
+- Duplicate contract processing (multiple rows with same Project + Number)
 
 ## Multi-Unit Contract Example
 
-For contracts with multiple units/weeks (same Project + Number):
-
 ### Input Rows:
 ```
-Row 1: Project 93, Number 512565, Unit 210, Week 13, OEB Code B
-Row 2: Project 93, Number 512565, Unit 300, Week 19, OEB Code B
+Row 1: Project 93, Number 512565, Unit 210, Week 13, OEB Code B, DB Pages 6
+Row 2: Project 93, Number 512565, Unit 300, Week 19, OEB Code B, DB Pages 6
 ```
 
 ### Processing Result:
 - **Single Package Created**: Using first row's data for package name
 - **Package Name**: `CROXALL 210-13B 93-512565`
-- **PDF Used**: Only the 6-page document from Row 1 (Row 2's PDF is skipped)
+- **PDF Used**: Only the 6-page document from Row 1 (Row 2's PDF position skipped)
 - **Legal Description**: `ANDERSON OCEAN CLUB HPR UNIT 210 WK 13B; UNIT 300 WK 19B`
-- **TMS Numbers**: `18104152410; 18104154830`
-
-## Excel Column Mapping
-
-### Required Columns
-| Column | Internal Field | Usage |
-|--------|---------------|--------|
-| `Project` | `project_number` | County routing (93,94,95,96,98) |
-| `Number` | `contract_number` | Package identifier |
-| `Lead 1 First` | `lead_1_first` | Primary grantor first name |
-| `LEAD 1 LAST` | `lead_1_last` | Primary grantor last name |
-| `Lead 2 First` | `lead_2_first` | Secondary grantor first name (if present) |
-| `Lead 2 Last` | `lead_2_last` | Secondary grantor last name (if present) |
-| `Unit Code` | `unit_code` | Property unit identifier |
-| `Week` | `week` | Timeshare week |
-| `OEB Code` | `oeb_code` | Additional identifier (Project 93 only) |
-| `DB Date` | `execution_date` | Document execution date (Horry only) |
-| `DB Pages` | `document_pages` | Number of pages for this document |
-| `Consideration` | `consideration` | Monetary consideration |
-
-## API Payload Structure
-
-### Beaufort County (Project 95)
-```json
-{
-  "documents": [
-    {
-      "submitterDocumentID": "D-{contract_number}",
-      "name": "{package_name}",
-      "kindOfInstrument": ["DEED - HILTON HEAD TIMESHARE"],
-      "indexingData": {
-        "grantors": [
-          {
-            "firstName": "{lead_1_first}",
-            "lastName": "{lead_1_last}",
-            "type": "Individual"
-          },
-          {
-            "firstName": "{lead_2_first}",
-            "lastName": "{lead_2_last}",
-            "type": "Individual"
-          }
-        ],
-        "grantees": [
-          {
-            "nameUnparsed": "HII DEVELOPMENT LLC",
-            "type": "Organization"
-          }
-        ],
-        "consideration": "{consideration}"
-      },
-      "fileBytes": ["{extracted_pdf}"]
-    }
-  ],
-  "recipient": "SCCY4G",
-  "submitterPackageID": "P-{contract_number}",
-  "name": "{package_name}",
-  "operations": {
-    "draftOnErrors": true,
-    "submitImmediately": false,
-    "verifyPageMargins": true
-  }
-}
-```
-
-### Horry County (Projects 93, 94, 96)
-```json
-{
-  "documents": [
-    {
-      "submitterDocumentID": "D-{contract_number}",
-      "name": "{package_name}",
-      "kindOfInstrument": ["Deed - Timeshare"],
-      "indexingData": {
-        "executionDate": "{execution_date}",
-        "consideration": "{consideration}",
-        "grantors": [
-          {
-            "firstName": "{lead_1_first}",
-            "lastName": "{lead_1_last}",
-            "type": "Individual"
-          },
-          {
-            "firstName": "{lead_2_first}",
-            "lastName": "{lead_2_last}",
-            "type": "Individual"
-          }
-        ],
-        "grantees": [
-          {
-            "nameUnparsed": "{project_specific_grantee}",
-            "type": "Organization"
-          }
-        ],
-        "legalDescriptions": [
-          {
-            "description": "{combined_legal_description}",
-            "parcelId": "{combined_tms_numbers}"
-          }
-        ],
-        "referenceInformation": [
-          {
-            "documentType": "Deed - Timeshare",
-            "book": "{deed_book}",
-            "page": "{deed_page}"
-          }
-        ]
-      },
-      "fileBytes": ["{extracted_pdf_from_first_row_only}"]
-    }
-  ],
-  "recipient": "SCCP49",
-  "submitterPackageID": "P-{contract_number}",
-  "name": "{package_name}",
-  "operations": {
-    "draftOnErrors": true,
-    "submitImmediately": false,
-    "verifyPageMargins": true
-  }
-}
-```
-
-## Validation Rules
-
-### Fail Fast Scenarios
-1. Missing required Excel columns
-2. Invalid project number (not 93, 94, 95, 96, or 98)
-3. Missing `DB Pages` value or non-numeric value
-4. PDF page count mismatch (total pages < sum of all `DB Pages`)
-5. Missing lead 1 name information
-6. Invalid date format in `DB Date` (Horry County)
-7. Invalid unit code for TMS lookup (Project 93)
-
-### Skip Row/PDF Scenarios
-1. Project number = 98 (skip entire row)
-2. Empty required fields for the specific county
-3. Invalid or missing page count
-4. Duplicate contract (same Project + Number) - skip PDF extraction for 2nd+ occurrences
-
-## Special Handling
-
-### Name Processing
-- All names should be converted to UPPERCASE
-- Handle missing Lead 2 gracefully (not all records have second grantor)
-
-### Consideration Formatting
-- Remove currency symbols and commas
-- Convert to decimal format for API
-
-### Date Formatting
-- Convert `DB Date` from "M/D/YYYY" to "MM/DD/YYYY" format
-
-### Package Name Generation
-- Check Excel column AK (`Package Name`) first
-- If empty, auto-generate using format specified
-- For multi-unit contracts, always use first row's package name
-
-### Multi-Unit Contract Processing
-1. **Pre-scan Excel**: Identify all rows with duplicate Project + Number combinations
-2. **Group Processing**: Process each unique Project + Number once
-3. **PDF Extraction**: Only extract PDF for the first occurrence
-4. **Legal Description Building**: Concatenate all units/weeks with semicolons
-5. **TMS Handling**: Concatenate all TMS numbers with semicolons (Project 93 only)
-6. **Skip Duplicate PDFs**: Advance the PDF position counter for duplicate rows but don't extract
+- **TMS Numbers**: `18104152410; 18104154830` (semicolon-separated)
 
 ## Reference Data
 
@@ -453,14 +482,3 @@ unit_to_tms = {
     "PH11": "18104154640"
 }
 ```
-
-
-## Implementation Notes
-
-- First workflow with variable-length documents requiring dynamic page extraction
-- Cross-county routing based on project numbers
-- Unit-to-TMS conversion table must be used for Project 93 (Anderson Ocean Club)
-- Multi-unit contract detection and combination is critical for proper processing
-- Only first PDF used for duplicate contracts (all deedbacks are identical)
-- Package names can come from Excel or be auto-generated
-- All validation and error handling follows established patterns from previous workflows
