@@ -45,7 +45,7 @@ class Simplifile3Processor:
     
     def _get_workflow(self):
         """Get workflow instance for workflow type"""
-        if self.workflow_id == "bea_hor_countys_deedback":
+        if self.workflow_id == "BEA-HOR-COUNTYS-DEEDBACK":
             from ..workflows.bea_hor_countys_deedback.workflow import BeaHorCountysDeedbackWorkflow
             return BeaHorCountysDeedbackWorkflow(self.logger)
         else:
@@ -53,7 +53,7 @@ class Simplifile3Processor:
     
     def _get_pdf_processor(self):
         """Get PDF processor for workflow"""
-        if self.workflow_id == "bea_hor_countys_deedback":
+        if self.workflow_id == "BEA-HOR-COUNTYS-DEEDBACK":
             from ..workflows.bea_hor_countys_deedback.pdf_processor import BeaHorCountysDeedbackPDFProcessor
             return BeaHorCountysDeedbackPDFProcessor(self.logger)
         else:
@@ -61,7 +61,7 @@ class Simplifile3Processor:
     
     def _get_payload_builder(self):
         """Get payload builder for workflow"""
-        if self.workflow_id == "bea_hor_countys_deedback":
+        if self.workflow_id == "BEA-HOR-COUNTYS-DEEDBACK":
             from ..workflows.bea_hor_countys_deedback.payload_builder import BeaHorCountysDeedbackPayloadBuilder
             return BeaHorCountysDeedbackPayloadBuilder(self.logger)
         else:

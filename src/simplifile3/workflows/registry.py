@@ -41,27 +41,26 @@ class WorkflowRegistry:
         
         # BEA-HOR-COUNTYS-DEEDBACK workflow
         self.register_workflow(WorkflowConfig(
-            workflow_id="bea_hor_countys_deedback",
-            name="Beaufort/Horry Multi-County Deedback",
-            description='<a href="https://github.com/dunncw/king_cunningham_code/blob/dev/task/simplifile/docs/workflows/BEA-HOR-COUNTYS-DEEDBACK/BEA-HOR-COUNTYS-DEEDBACK-workflow-spec.md#implementation-notes">workflow docs</a>',
+            workflow_id="BEA-HOR-COUNTYS-DEEDBACK",
+            name="BEA-HOR-COUNTYS-DEEDBACK",
+            description='<a href="https://github.com/dunncw/king_cunningham_code/blob/dev/task/simplifile/workflows/BEA-HOR-COUNTYS-DEEDBACK/BEA-HOR-COUNTYS-DEEDBACK-workflow-spec.md">BEA-HOR-COUNTYS-DEEDBACK SPEC</a>',
             input_type="variable_pdf",
             required_files=[
                 {
                     "key": "excel",
                     "label": "Excel File",
-                    "placeholder": "Select Excel file with package data and page counts",
                     "filter": "Excel Files (*.xlsx *.xls)",
                     "type": "file"
                 },
                 {
                     "key": "deed_stack",
                     "label": "Deed Stack PDF", 
-                    "placeholder": "Select deed stack PDF (variable pages per document)",
                     "filter": "PDF Files (*.pdf)",
                     "type": "file"
                 }
             ],
-            supported_counties=["SCCP49", "SCCY4G"]  # Horry and Beaufort
+            supported_counties=["SCCP49", "SCCY4G"],  # Horry and Beaufort
+            workflow_class=None  # Will be loaded dynamically
         ))
         
         # Future workflows will be added here as we migrate from simplifile2
