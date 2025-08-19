@@ -18,7 +18,7 @@ from .pacer_automation_ui import PACERAutomationUI
 from .simplifile_ui import SimplifileUI
 from simplifile.batch_processor import run_simplifile_batch_thread
 from simplifile2.ui.main_window import SimplifileMainWindow as Simplifile2UI
-from simplifile3.ui.main_window import Simplifile3MainWindow
+from simplifile3.ui.window import SimplifileWindow
 
 def get_resource_path(relative_path):
     try:
@@ -241,7 +241,7 @@ class MainWindow(QMainWindow):
         if hasattr(self.simplifile2_ui, 'layout'):
             self.simplifile2_ui.layout().addWidget(back_button)
 
-        self.simplifile3_ui = Simplifile3MainWindow()
+        self.simplifile3_ui = SimplifileWindow()
         back_button = QPushButton("← Back to Main Menu")
         back_button.clicked.connect(self.show_main_menu)
         # Add back button to the UI layout

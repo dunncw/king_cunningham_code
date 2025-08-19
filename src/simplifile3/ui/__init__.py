@@ -1,4 +1,5 @@
-# simplifile3/ui/__init__.py
-from .main_window import Simplifile3MainWindow
+"""Simplifile3 UI components."""
 
-__all__ = ["Simplifile3MainWindow"]
+from .window import SimplifileWindow
+
+__all__ = ["SimplifileWindow"]
