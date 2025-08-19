@@ -53,7 +53,25 @@ class Worker(QThread):
             if not excel_path:
                 raise ValueError("Excel file path not provided")
             
-            df = pd.read_excel(excel_path, dtype=str)
+            # Load Excel with workflow-specific columns
+            required_columns = workflow.required_columns
+            all_possible_columns = set(required_columns)
+            if hasattr(workflow, 'field_mappings'):
+                all_possible_columns.update(workflow.field_mappings.keys())
+            
+            columns_to_read = list(all_possible_columns)
+            
+            try:
+                df = pd.read_excel(excel_path, dtype=str, usecols=columns_to_read)
+            except ValueError:
+                # If some columns don't exist, just read what's available
+                temp_df = pd.read_excel(excel_path, nrows=0)
+                available_columns = [col for col in columns_to_read if col in temp_df.columns]
+                missing_required = [col for col in required_columns if col not in available_columns]
+                if missing_required:
+                    raise ValueError(f"Missing required columns: {missing_required}")
+                df = pd.read_excel(excel_path, dtype=str, usecols=available_columns)
+            
             logger.info(f"Loaded {len(df)} rows from Excel")
             
             # Validate Excel structure
@@ -64,26 +82,47 @@ class Worker(QThread):
                 self.finished.emit(False)
                 return
             
+            # Use pre-processed DataFrame if available (for multi-unit workflows)
+            if hasattr(workflow, 'processed_df'):
+                working_df = workflow.processed_df
+                logger.info(f"Pre-processed into {len(working_df)} packages")
+            else:
+                working_df = df
+            
+            # Check row validity and collect invalid rows
+            valid_rows = 0
+            invalid_rows = []
+            
+            for idx, row in working_df.iterrows():
+                row_dict = row.to_dict()
+                excel_row_num = idx + 2  # +2 for 1-based and header
+                
+                if workflow.is_row_valid(row_dict):
+                    valid_rows += 1
+                else:
+                    # Find which columns are invalid
+                    invalid_columns = []
+                    for col_idx, col in enumerate(workflow.required_columns):
+                        value = row_dict.get(col)
+                        if pd.isna(value) or str(value).strip() == "":
+                            invalid_columns.append(col_idx)
+                    
+                    invalid_rows.append([excel_row_num, invalid_columns])
+            
+            logger.info(f"Validation complete: {valid_rows} valid rows, {len(invalid_rows)} invalid rows")
+            
+            # Report invalid rows if any
+            if invalid_rows:
+                logger.info(f"Invalid rows: {invalid_rows}")
+            
             # Validate file paths
             for key, path in self.file_paths.items():
-                if path:  # Only check non-empty paths
+                if key != "excel" and path:  # Skip excel (already validated) and empty optional paths
                     import os
                     if not os.path.exists(path):
                         logger.error(f"{key} does not exist: {path}")
                         self.finished.emit(False)
                         return
-            
-            # Check row validity
-            valid_rows = 0
-            invalid_rows = 0
-            
-            for idx, row in df.iterrows():
-                if workflow.is_row_valid(row.to_dict()):
-                    valid_rows += 1
-                else:
-                    invalid_rows += 1
-            
-            logger.info(f"Validation complete: {valid_rows} valid rows, {invalid_rows} invalid rows")
             
             if valid_rows > 0:
                 self.finished.emit(True)

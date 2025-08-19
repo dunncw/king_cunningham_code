@@ -8,6 +8,8 @@ from PyQt6.QtWidgets import (
     QGroupBox, QProgressBar
 )
 from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtGui import QDesktopServices, QIcon
+from PyQt6.QtCore import QUrl
 
 from .worker import Worker
 from ..workflows import get_workflow, get_all_workflows
@@ -56,10 +58,17 @@ class SimplifileWindow(QWidget):
         
         self.workflow_combo = QComboBox()
         workflows = get_all_workflows()
-        for workflow_id, display_name in workflows.items():
-            self.workflow_combo.addItem(display_name, workflow_id)
+        for workflow_id, workflow_info in workflows.items():
+            # Use workflow ID as display name
+            self.workflow_combo.addItem(workflow_id, workflow_id)
         self.workflow_combo.currentIndexChanged.connect(self.on_workflow_changed)
         workflow_layout.addWidget(self.workflow_combo)
+        
+        # Add docs button
+        self.docs_btn = QPushButton("📖 Docs")
+        self.docs_btn.clicked.connect(self.open_docs)
+        self.docs_btn.setToolTip("Open workflow documentation (external link)")
+        workflow_layout.addWidget(self.docs_btn)
         
         workflow_group.setLayout(workflow_layout)
         layout.addWidget(workflow_group)
@@ -103,6 +112,21 @@ class SimplifileWindow(QWidget):
         if self.workflow_combo.count() > 0:
             self.on_workflow_changed()
     
+    def open_docs(self):
+        """Open documentation for current workflow."""
+        workflow_id = self.workflow_combo.currentData()
+        if not workflow_id:
+            return
+        
+        try:
+            workflow_class = get_workflow(workflow_id)
+            if hasattr(workflow_class, 'docs_url') and workflow_class.docs_url:
+                QDesktopServices.openUrl(QUrl(workflow_class.docs_url))
+            else:
+                QMessageBox.information(self, "No Documentation", "No documentation URL available for this workflow.")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Could not open documentation: {e}")
+    
     def on_workflow_changed(self):
         """Handle workflow selection change."""
         workflow_id = self.workflow_combo.currentData()
@@ -115,10 +139,7 @@ class SimplifileWindow(QWidget):
             self.current_workflow = workflow_class()
             
             # Clear existing file inputs
-            while self.files_layout.count():
-                child = self.files_layout.takeAt(0)
-                if child.widget():
-                    child.widget().deleteLater()
+            self.clear_file_inputs()
             
             self.file_paths = {}
             self.file_inputs = {}
@@ -130,10 +151,23 @@ class SimplifileWindow(QWidget):
             self.validate_btn.setText("Validate")
             self.process_btn.setEnabled(False)
             
-            self.log(f"Selected workflow: {self.current_workflow.display_name}")
+            # Don't log workflow selection to reduce noise
             
         except Exception as e:
             self.log(f"Error loading workflow: {e}")
+    
+    def clear_file_inputs(self):
+        """Properly clear all file input widgets."""
+        while self.files_layout.count():
+            child = self.files_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+            elif child.layout():
+                # Handle nested layouts
+                while child.layout().count():
+                    nested_child = child.layout().takeAt(0)
+                    if nested_child.widget():
+                        nested_child.widget().deleteLater()
     
     def add_file_inputs_for_workflow(self):
         """Add file inputs based on current workflow requirements."""
@@ -150,19 +184,19 @@ class SimplifileWindow(QWidget):
         elif workflow_name == "HORRY_MTG_FCL":
             # Fixed-length PDF stacks with optional affidavit
             self.add_file_input("deed_stack", "Deed Stack PDF (2 pages/doc)", "PDF Files (*.pdf)")
-            self.add_file_input("affidavit_stack", "Affidavit Stack PDF (Optional)", "PDF Files (*.pdf)", optional=True)
+            self.add_file_input("affidavit_stack", "Affidavit Stack PDF", "PDF Files (*.pdf)", optional=True)
             self.add_file_input("mortgage_stack", "Mortgage Satisfaction Stack PDF (1 page/doc)", "PDF Files (*.pdf)")
             
         elif workflow_name == "HORRY_HOA_FCL":
             # Similar to MTG but with condo lien
             self.add_file_input("deed_stack", "Deed Stack PDF (2 pages/doc)", "PDF Files (*.pdf)")
-            self.add_file_input("affidavit_stack", "Affidavit Stack PDF (Optional)", "PDF Files (*.pdf)", optional=True)
+            self.add_file_input("affidavit_stack", "Affidavit Stack PDF", "PDF Files (*.pdf)", optional=True)
             self.add_file_input("condo_lien_stack", "Condo Lien Satisfaction Stack PDF (1 page/doc)", "PDF Files (*.pdf)")
             
         elif workflow_name == "BEAUFORT_MTG_FCL":
             # Same as Horry MTG
             self.add_file_input("deed_stack", "Deed Stack PDF (2 pages/doc)", "PDF Files (*.pdf)")
-            self.add_file_input("affidavit_stack", "Affidavit Stack PDF (Optional)", "PDF Files (*.pdf)", optional=True)
+            self.add_file_input("affidavit_stack", "Affidavit Stack PDF", "PDF Files (*.pdf)", optional=True)
             self.add_file_input("mortgage_stack", "Mortgage Satisfaction Stack PDF (1 page/doc)", "PDF Files (*.pdf)")
             
         elif workflow_name == "FULTON_FCL":
@@ -374,6 +408,4 @@ class SimplifileWindow(QWidget):
     
     def log(self, message: str):
         """Add message to log."""
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        self.output_text.append(f"[{timestamp}] {message}")
+        self.output_text.append(message)
