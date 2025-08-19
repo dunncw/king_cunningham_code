@@ -54,6 +54,11 @@ The Horry Timeshare Deed Workflow processes Excel data and 3 PDF document stacks
 
 **Note on Validation**: If any of the required columns are empty for a particular row, that row should be skipped (not processed). Log a warning message about the skipped row and continue processing with the next valid row.
 
+**Organization Detection**:
+- If `Last Name #1` is empty/null AND `First Name #1` has a value, treat as organization
+- Organization names should be processed as `nameUnparsed` in grantors with type "Organization"
+- Individual names should be processed as separate `firstName`/`lastName` fields with type "Individual"
+
 ## Transform
 
 ### Excel to API Field Mapping

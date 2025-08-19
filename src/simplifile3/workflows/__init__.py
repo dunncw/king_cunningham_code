@@ -1,4 +1,28 @@
-# simplifile3/workflows/__init__.py
-from .registry import WorkflowRegistry, WorkflowConfig, workflow_registry
+"""Workflow registry for Simplifile3."""
 
-__all__ = ["WorkflowRegistry", "WorkflowConfig", "workflow_registry"]
+from .bea_hor_deedback import BeaHorDeedbackWorkflow
+from .horry_mtg_fcl import HorryMTGFCLWorkflow
+
+# Registry of all workflows
+WORKFLOWS = {
+    "BEA_HOR_DEEDBACK": BeaHorDeedbackWorkflow,
+    "HORRY_MTG_FCL": HorryMTGFCLWorkflow,
+    # Add more workflows here as you implement them:
+    # "HORRY_HOA_FCL": HorryHOAFCLWorkflow,
+    # "BEAUFORT_MTG_FCL": BeaufortMTGFCLWorkflow,
+    # "FULTON_FCL": FultonFCLWorkflow,
+    # "FULTON_DEEDBACKS": FultonDeedbacksWorkflow,
+}
+
+def get_workflow(workflow_id: str):
+    """Get workflow class by ID."""
+    if workflow_id not in WORKFLOWS:
+        raise ValueError(f"Unknown workflow: {workflow_id}")
+    return WORKFLOWS[workflow_id]
+
+def get_all_workflows():
+    """Get all available workflows."""
+    return {
+        workflow_id: cls.display_name 
+        for workflow_id, cls in WORKFLOWS.items()
+    }

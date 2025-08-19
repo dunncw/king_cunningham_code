@@ -22,7 +22,7 @@ The BEA-HOR-COUNTYS-DEEDBACK workflow processes timeshare deedback documents acr
 ##### Required Columns
 | Column Name | Data Type | Description | Validation Rules |
 |-------------|-----------|-------------|------------------|
-| `Project` | Integer | Project number for county routing | Must be 93, 94, 95, 96, or 98 |
+| `Project` | String | Project number for county routing | Must be 93, 94, 95, 96, or 98 |
 | `Number` | String | Contract number for package grouping | Required, non-empty |
 | `Lead 1 First` | String | Primary grantor first name | Required, converted to UPPERCASE |
 | `LEAD 1 LAST` | String | Primary grantor last name | Required, converted to UPPERCASE |
@@ -52,8 +52,7 @@ The BEA-HOR-COUNTYS-DEEDBACK workflow processes timeshare deedback documents acr
 - Used as grantors in API payload
 
 **Consideration**: 
-- Dollar signs and commas removed
-- Converted to decimal format for API
+- Just remove leading '$'. example '$67,980.00' -> '67,980.00'
 
 **Package Name**: 
 - If Column AK (Package Name) provided, use that value
@@ -67,11 +66,13 @@ The BEA-HOR-COUNTYS-DEEDBACK workflow processes timeshare deedback documents acr
 ##### Multi-Row Processing Rules
 **Single Record Processing**: Each row represents one deedback document with specified page count
 
-**Grouped Processing**: 
+**Multi-Unit Contract Processing**:
 - Rows with same Project + Number combination are treated as multi-unit contracts
-- Only first row's PDF is extracted (subsequent PDFs are identical duplicates)
-- Legal descriptions are combined with abbreviated format for additional units
-- Package name always uses first row's unit information
+- Only the first row is processed for package creation and PDF extraction
+- Subsequent rows contribute only to legal description and TMS combination
+- Legal descriptions are combined: first unit gets full description, additional units get abbreviated format separated by semicolons
+- Package naming and all other metadata use first row's information only
+- PDF extraction occurs only at first row's position, subsequent positions are skipped
 
 **Skip Conditions**: 
 - Project = 98 (per specification)
@@ -131,7 +132,6 @@ Data from Excel rows and extracted PDF documents are combined to create county-s
 
 **Required Fields**:
 - Execution Date: DB Date → executionDate (MM/DD/YYYY format)
-- Consideration: Consideration → consideration (decimal format)
 - Legal Description: Project-specific format → legalDescriptions[0].description
 - TMS/Parcel ID: Project-specific lookup → legalDescriptions[0].parcelId
 - Reference Information: Ref DEED BOOK/PAGE → referenceInformation
