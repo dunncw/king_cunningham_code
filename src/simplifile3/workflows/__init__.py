@@ -2,14 +2,15 @@
 
 from .bea_hor_deedback import BeaHorDeedbackWorkflow
 from .horry_mtg_fcl import HorryMTGFCLWorkflow
+from .beaufort_mtg_fcl import BeaufortMTGFCLWorkflow
 
 # Registry of all workflows
 WORKFLOWS = {
     "BEA_HOR_DEEDBACK": BeaHorDeedbackWorkflow,
     "HORRY_MTG_FCL": HorryMTGFCLWorkflow,
+    "BEAUFORT_MTG_FCL": BeaufortMTGFCLWorkflow,
     # Add more workflows here as you implement them:
     # "HORRY_HOA_FCL": HorryHOAFCLWorkflow,
-    # "BEAUFORT_MTG_FCL": BeaufortMTGFCLWorkflow,
     # "FULTON_FCL": FultonFCLWorkflow,
     # "FULTON_DEEDBACKS": FultonDeedbacksWorkflow,
 }
