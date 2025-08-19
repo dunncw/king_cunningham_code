@@ -26,7 +26,6 @@ class Processor:
             "failed_uploads": 0
         }
 
-
     def process_batch(self, excel_path: str, pdf_paths: Dict[str, str]) -> Dict[str, Any]:
         """Process batch using workflow implementation."""
         try:
@@ -72,12 +71,6 @@ class Processor:
             if hasattr(self.workflow, 'processed_df'):
                 working_df = self.workflow.processed_df
                 self.logger.info(f"Using pre-processed DataFrame: {len(working_df)} packages")
-
-                # DEBUG: Print entire DataFrame
-                # self.logger.info("DEBUG - Full DataFrame after validation:")
-                # for idx, row in working_df.iterrows():
-                #     self.logger.info(f"Row {idx}: {dict(row)}")
-
             else:
                 working_df = df
             
@@ -85,18 +78,10 @@ class Processor:
             packages = []
             for idx, row in working_df.iterrows():
                 row_dict = row.to_dict()
+                excel_row_num = idx + 2  # +2 for 1-based and header
                 
                 if not self.workflow.is_row_valid(row_dict):
                     self.stats["skipped_rows"] += 1
-                    invalid_fields = []
-                    for col in self.workflow.required_columns:
-                        if pd.isna(row_dict.get(col)) or str(row_dict.get(col)).strip() == "":
-                            invalid_fields.append(col)
-                    
-                    if invalid_fields:
-                        self.logger.info(f"Invalid Row {idx + 2}: {invalid_fields}")
-                    else:
-                        self.logger.info(f"Invalid Row {idx + 2}")
                     continue
                 
                 # Transform row
@@ -132,7 +117,6 @@ class Processor:
         except Exception as e:
             self.logger.error(f"Batch processing failed: {e}")
             return {"success": False, "error": str(e), "stats": self.stats}
-
 
     def _upload(self, payload: Dict[str, Any], package_name: str) -> bool:
         """Upload package to API."""

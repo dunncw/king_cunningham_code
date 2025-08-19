@@ -1,15 +1,17 @@
-"""Horry MTG-FCL workflow implementation."""
+"""Horry MTG-FCL workflow implementation with organization detection."""
 
 import os
-from typing import Dict, Any
+import pandas as pd
+from typing import Dict, Any, List
 from .base import BaseWorkflow
 
 
 class HorryMTGFCLWorkflow(BaseWorkflow):
-    """Horry County Timeshare Deed workflow."""
+    """Horry County Timeshare Deed workflow with proper organization handling."""
     
     name = "HORRY_MTG_FCL"
-    display_name = "Horry Timeshare Deed (MTG-FCL)"
+    display_name = "HORRY_MTG_FCL"
+    docs_url = "https://github.com/dunncw/king_cunningham_code/blob/dev/task/simplifile/workflows/HORRY-MTG-FCL/HORRY-MTG-FCL-workflow-spec.md"
     county = "SCCP49"
     
     required_columns = [
@@ -37,26 +39,68 @@ class HorryMTGFCLWorkflow(BaseWorkflow):
         "LEGAL DESCRIPTION": "legal_description"
     }
     
+    def is_row_valid(self, row: Dict[str, Any]) -> bool:
+        """Check if row should be processed with improved validation."""
+        # Check required fields except for name fields (we'll handle those specially)
+        name_fields = {"Last Name #1", "First Name #1"}
+        for col in self.required_columns:
+            if col not in name_fields:
+                if pd.isna(row.get(col)) or str(row.get(col)).strip() == "":
+                    return False
+        
+        # Special validation for names
+        last_1 = str(row.get("Last Name #1", "")).strip()
+        first_1 = str(row.get("First Name #1", "")).strip()
+        
+        # Must have at least first name (for both individuals and organizations)
+        if not first_1:
+            return False
+        
+        # Valid cases:
+        # 1. Both first and last name (individual)
+        # 2. Only first name (organization)
+        # Invalid case: Only last name without first name
+        if last_1 and not first_1:
+            return False
+        
+        return True
+    
     def transform_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        """Transform row with Horry-specific logic."""
+        """Transform row with Horry-specific logic and organization detection."""
         # Start with base transformation
         data = super().transform_row(row)
         
-        # Uppercase names
-        for field in ["first_1", "last_1", "first_2", "last_2"]:
-            if field in data:
-                data[field] = data[field].upper()
+        # Clean up potential NaN values
+        def clean_value(value):
+            if pd.isna(value):
+                return ""
+            return str(value).strip()
         
-        # Handle second owner
-        data["has_second"] = (row.get("&") == "&")
+        # Clean all name fields
+        data["first_1"] = clean_value(data.get("first_1", ""))
+        data["last_1"] = clean_value(data.get("last_1", ""))
+        data["first_2"] = clean_value(data.get("first_2", ""))
+        data["last_2"] = clean_value(data.get("last_2", ""))
         
-        # Handle ORG: prefix
-        if data.get("last_1", "").startswith("ORG:"):
-            data["is_org"] = True
+        # Organization detection: if last name is empty and first name has value, it's an org
+        data["is_org"] = (not data["last_1"] and data["first_1"])
+        
+        if data["is_org"]:
+            # Organization handling
+            data["org_name"] = data["first_1"]
+            # Package name uses organization name
             data["package_name"] = f"{data['account']} {data['first_1']} TD {data['kc_file_no']}"
         else:
-            data["is_org"] = False
+            # Individual handling - uppercase names
+            data["first_1"] = data["first_1"].upper()
+            data["last_1"] = data["last_1"].upper()
+            data["first_2"] = data["first_2"].upper()
+            data["last_2"] = data["last_2"].upper()
+            # Package name uses last name
             data["package_name"] = f"{data['account']} {data['last_1']} TD {data['kc_file_no']}"
+        
+        # Handle second owner (check for "&" symbol)
+        data["has_second"] = (row.get("&") == "&" and data["first_2"] and data["last_2"])
         
         # IDs
         data["package_id"] = f"P-{data['kc_file_no']}-{data['account']}"
@@ -160,17 +204,20 @@ class HorryMTGFCLWorkflow(BaseWorkflow):
         grantors = []
         
         if data.get("is_org"):
+            # Organization in first name field
             grantors.append({
-                "nameUnparsed": data["first_1"],
+                "nameUnparsed": data["org_name"],
                 "type": "Organization"
             })
         else:
+            # Individual
             grantors.append({
                 "firstName": data["first_1"],
                 "lastName": data["last_1"],
                 "type": "Individual"
             })
         
+        # Add second grantor if present (always individual for "&" cases)
         if data.get("has_second") and data.get("first_2"):
             grantors.append({
                 "firstName": data["first_2"],

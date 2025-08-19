@@ -21,8 +21,11 @@ def get_workflow(workflow_id: str):
     return WORKFLOWS[workflow_id]
 
 def get_all_workflows():
-    """Get all available workflows."""
+    """Get all available workflows with docs URLs."""
     return {
-        workflow_id: cls.display_name 
+        workflow_id: {
+            "name": workflow_id,  # Use ID as display name
+            "docs_url": cls.docs_url if hasattr(cls, 'docs_url') else ""
+        }
         for workflow_id, cls in WORKFLOWS.items()
     }
