@@ -129,12 +129,12 @@ class MainWindow(QMainWindow):
         modules = [
             {
                 "name": "Simplifile",
-                "description": "Workflow-first document recording",
+                "description": "Workflow-first bulk document recording",
                 "action": self.show_simplifile
             },
             {
                 "name": "PT-61 Forms",
-                "description": "Automated PT-61 form processing",
+                "description": "Bulk PT-61 form Generation",
                 "action": self.show_web_automation
             },
             {
@@ -149,12 +149,12 @@ class MainWindow(QMainWindow):
             },
             {
                 "name": "SCRA Lookup",
-                "description": "Service member verification",
+                "description": "Bulk Service member verification",
                 "action": self.show_scra_automation
             },
             {
                 "name": "PACER Access",
-                "description": "Federal court documents",
+                "description": "Federal court document gathering",
                 "action": self.show_pacer_automation
             }
         ]
