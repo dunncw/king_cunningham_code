@@ -15,9 +15,6 @@ from web_automation.automation import run_web_automation_thread
 from document_processor.processor import OCRWorker
 from .scra_automation_ui import SCRAAutomationUI
 from .pacer_automation_ui import PACERAutomationUI
-from .simplifile_ui import SimplifileUI
-from simplifile.batch_processor import run_simplifile_batch_thread
-from simplifile2.ui.main_window import SimplifileMainWindow as Simplifile2UI
 from simplifile3.ui.window import SimplifileWindow
 
 def get_resource_path(relative_path):
@@ -31,7 +28,6 @@ class MainWindow(QMainWindow):
     check_for_updates = pyqtSignal()
     start_web_automation = pyqtSignal(str, str, str, str, str, str, bool)
     start_crg_automation = pyqtSignal()
-    start_simplifile_batch_upload = pyqtSignal(str, str, str, str, str, str)
 
     def __init__(self, version):
         super().__init__()
@@ -44,8 +40,6 @@ class MainWindow(QMainWindow):
         self.central_widget = QStackedWidget()
         self.setCentralWidget(self.central_widget)
 
-        # NO MENU BAR - Removed completely
-        
         # Clean status bar (minimal)
         self.statusBar = QStatusBar()
         self.statusBar.setStyleSheet("background-color: #2c2c2c; color: #e0e0e0;")
@@ -131,8 +125,13 @@ class MainWindow(QMainWindow):
         buttons_grid = QGridLayout()
         buttons_grid.setSpacing(20)
         
-        # Define modules (streamlined list)
+        # Define modules - Reordered with Simplifile at top
         modules = [
+            {
+                "name": "Simplifile",
+                "description": "Workflow-first document recording",
+                "action": self.show_simplifile
+            },
             {
                 "name": "PT-61 Forms",
                 "description": "Automated PT-61 form processing",
@@ -157,21 +156,6 @@ class MainWindow(QMainWindow):
                 "name": "PACER Access",
                 "description": "Federal court documents",
                 "action": self.show_pacer_automation
-            },
-            {
-                "name": "Simplifile",
-                "description": "Electronic document recording",
-                "action": self.show_simplifile
-            },
-            {
-                "name": "Simplifile 2",
-                "description": "Electronic document recording (New)",
-                "action": self.show_simplifile2
-            },
-                        {
-                "name": "Simplifile 3",
-                "description": "Workflow-first document recording",
-                "action": self.show_simplifile3
             }
         ]
         
@@ -197,7 +181,7 @@ class MainWindow(QMainWindow):
         
         self.main_menu.setLayout(main_layout)
 
-        # All existing automation UIs (unchanged)
+        # All existing automation UIs (remove simplifile 1 & 2)
         self.doc_processor = DocumentProcessorUI()
         self.doc_processor.start_processing.connect(self.start_document_processing)
         back_button = QPushButton("← Back to Main Menu")
@@ -226,27 +210,13 @@ class MainWindow(QMainWindow):
         back_button.clicked.connect(self.show_main_menu)
         self.pacer_automation.layout().addWidget(back_button)
 
-        # Updated Simplifile UI - no single upload signal connection needed
-        self.simplifile_ui = SimplifileUI()
-        self.simplifile_ui.start_simplifile_batch_upload.connect(self.start_simplifile_batch_process)
-        back_button = QPushButton("← Back to Main Menu")
-        back_button.clicked.connect(self.show_main_menu)
-        self.simplifile_ui.layout().addWidget(back_button)
-
-        # Simplifile 2 UI (new clean version)
-        self.simplifile2_ui = Simplifile2UI()
+        # Simplifile UI (formerly Simplifile 3)
+        self.simplifile_ui = SimplifileWindow()
         back_button = QPushButton("← Back to Main Menu")
         back_button.clicked.connect(self.show_main_menu)
         # Add back button to the UI layout
-        if hasattr(self.simplifile2_ui, 'layout'):
-            self.simplifile2_ui.layout().addWidget(back_button)
-
-        self.simplifile3_ui = SimplifileWindow()
-        back_button = QPushButton("← Back to Main Menu")
-        back_button.clicked.connect(self.show_main_menu)
-        # Add back button to the UI layout
-        if hasattr(self.simplifile3_ui, 'layout'):
-            self.simplifile3_ui.layout().addWidget(back_button)
+        if hasattr(self.simplifile_ui, 'layout'):
+            self.simplifile_ui.layout().addWidget(back_button)
 
         # Add widgets to stacked widget
         self.central_widget.addWidget(self.main_menu)
@@ -256,8 +226,6 @@ class MainWindow(QMainWindow):
         self.central_widget.addWidget(self.scra_automation)
         self.central_widget.addWidget(self.pacer_automation)
         self.central_widget.addWidget(self.simplifile_ui)
-        self.central_widget.addWidget(self.simplifile2_ui)
-        self.central_widget.addWidget(self.simplifile3_ui)
 
         self.show_main_menu()
     
@@ -353,40 +321,7 @@ class MainWindow(QMainWindow):
     
     def show_simplifile(self):
         self.central_widget.setCurrentWidget(self.simplifile_ui)
-        self.resize(900, 800)
-    
-    def show_simplifile2(self):
-        self.central_widget.setCurrentWidget(self.simplifile2_ui)
         self.resize(1000, 800)
-
-    def show_simplifile3(self):
-        self.central_widget.setCurrentWidget(self.simplifile3_ui)
-        self.resize(1000, 800)
-
-
-    def start_simplifile_batch_process(self, excel_path, deeds_path, mortgage_path):
-        api_token = self.simplifile_ui.api_token.text()
-        submitter_id = "SCTP3G"  # Hardcoded submitter ID
-        recipient_id = self.simplifile_ui.recipient_combo.currentData()
-        
-        affidavits_path = self.simplifile_ui.affidavits_file_path.text() if hasattr(self.simplifile_ui, 'affidavits_file_path') else None
-        
-        self.batch_thread, self.batch_worker = run_simplifile_batch_thread(
-            api_token, 
-            submitter_id,
-            recipient_id,
-            excel_path, 
-            deeds_path, 
-            mortgage_path,
-            affidavits_path
-        )
-        
-        self.batch_worker.status.connect(self.simplifile_ui.update_status)
-        self.batch_worker.progress.connect(self.simplifile_ui.update_progress)
-        self.batch_worker.error.connect(self.simplifile_ui.show_error)
-        self.batch_worker.finished.connect(self.simplifile_ui.batch_process_finished)
-        
-        self.batch_thread.start()
 
     def start_document_processing(self, input_path, output_dir, is_directory):
         self.ocr_worker = OCRWorker(input_path, output_dir, is_directory)
