@@ -1,4 +1,4 @@
-# Horry HOA-FCL Workflow Spec (Updated)
+# `HORRY-HOA-FCL` Workflow Spec
 
 ## Overview
 The Horry HOA-FCL Workflow processes Excel data and 3 PDF document stacks to create Simplifile packages containing both **Deed - Timeshare** and **Condo Lien Satisfaction** documents for Horry County, SC. This workflow is specifically designed for HOA foreclosures where condo liens are being satisfied instead of mortgages.
