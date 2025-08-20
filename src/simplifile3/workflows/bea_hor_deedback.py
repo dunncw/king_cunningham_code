@@ -10,7 +10,7 @@ class BeaHorDeedbackWorkflow(BaseWorkflow):
     
     name = "BEA_HOR_DEEDBACK"
     display_name = "BEA_HOR_DEEDBACK"
-    docs_url = "https://github.com/dunncw/king_cunningham_code/blob/dev/task/simplifile/workflows/BEA-HOR-COUNTYS-DEEDBACK/BEA-HOR-COUNTYS-DEEDBACK-workflow-spec.md"
+    docs_url = "https://github.com/dunncw/king_cunningham_code/blob/dev/task/simplifile/workflows/BEA-HOR-DEEDBACK/BEA-HOR-DEEDBACK-workflow-spec.md"
     
     required_columns = [
         "Project", "Number", "Lead 1 First", "LEAD 1 LAST",

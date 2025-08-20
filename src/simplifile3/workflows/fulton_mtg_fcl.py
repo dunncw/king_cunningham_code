@@ -11,7 +11,7 @@ class FultonMTGFCLWorkflow(BaseWorkflow):
     
     name = "FULTON_MTG_FCL"
     display_name = "FULTON_MTG_FCL"
-    docs_url = "https://github.com/dunncw/king_cunningham_code/blob/dev/task/simplifile/workflows/FULTON-MTG-FCL/FULTON-MTG-FCL-workflow-spec.md"
+    docs_url = "https://github.com/dunncw/king_cunningham_code/blob/dev/task/simplifile/workflows/FULTON-MTG-FCL/FULTON-MTG-FCL_workflow_spec.md"
     county = "GAC3TH"
     
     required_columns = [
