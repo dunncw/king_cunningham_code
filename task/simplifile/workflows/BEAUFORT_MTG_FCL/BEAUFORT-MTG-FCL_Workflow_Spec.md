@@ -1,7 +1,7 @@
-# Horry Timeshare Deed Workflow Spec
+# `BEAUFORT-MTG-FCL` Workflow Spec
 
 ## Overview
-The Horry Timeshare Deed Workflow processes Excel data and 3 PDF document stacks to create Simplifile packages containing both **Deed - Timeshare** and **Mortgage Satisfaction** documents for Horry County, SC.
+The Beaufort HiltonHead Timeshare Workflow processes Excel data and 3 PDF document stacks to create Simplifile packages containing both **DEED - HILTON HEAD TIMESHARE** and **MORT - SATISFACTION** documents for Beaufort County, SC.
 
 ## Input Files (4 total)
 1. **Excel File**: Row data for each package
@@ -41,23 +41,11 @@ The Horry Timeshare Deed Workflow processes Excel data and 3 PDF document stacks
 | `&` | No | If value is "&", indicates second owner exists |
 | `Last Name #2` | No | Required only if `&` column contains "&" |
 | `First Name #2` | No | Required only if `&` column contains "&" |
-| `Deed Book` | Yes | Reference book number for deed |
-| `Deed Page` | Yes | Reference page number for deed |
-| `Recorded Date` | Yes | Date the original deed was recorded |
-| `Mortgage Book` | Yes | Reference book number for mortgage |
-| `Mortgage Page` | Yes | Reference page number for mortgage |
-| `Suite` | Yes | Property unit identifier |
-| `Consideration` | Yes | Monetary consideration amount |
-| `Execution Date` | Yes | Date document was executed |
 | `GRANTOR/GRANTEE` | Yes | Entity name for grantor/grantee |
-| `LEGAL DESCRIPTION` | Yes | Property legal description |
 
 **Note on Validation**: If any of the required columns are empty for a particular row, that row should be skipped (not processed). Log a warning message about the skipped row and continue processing with the next valid row.
 
-**Organization Detection**:
-- If `Last Name #1` is empty/null AND `First Name #1` has a value, treat as organization
-- Organization names should be processed as `nameUnparsed` in grantors with type "Organization"
-- Individual names should be processed as separate `firstName`/`lastName` fields with type "Individual"
+**Note on Beaufort Simplifications**: Beaufort County does not require execution dates, legal descriptions, or reference information, making the workflow significantly simpler than other counties.
 
 ## Transform
 
@@ -74,33 +62,24 @@ The following mapping is used to transform Excel column headers to internal API 
   "&": "has_second_owner",
   "Last Name #2": "owner_2_last_name",
   "First Name #2": "owner_2_first_name",
-  "Deed Book": "deed_book",
-  "Deed Page": "deed_page",
-  "Recorded Date": "recorded_date",
-  "Mortgage Book": "mortgage_book",
-  "Mortgage Page": "mortgage_page",
-  "Suite": "suite_number",
-  "Consideration": "consideration_amount",
-  "Execution Date": "execution_date",
-  "GRANTOR/GRANTEE": "grantor_grantee_entity",
-  "LEGAL DESCRIPTION": "legal_description"
+  "GRANTOR/GRANTEE": "grantor_grantee_entity"
 }
 ```
 
 ### Workflow Constants
 
 ```python
-COUNTY_ID = "SCCP49"
-COUNTY_NAME = "Horry County, SC"
-DEED_DOCUMENT_TYPE = "Deed - Timeshare"
-MORTGAGE_DOCUMENT_TYPE = "Mortgage Satisfaction"
+COUNTY_ID = "SCCY4G"
+COUNTY_NAME = "Beaufort County, SC"
+DEED_DOCUMENT_TYPE = "DEED - HILTON HEAD TIMESHARE"
+MORTGAGE_DOCUMENT_TYPE = "MORT - SATISFACTION"
 KING_CUNNINGHAM_REQUIRED = True
-DEED_REQUIRES_EXECUTION_DATE = True
-DEED_REQUIRES_LEGAL_DESCRIPTION = True
-DEED_REQUIRES_REFERENCE_INFO = True
-MORTGAGE_REQUIRES_EXECUTION_DATE = True
-MORTGAGE_REQUIRES_LEGAL_DESCRIPTION = True
-MORTGAGE_REQUIRES_REFERENCE_INFO = True
+DEED_REQUIRES_EXECUTION_DATE = False
+DEED_REQUIRES_LEGAL_DESCRIPTION = False
+DEED_REQUIRES_REFERENCE_INFO = False
+MORTGAGE_REQUIRES_EXECUTION_DATE = False
+MORTGAGE_REQUIRES_LEGAL_DESCRIPTION = False
+MORTGAGE_REQUIRES_REFERENCE_INFO = False
 ```
 
 ### Document Structure Per Package
@@ -112,7 +91,7 @@ MORTGAGE_REQUIRES_REFERENCE_INFO = True
 ### Documents Created (2 per package)
 
 #### 1. Deed Document
-- **Type**: `Deed - Timeshare` (Horry County specific)
+- **Type**: `DEED - HILTON HEAD TIMESHARE` (Beaufort County specific)
 - **PDF Source**: Deed Stack (2 pages) + Affidavit Stack (2 pages) if provided = 4 pages total
 - **Grantors**:
   - `KING CUNNINGHAM LLC TR` (Organization)
@@ -121,16 +100,10 @@ MORTGAGE_REQUIRES_REFERENCE_INFO = True
 - **Grantees**:
   - Entity from `GRANTOR/GRANTEE` column (Organization)
 - **Required Fields**:
-  - Execution Date: From `Execution Date` column
-  - Consideration: From `Consideration` column
-  - Legal Description: From `LEGAL DESCRIPTION` column + `Suite` (as parcel ID)
-- **Reference Information**:
-  - Document Type: `Deed - Timeshare`
-  - Book: From `Deed Book` column
-  - Page: From `Deed Page` column
+  - None beyond grantors/grantees (Beaufort County simplification)
 
 #### 2. Mortgage Satisfaction Document
-- **Type**: `Mortgage Satisfaction` (Horry County specific)
+- **Type**: `MORT - SATISFACTION` (Beaufort County specific)
 - **PDF Source**: Mortgage Satisfaction Stack (1 page per document)
 - **Grantors**:
   - Individual owners only (First Name #1 Last Name #1, First Name #2 Last Name #2)
@@ -138,12 +111,7 @@ MORTGAGE_REQUIRES_REFERENCE_INFO = True
 - **Grantees**:
   - Entity from `GRANTOR/GRANTEE` column (Organization)
 - **Required Fields**:
-  - Execution Date: From `Execution Date` column
-  - Legal Description: From `LEGAL DESCRIPTION` column + `Suite` (as parcel ID)
-- **Reference Information**:
-  - Document Type: `Mortgage Satisfaction`
-  - Book: From `Mortgage Book` column
-  - Page: From `Mortgage Page` column
+  - None beyond grantors/grantees (Beaufort County simplification)
 
 ## API Payload Structure (Load)
 
@@ -153,10 +121,8 @@ MORTGAGE_REQUIRES_REFERENCE_INFO = True
     {
       "submitterDocumentID": "D-{account_number}-TD",
       "name": "{owner_1_last_name} {account_number} TD",
-      "kindOfInstrument": ["Deed - Timeshare"],
+      "kindOfInstrument": ["DEED - HILTON HEAD TIMESHARE"],
       "indexingData": {
-        "executionDate": "{execution_date}",
-        "consideration": "{consideration_amount}",
         "grantors": [
           {
             "nameUnparsed": "KING CUNNINGHAM LLC TR",
@@ -182,19 +148,6 @@ MORTGAGE_REQUIRES_REFERENCE_INFO = True
             "nameUnparsed": "{grantor_grantee_entity}",
             "type": "Organization"
           }
-        ],
-        "legalDescriptions": [
-          {
-            "description": "{legal_description} {suite_number}",
-            "parcelId": ""
-          }
-        ],
-        "referenceInformation": [
-          {
-            "documentType": "Deed - Timeshare",
-            "book": "{deed_book}",
-            "page": "{deed_page}"
-          }
         ]
       },
       "fileBytes": ["{merged_deed_pdf}"]
@@ -202,9 +155,8 @@ MORTGAGE_REQUIRES_REFERENCE_INFO = True
     {
       "submitterDocumentID": "D-{account_number}-SAT",
       "name": "{owner_1_last_name} {account_number} SAT",
-      "kindOfInstrument": ["Mortgage Satisfaction"],
+      "kindOfInstrument": ["MORT - SATISFACTION"],
       "indexingData": {
-        "executionDate": "{execution_date}",
         "grantors": [
           {
             "firstName": "{owner_1_first_name}",
@@ -222,25 +174,12 @@ MORTGAGE_REQUIRES_REFERENCE_INFO = True
             "nameUnparsed": "{grantor_grantee_entity}",
             "type": "Organization"
           }
-        ],
-        "legalDescriptions": [
-          {
-            "description": "{legal_description} {suite_number}",
-            "parcelId": ""
-          }
-        ],
-        "referenceInformation": [
-          {
-            "documentType": "Mortgage Satisfaction",
-            "book": "{mortgage_book}",
-            "page": "{mortgage_page}"
-          }
         ]
       },
       "fileBytes": ["{mortgage_pdf}"]
     }
   ],
-  "recipient": "SCCP49",
+  "recipient": "SCCY4G",
   "submitterPackageID": "P-{kc_file_no}-{account_number}",
   "name": "{account_number} {owner_1_last_name} TD {kc_file_no}",
   "operations": {
@@ -268,16 +207,31 @@ MORTGAGE_REQUIRES_REFERENCE_INFO = True
 
 ### Validations (Fail Fast)
 1. **Excel Structure**: Required columns must exist
-2. **Data Completeness**: KC File No., Account, names, execution date cannot be empty
+2. **Data Completeness**: KC File No., Account, names cannot be empty
 3. **PDF Structure**: 
    - Deed stack must have page count divisible by 2
    - If affidavit stack provided, must have same document count as deed stack
    - Mortgage stack must have same document count as deed stack
 4. **Name Format**: All names must be in ALL CAPS
-5. **Date Format**: Execution date must be valid MM/DD/YYYY format
-6. **Organization Format**: Organizations should use "ORG:" prefix in Last Name field
+5. **Organization Format**: Organizations should use "ORG:" prefix in Last Name field
 
 ### Special Handling
 - **Organization Names**: If `Last Name #1` starts with "ORG:", treat as organization where `First Name #1` contains the full organization name
 - **Hyphenated Names**: Remove hyphens and convert to spaces (e.g., "SMITH-JOHNSON" becomes "SMITH JOHNSON")
 - **Merged Documents**: When affidavits are provided, the final deed document will be 4 pages (2 deed + 2 affidavit)
+- **Simplified Requirements**: Beaufort County does not require execution dates, legal descriptions, consideration amounts, or reference information, making validation and processing significantly simpler
+
+## Key Differences from Other Counties
+
+### Beaufort County Simplifications
+1. **No Execution Date Required**: Documents do not need execution dates
+2. **No Legal Description Required**: Property descriptions are not required in the indexing data
+3. **No Reference Information Required**: Book and page references are not required
+4. **No Consideration Amount**: Monetary consideration is not required for deeds
+5. **Minimal Validation**: Only basic party information and document structure validation needed
+
+### Benefits of Simplified Workflow
+- **Faster Processing**: Fewer fields to validate and populate
+- **Reduced Error Risk**: Fewer required fields means fewer opportunities for validation failures
+- **Easier Data Preparation**: Excel files can be simpler with fewer required columns
+- **Streamlined API Payloads**: Smaller, simpler JSON structures for API requests

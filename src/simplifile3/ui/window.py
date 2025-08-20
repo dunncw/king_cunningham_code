@@ -194,6 +194,20 @@ class SimplifileWindow(QWidget):
             self.add_file_input("mortgage_stack", "Mortgage Satisfaction Stack PDF (1 page/doc)", "PDF Files (*.pdf)")
             
         elif workflow_name == "HORRY_HOA_FCL":
+            # HOA foreclosure with condo lien satisfaction instead of mortgage satisfaction
+            self.add_file_input("deed_stack", "Deed Stack PDF (2 pages/doc)", "PDF Files (*.pdf)")
+            self.add_file_input("affidavit_stack", "Affidavit Stack PDF", "PDF Files (*.pdf)", optional=True)
+            self.add_file_input("condo_lien_stack", "Condo Lien Satisfaction Stack PDF (1 page/doc)", "PDF Files (*.pdf)")
+
+        elif workflow_name == "FULTON_MTG_FCL":
+            self.add_file_input("deed_stack", "Deed Stack PDF (3 pages/doc)", "PDF Files (*.pdf)")
+            self.add_file_input("pt61_stack", "PT-61 Stack PDF (1 page/doc)", "PDF Files (*.pdf)")  
+            self.add_file_input("mortgage_stack", "Mortgage Satisfaction Stack PDF (1 page/doc)", "PDF Files (*.pdf)")
+
+        elif workflow_name == "FULTON_DEEDBACKS":
+            self.add_directory_input("documents_dir", "Documents Directory")
+
+        elif workflow_name == "HORRY_HOA_FCL":
             # Similar to MTG but with condo lien
             self.add_file_input("deed_stack", "Deed Stack PDF (2 pages/doc)", "PDF Files (*.pdf)")
             self.add_file_input("affidavit_stack", "Affidavit Stack PDF (Optional)", "PDF Files (*.pdf)", optional=True)

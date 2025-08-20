@@ -1,9 +1,9 @@
-# `BEA-HOR-COUNTYS-DEEDBACK` Specification
+# `BEA-HOR-DEEDBACK` Specification
 
 ## Overview
 
 ### Purpose
-The BEA-HOR-COUNTYS-DEEDBACK workflow processes timeshare deedback documents across multiple counties based on project numbers. It handles variable-length PDF documents and automatically routes submissions to either Beaufort County or Horry County based on the project type, while consolidating multi-unit contracts into single packages.
+The BEA-HOR-DEEDBACK workflow processes timeshare deedback documents across multiple counties based on project numbers. It handles variable-length PDF documents and automatically routes submissions to either Beaufort County or Horry County based on the project type, while consolidating multi-unit contracts into single packages.
 
 ### User Expectations
 **Input Requirements**: Excel file with package data including page counts, and a single PDF stack containing all deed documents with variable page lengths

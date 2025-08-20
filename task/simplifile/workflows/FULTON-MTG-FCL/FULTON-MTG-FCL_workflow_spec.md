@@ -1,4 +1,4 @@
-# Fulton Foreclosure Workflow Spec
+# `FULTON-MTG-FCL` Workflow Spec
 
 ## Overview
 The Fulton Foreclosure Workflow processes Excel data and 3 PDF document stacks to create Simplifile packages containing both **Deed** and **Mortgage Satisfaction** documents for Fulton County, GA.
