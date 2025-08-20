@@ -11,7 +11,7 @@ class BeaufortMTGFCLWorkflow(BaseWorkflow):
     
     name = "BEAUFORT_MTG_FCL"
     display_name = "BEAUFORT_MTG_FCL"
-    docs_url = "https://github.com/dunncw/king_cunningham_code/blob/dev/task/simplifile/workflows/BEAUFORT-MTG-FCL/BEAUFORT-MTG-FCL-workflow-spec.md"
+    docs_url = "https://github.com/dunncw/king_cunningham_code/blob/dev/task/simplifile/workflows/BEAUFORT_MTG_FCL/BEAUFORT-MTG-FCL_Workflow_Spec.md"
     county = "SCCY4G"
     
     required_columns = [

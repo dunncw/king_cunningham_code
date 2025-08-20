@@ -12,7 +12,7 @@ class FultonDeedbacksWorkflow(BaseWorkflow):
     
     name = "FULTON_DEEDBACKS"
     display_name = "FULTON_DEEDBACKS"
-    docs_url = "https://github.com/dunncw/king_cunningham_code/blob/dev/task/simplifile/workflows/FULTON-DEEDBACKS/FULTON-DEEDBACKS-workflow-spec.md"
+    docs_url = "https://github.com/dunncw/king_cunningham_code/blob/dev/task/simplifile/workflows/FULTON-DEEDBACK/FULTON-DEEDBACKS_workflow_spec.md"
     county = "GAC3TH"
     
     required_columns = [

@@ -13,7 +13,7 @@ class HorryHOAFCLWorkflow(BaseWorkflow):
     
     name = "HORRY_HOA_FCL"
     display_name = "HORRY_HOA_FCL"
-    docs_url = "https://github.com/dunncw/king_cunningham_code/blob/dev/task/simplifile/workflows/HORRY-HOA-FCL/HORRY-HOA-FCL-workflow-spec.md"
+    docs_url = "https://github.com/dunncw/king_cunningham_code/blob/dev/task/simplifile/workflows/HORRY_HOA_FCL/HORRY-HOA-FCL_workflow_spec.md"
     county = "SCCP49"
     
     required_columns = [
