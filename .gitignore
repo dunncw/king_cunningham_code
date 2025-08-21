@@ -16,7 +16,7 @@ task/simplifile/docs/explore_simplifile_api.py
 task/simplifile/timeline/5-21-25/api_key.txt
 task/simplifile/timeline/5-21-25/all_24/sample_output.txt
 
-tests\pt61_helper_doc.py
-tests\test_hoa_fcl_workflow.py
-tests\test_simplifile_api.py
-tests\test_update_checker.py
+tests/pt61_helper_doc.py
+tests/test_hoa_fcl_workflow.py
+tests/test_simplifile_api.py
+tests/test_update_checker.py
