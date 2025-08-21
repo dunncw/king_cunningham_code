@@ -32,6 +32,17 @@ class SimplifileWindow(QWidget):
         """Initialize UI components."""
         layout = QVBoxLayout()
         
+        # User Guide Button (at the top)
+        user_guide_layout = QHBoxLayout()
+        user_guide_layout.addStretch()  # Push button to center-right
+        
+        self.user_guide_btn = QPushButton("User Guide")
+        self.user_guide_btn.clicked.connect(self.open_user_guide)
+        self.user_guide_btn.setToolTip("Open general user guide")
+        user_guide_layout.addWidget(self.user_guide_btn)
+        
+        layout.addLayout(user_guide_layout)
+        
         # API Configuration
         api_group = QGroupBox("API Configuration")
         api_layout = QHBoxLayout()
@@ -64,8 +75,8 @@ class SimplifileWindow(QWidget):
         self.workflow_combo.currentIndexChanged.connect(self.on_workflow_changed)
         workflow_layout.addWidget(self.workflow_combo)
         
-        # Add docs button
-        self.docs_btn = QPushButton("📖 Docs")
+        # Add workflow docs button
+        self.docs_btn = QPushButton("Workflow Docs")
         self.docs_btn.clicked.connect(self.open_docs)
         self.docs_btn.setToolTip("Open workflow documentation (external link)")
         workflow_layout.addWidget(self.docs_btn)
@@ -111,6 +122,12 @@ class SimplifileWindow(QWidget):
         # Initialize with first workflow
         if self.workflow_combo.count() > 0:
             self.on_workflow_changed()
+    
+    def open_user_guide(self):
+        """Open general user guide."""
+        # You can set this URL to wherever you host the user guide
+        user_guide_url = "https://github.com/dunncw/king_cunningham_code/blob/dev/task/simplifile/docs/user_guide.md"
+        QDesktopServices.openUrl(QUrl(user_guide_url))
     
     def open_docs(self):
         """Open documentation for current workflow."""
