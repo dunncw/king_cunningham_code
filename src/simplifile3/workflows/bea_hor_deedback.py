@@ -320,7 +320,7 @@ class BeaHorDeedbackWorkflow(BaseWorkflow):
     def _beaufort_specific(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Beaufort-specific transformations."""
         return {
-            "grantee": "HII DEVELOPMENT LLC",
+            "grantee": "HHI DEVELOPMENT LLC",
             "doc_type": "DEED - HILTON HEAD TIMESHARE"
         }
     
