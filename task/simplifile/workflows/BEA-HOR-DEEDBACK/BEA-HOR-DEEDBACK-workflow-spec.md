@@ -167,7 +167,7 @@ Data from Excel rows and extracted PDF documents are combined to create county-s
 - Grantees: Fixed organization → grantees (Organization type)
 
 **Business Rules**:
-- Grantee: Always "HII DEVELOPMENT LLC"
+- Grantee: Always "HHI DEVELOPMENT LLC"
 - Simplified Requirements: No execution date, legal descriptions, or reference information required
 - No project-specific variations
 
@@ -257,7 +257,7 @@ Data from Excel rows and extracted PDF documents are combined to create county-s
     ],
     "grantees": [
       {
-        "nameUnparsed": "HII DEVELOPMENT LLC",
+        "nameUnparsed": "HHI DEVELOPMENT LLC",
         "type": "Organization"
       }
     ]
