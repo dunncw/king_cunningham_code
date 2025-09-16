@@ -179,7 +179,7 @@ Data from Excel rows and extracted PDF documents are combined to create county-s
   "documents": [/* Single deed document */],
   "recipient": "{SCCP49 or SCCY4G}",
   "submitterPackageID": "P-{Contract Number}",
-  "name": "{Package Name from Excel or auto-generated}",
+  "name": "{Package Name (Excel column AK)}",
   "operations": {
     "draftOnErrors": true,
     "submitImmediately": false,
@@ -194,7 +194,7 @@ Data from Excel rows and extracted PDF documents are combined to create county-s
 ```json
 {
   "submitterDocumentID": "D-{Contract Number}",
-  "name": "{Package Name}",
+  "name": "{Package Name (Excel column AK)}",
   "kindOfInstrument": ["Deed - Timeshare"],
   "indexingData": {
     "executionDate": "{DB Date in MM/DD/YYYY format}",
@@ -239,7 +239,7 @@ Data from Excel rows and extracted PDF documents are combined to create county-s
 ```json
 {
   "submitterDocumentID": "D-{Contract Number}",
-  "name": "{Package Name}",
+  "name": "{Package Name (Excel column AK)}",
   "kindOfInstrument": ["DEED - HILTON HEAD TIMESHARE"],
   "indexingData": {
     "consideration": "{Cleaned consideration as decimal}",
