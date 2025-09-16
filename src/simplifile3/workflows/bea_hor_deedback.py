@@ -267,7 +267,8 @@ class BeaHorDeedbackWorkflow(BaseWorkflow):
                 data["package_name"] = f"{data['last_1']} {data['unit']}-{data['week']}{oeb_suffix} {project}-{data['number']}"
             else:
                 data["package_name"] = f"{data['last_1']} {data['unit']}-{data['week']} {project}-{data['number']}"
-        
+        # Document naming - always use project-number format
+        data["document_name"] = f"{project}-{data['number']}"
         data["package_id"] = f"P-{data['number']}"
         data["document_id"] = f"D-{data['number']}"
         
@@ -337,7 +338,7 @@ class BeaHorDeedbackWorkflow(BaseWorkflow):
     def build_payload(self, package_data: Dict[str, Any], pdfs: Dict[str, bytes]) -> Dict[str, Any]:
         """Build county-specific payload."""
         package = super().build_payload(package_data, pdfs)
-        
+
         indexing = {
             "consideration": package_data["consideration"],
             "grantors": [{
@@ -350,7 +351,7 @@ class BeaHorDeedbackWorkflow(BaseWorkflow):
                 "type": "Organization"
             }]
         }
-        
+
         # Add second grantor if present
         if package_data.get("first_2") and package_data.get("last_2"):
             indexing["grantors"].append({
@@ -358,7 +359,7 @@ class BeaHorDeedbackWorkflow(BaseWorkflow):
                 "lastName": package_data["last_2"],
                 "type": "Individual"
             })
-        
+
         # Horry needs more fields
         if package_data["county"] == "SCCP49":
             indexing["executionDate"] = package_data.get("db_date", "")
@@ -369,13 +370,13 @@ class BeaHorDeedbackWorkflow(BaseWorkflow):
         
         document = {
             "submitterDocumentID": package_data["document_id"],
-            "name": package_data["package_name"],
+            "name": package_data["document_name"],
             "kindOfInstrument": [package_data["doc_type"]],
             "indexingData": indexing,
             "fileBytes": [self.to_base64(pdfs["deed"])]
         }
-        
+
         package["documents"] = [document]
         package["recipient"] = package_data["county"]
-        
+
         return package
