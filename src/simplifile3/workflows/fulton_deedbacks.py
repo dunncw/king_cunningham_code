@@ -97,7 +97,7 @@ class FultonDeedbacksWorkflow(BaseWorkflow):
         
         # Fixed Fulton values
         data["parcel_id"] = "14-0078-0007-096-9"
-        data["tax_exempt"] = True
+        data["tax_exempt"] = False
         
         # Grantee from DB To column
         data["deed_grantee_name"] = clean_value(data.get("grantee_name", "")).upper()
