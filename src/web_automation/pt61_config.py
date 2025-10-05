@@ -112,7 +112,7 @@ PT61_VERSIONS = {
                 "liens_encumbrances": "0"
             },
             "file_naming": {
-                "pattern": "{last_name}_{contract_num}_PT61.pdf", 
+                "pattern": "{last_name} DB {contract_num} DB PT61.pdf",
                 "fields": ["Last 1", "Contract Num"]
             }
         }
