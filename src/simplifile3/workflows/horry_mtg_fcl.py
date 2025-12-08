@@ -26,6 +26,7 @@ class HorryMTGFCLWorkflow(BaseWorkflow):
         "Account": "account",
         "Last Name #1": "last_1",
         "First Name #1": "first_1",
+        "&": "has_second_indicator",
         "Last Name #2": "last_2",
         "First Name #2": "first_2",
         "Deed Book": "deed_book",
@@ -100,7 +101,7 @@ class HorryMTGFCLWorkflow(BaseWorkflow):
             data["package_name"] = f"{data['account']} {data['last_1']} TD {data['kc_file_no']}"
         
         # Handle second owner (check for "&" symbol)
-        data["has_second"] = (row.get("&") == "&" and data["first_2"] and data["last_2"])
+        data["has_second"] = (data.get("has_second_indicator") == "&" and data["first_2"] and data["last_2"])
         
         # IDs
         data["package_id"] = f"P-{data['kc_file_no']}-{data['account']}"
