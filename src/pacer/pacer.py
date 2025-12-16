@@ -212,24 +212,32 @@ class PACERAutomationWorker(QObject):
         except Exception as e:
             return "FAILED: Invalid API Response"
 
-    def format_multiple_matches(self, response: Dict[str, Any]) -> str:
+    def format_multiple_matches(self, response: Dict[str, Any], excel_first_name: Optional[str] = None) -> Tuple[str, bool]:
         try:
             content = response.get("content", [])
             match_count = len(content)
             
             if match_count == 0:
-                return "No Bankruptcy"
+                return "No Bankruptcy", False
             
-            result_lines = [f"REVIEW REQUIRED - {match_count} Match{'es' if match_count > 1 else ''}"]
+            scored_matches = []
+            has_exact_match = False
             
-            for idx, case in enumerate(content, 1):
+            for case in content:
                 court_case = case.get("courtCase", {})
                 
-                first_name = case.get("firstName", "")
+                pacer_first_name = case.get("firstName", "")
                 middle_name = case.get("middleName", "")
                 last_name = case.get("lastName", "")
                 
-                full_name_parts = [first_name, middle_name, last_name]
+                if excel_first_name and pacer_first_name:
+                    score = self.excel_processor.calculate_name_similarity(excel_first_name, pacer_first_name)
+                    if score == 100:
+                        has_exact_match = True
+                else:
+                    score = None
+                
+                full_name_parts = [pacer_first_name, middle_name, last_name]
                 full_name = " ".join([p for p in full_name_parts if p]).strip()
                 
                 case_number = court_case.get("caseNumberFull", "Unknown")
@@ -238,26 +246,46 @@ class PACERAutomationWorker(QObject):
                 
                 status = "OPEN" if not effective_date_closed else f"Closed {effective_date_closed}"
                 
-                match_line = f"\n{idx}. {full_name} | Case: {case_number} | Filed: {date_filed} | Status: {status}"
+                scored_matches.append({
+                    "score": score,
+                    "full_name": full_name,
+                    "case_number": case_number,
+                    "date_filed": date_filed,
+                    "status": status
+                })
+            
+            if excel_first_name:
+                scored_matches.sort(key=lambda x: x["score"] if x["score"] is not None else -1, reverse=True)
+            
+            result_lines = [f"REVIEW REQUIRED - {match_count} Match{'es' if match_count > 1 else ''}"]
+            
+            for idx, match in enumerate(scored_matches, 1):
+                if match["score"] is not None:
+                    score_prefix = f"[{match['score']}%] "
+                else:
+                    score_prefix = ""
+                
+                match_line = f"\n{idx}. {score_prefix}{match['full_name']} | Case: {match['case_number']} | Filed: {match['date_filed']} | Status: {match['status']}"
                 result_lines.append(match_line)
             
-            return "".join(result_lines)
+            return "".join(result_lines), has_exact_match
             
         except Exception as e:
-            return f"FAILED: Error formatting results - {str(e)}"
+            return f"FAILED: Error formatting results - {str(e)}", False
 
     def process_single_person(self, person: Dict, account_number: str, row_index: int) -> bool:
         try:
             original_last_name = person['last_name']
             sanitized_last_name = self.sanitize_last_name(original_last_name)
             ssn_value = person['ssn']
+            excel_first_name = person.get('first_name')
             
             status_msg = f"Searching for {sanitized_last_name} (SSN: {'****' if self.use_4digit_mode else ssn_value[-4:]})..."
             if sanitized_last_name != original_last_name:
                 status_msg = f"Searching for {sanitized_last_name} (original: {original_last_name}) (SSN: {'****' if self.use_4digit_mode else ssn_value[-4:]})..."
             
             if self.use_4digit_mode:
-                response = self.search_by_ssn4(ssn_value, person['last_name'], person.get('first_name'))
+                response = self.search_by_ssn4(ssn_value, person['last_name'], excel_first_name)
             else:
                 response = self.search_by_ssn9(ssn_value, person['last_name'])
             
@@ -268,6 +296,8 @@ class PACERAutomationWorker(QObject):
                 self.status.emit(f"{status_msg} FAILED: API Error")
                 return False
 
+            has_exact_match = False
+            
             if self.use_4digit_mode:
                 match_count = len(response.get("content", []))
                 
@@ -276,7 +306,7 @@ class PACERAutomationWorker(QObject):
                 elif match_count == 1:
                     result_status = self.interpret_bankruptcy_status(response)
                 else:
-                    result_status = self.format_multiple_matches(response)
+                    result_status, has_exact_match = self.format_multiple_matches(response, excel_first_name)
             else:
                 result_status = self.interpret_bankruptcy_status(response)
             
@@ -290,7 +320,8 @@ class PACERAutomationWorker(QObject):
             update_success, _ = self.excel_processor.update_results(
                 row_index,
                 person['person_number'],
-                result_status
+                result_status,
+                has_exact_match
             )
             
             if not update_success:
@@ -385,6 +416,11 @@ class PACERAutomationWorker(QObject):
                 self.excel_processor.apply_highlighting()
             except Exception as e:
                 self.status.emit(f"Warning: Could not apply highlighting: {str(e)}")
+
+            try:
+                self.excel_processor.auto_fit_columns_and_rows()
+            except Exception as e:
+                self.status.emit(f"Warning: Could not auto-fit columns/rows: {str(e)}")
 
             try:
                 self.save_api_responses()

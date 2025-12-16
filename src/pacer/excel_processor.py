@@ -1,5 +1,6 @@
 import pandas as pd
 import re
+from difflib import SequenceMatcher
 from typing import Dict, List, Tuple, Union, Optional
 import openpyxl
 from openpyxl.styles import PatternFill, Font
@@ -60,7 +61,8 @@ class PACERExcelProcessor:
         self.use_4digit_mode = use_4digit_mode
         self.df = None
         self.field_mapper = None
-        self.cells_to_highlight = []
+        self.cells_to_highlight_red = []
+        self.cells_to_highlight_yellow = []
 
     def validate_ssn(self, ssn) -> bool:
         if pd.isna(ssn):
@@ -88,6 +90,16 @@ class PACERExcelProcessor:
         if result_str not in self.VALID_RESULTS and not result_str.startswith("REVIEW REQUIRED"):
             return True
         return False
+
+    def calculate_name_similarity(self, name1: str, name2: str) -> int:
+        if not name1 or not name2:
+            return 0
+        n1 = name1.strip().upper()
+        n2 = name2.strip().upper()
+        if n1 == n2:
+            return 100
+        ratio = SequenceMatcher(None, n1, n2).ratio()
+        return int(ratio * 100)
 
     def process_excel(self) -> Tuple[bool, Union[List[Dict], str]]:
         try:
@@ -172,17 +184,19 @@ class PACERExcelProcessor:
         except Exception as e:
             return False, f"Error processing Excel file: {str(e)}"
 
-    def update_results(self, row_index: int, person_number: int, result: str) -> Tuple[bool, str]:
+    def update_results(self, row_index: int, person_number: int, result: str, has_exact_match: bool = False) -> Tuple[bool, str]:
         try:
-            result_column = f'Person_{person_number}_Results'
             result_col_name = self.field_mapper.get_column(f'results_{person_number}')
             
             self.df.at[row_index, result_col_name] = result
             
+            col_idx = self.df.columns.get_loc(result_col_name) + 1
+            row_idx = row_index + 2
+            
             if "OPEN Bankruptcy Found" in result:
-                col_idx = self.df.columns.get_loc(result_col_name) + 1
-                row_idx = row_index + 2
-                self.cells_to_highlight.append((col_idx, row_idx))
+                self.cells_to_highlight_red.append((col_idx, row_idx))
+            elif has_exact_match:
+                self.cells_to_highlight_yellow.append((col_idx, row_idx))
             
             self.save_excel()
             
@@ -193,31 +207,80 @@ class PACERExcelProcessor:
             return False, f"Error updating results: {str(e)}"
 
     def apply_highlighting(self):
-        if not self.cells_to_highlight:
+        if not self.cells_to_highlight_red and not self.cells_to_highlight_yellow:
             return
             
         try:
             wb = openpyxl.load_workbook(self.excel_path)
             ws = wb.active
             
-            red_fill = PatternFill(start_color="FF0000", 
-                                 end_color="FF0000",
-                                 fill_type="solid")
+            red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
             white_font = Font(color="FFFFFF")
+            yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+            black_font = Font(color="000000")
             
-            for col_idx, row_idx in self.cells_to_highlight:
+            for col_idx, row_idx in self.cells_to_highlight_red:
                 col_letter = get_column_letter(col_idx)
                 cell = ws[f"{col_letter}{row_idx}"]
-                
                 cell.fill = red_fill
                 cell.font = white_font
             
+            for col_idx, row_idx in self.cells_to_highlight_yellow:
+                col_letter = get_column_letter(col_idx)
+                cell = ws[f"{col_letter}{row_idx}"]
+                cell.fill = yellow_fill
+                cell.font = black_font
+            
             wb.save(self.excel_path)
             
-            self.cells_to_highlight = []
+            self.cells_to_highlight_red = []
+            self.cells_to_highlight_yellow = []
             
         except Exception as e:
             print(f"ERROR applying highlighting: {str(e)}")
+
+    def auto_fit_columns_and_rows(self):
+        try:
+            from openpyxl.styles import Alignment
+            
+            wb = openpyxl.load_workbook(self.excel_path)
+            ws = wb.active
+            
+            for column_cells in ws.columns:
+                max_length = 0
+                column_letter = get_column_letter(column_cells[0].column)
+                for cell in column_cells:
+                    try:
+                        cell_value = str(cell.value) if cell.value else ""
+                        if '\n' in cell_value:
+                            lines = cell_value.split('\n')
+                            cell_length = max(len(line) for line in lines)
+                        else:
+                            cell_length = len(cell_value)
+                        if cell_length > max_length:
+                            max_length = cell_length
+                    except:
+                        pass
+                adjusted_width = max_length + 2
+                ws.column_dimensions[column_letter].width = adjusted_width
+            
+            for row in ws.iter_rows():
+                max_lines = 1
+                for cell in row:
+                    if cell.value:
+                        cell_value = str(cell.value)
+                        line_count = cell_value.count('\n') + 1
+                        if line_count > 1:
+                            cell.alignment = Alignment(wrap_text=True, vertical='top')
+                        if line_count > max_lines:
+                            max_lines = line_count
+                if max_lines > 1:
+                    ws.row_dimensions[row[0].row].height = max_lines * 15
+            
+            wb.save(self.excel_path)
+            
+        except Exception as e:
+            print(f"ERROR auto-fitting columns/rows: {str(e)}")
 
     def save_excel(self) -> bool:
         try:
