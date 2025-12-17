@@ -2,6 +2,7 @@
 
 import time
 import os
+from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.firefox.service import Service as FirefoxService
@@ -10,7 +11,12 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
-from selenium.common.exceptions import UnexpectedAlertPresentException, NoAlertPresentException
+from selenium.common.exceptions import (
+    UnexpectedAlertPresentException, 
+    NoAlertPresentException,
+    TimeoutException,
+    WebDriverException
+)
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
@@ -34,12 +40,71 @@ class BasePT61Automation(QObject):
         self.password = password
         self.save_location = save_location
         self.version = version
-        self.document_stacking = document_stacking  # NEW: Document stacking option
+        self.document_stacking = document_stacking
         self.driver = None
+        self.keep_browser_open_on_error = False
         
-        # NEW: Initialize PDF stacker
         self.pdf_stacker = PT61PDFStacker()
         self.pdf_stacker.progress_update.connect(self.status.emit)
+
+    def log_browser_state(self, context=""):
+        """Log current browser state for debugging - concise output"""
+        print(f"\n[DEBUG] {context}")
+        print(f"  Time: {datetime.now().strftime('%H:%M:%S')}")
+        
+        if not self.driver:
+            print("  Driver: None")
+            return
+        
+        try:
+            print(f"  URL: {self.driver.current_url}")
+            print(f"  Title: {self.driver.title}")
+        except Exception as e:
+            print(f"  URL/Title: Error - {e}")
+        
+        try:
+            alert = self.driver.switch_to.alert
+            print(f"  ALERT PRESENT: {alert.text}")
+        except NoAlertPresentException:
+            pass
+        except Exception:
+            pass
+
+    def log_error(self, error_msg, exception=None):
+        """Log error with relevant context only"""
+        print(f"\n{'!'*60}")
+        print(f"ERROR: {error_msg}")
+        print(f"  Version: {self.version}")
+        print(f"  Time: {datetime.now().strftime('%H:%M:%S')}")
+        
+        if exception:
+            exc_type = type(exception).__name__
+            exc_msg = str(exception).split('\n')[0][:100]
+            print(f"  Exception: {exc_type}: {exc_msg}")
+        
+        self.log_browser_state("At error")
+        print(f"{'!'*60}\n")
+        
+        self.keep_browser_open_on_error = True
+
+    def check_and_log_alert(self):
+        """Check for alert and log its text if present, returns alert text or None"""
+        try:
+            alert = self.driver.switch_to.alert
+            alert_text = alert.text
+            print(f"[ALERT] {alert_text}")
+            return alert_text
+        except NoAlertPresentException:
+            return None
+
+    def accept_alert_if_present(self):
+        """Accept alert if present, log it, return True if alert was handled"""
+        alert_text = self.check_and_log_alert()
+        if alert_text:
+            self.driver.switch_to.alert.accept()
+            self.status.emit(f"Alert accepted: {alert_text[:50]}...")
+            return True
+        return False
 
     def setup_webdriver(self):
         """Setup WebDriver based on browser choice"""
@@ -63,37 +128,94 @@ class BasePT61Automation(QObject):
 
     def perform_login(self):
         """Perform login to the PT61 system"""
-        # Click login link
-        login_link = WebDriverWait(self.driver, 10).until(
-            EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'Login To Save & Retrieve Your Filings')]"))
-        )
-        login_link.click()
-        self.status.emit("Clicked on login link")
+        try:
+            login_link = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'Login To Save & Retrieve Your Filings')]"))
+            )
+            login_link.click()
+            self.status.emit("Clicked on login link")
 
-        # Fill in username and password
-        username_field = WebDriverWait(self.driver, 10).until(
-            EC.presence_of_element_located((By.NAME, "txtUserID"))
-        )
-        username_field.send_keys(self.username)
+            username_field = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.NAME, "txtUserID"))
+            )
+            username_field.send_keys(self.username)
 
-        password_field = self.driver.find_element(By.NAME, "txtPassword")
-        password_field.send_keys(self.password)
+            password_field = self.driver.find_element(By.NAME, "txtPassword")
+            password_field.send_keys(self.password)
 
-        # Select the checkbox
-        checkbox = self.driver.find_element(By.NAME, "permanent")
-        if not checkbox.is_selected():
-            checkbox.click()
+            checkbox = self.driver.find_element(By.NAME, "permanent")
+            if not checkbox.is_selected():
+                checkbox.click()
 
-        # Click login button
-        login_button = self.driver.find_element(By.XPATH, "//a[contains(@href, 'javascript:document.frmLogin.submit();')]")
-        login_button.click()
-        self.status.emit("Attempted to log in")
+            login_button = self.driver.find_element(By.XPATH, "//a[contains(@href, 'javascript:document.frmLogin.submit();')]")
+            login_button.click()
+            self.status.emit("Submitted login form")
 
-        # Wait for the logout link to appear, indicating successful login
-        logout_link = WebDriverWait(self.driver, 10).until(
-            EC.presence_of_element_located((By.ID, "logout"))
-        )
-        self.status.emit("Logged in successfully")
+            time.sleep(2)
+            
+            self.accept_alert_if_present()
+
+            self.handle_announcement_page_if_present()
+
+            self.navigate_back_to_pt61()
+            
+            self.status.emit("Login and navigation complete")
+            
+        except UnexpectedAlertPresentException:
+            self.status.emit("Unexpected alert during login")
+            self.accept_alert_if_present()
+        except Exception as e:
+            self.log_error("Login failed", e)
+            raise
+
+    def handle_announcement_page_if_present(self):
+        """Handle the GSCCCA announcement/bulletin page if it appears after login"""
+        time.sleep(2)
+        
+        current_url = self.driver.current_url
+        self.status.emit(f"Post-login URL: {current_url}")
+        
+        if "CustomerCommunicationApi" in current_url or "Announcement" in self.driver.title:
+            self.status.emit("Announcement page detected, dismissing...")
+            
+            try:
+                options_dropdown = WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located((By.ID, "Options"))
+                )
+                select = Select(options_dropdown)
+                select.select_by_value("dismiss")
+                self.status.emit("Selected 'Dismiss' option")
+                
+                continue_button = self.driver.find_element(By.NAME, "Continue")
+                continue_button.click()
+                self.status.emit("Clicked Continue button")
+                
+                time.sleep(2)
+                
+                self.status.emit(f"After dismissing announcement, now at: {self.driver.current_url}")
+                
+            except Exception as e:
+                self.log_error("Failed to dismiss announcement page", e)
+                raise
+        else:
+            self.status.emit("No announcement page detected, continuing...")
+
+    def navigate_back_to_pt61(self):
+        """Navigate back to PT-61 efiling page and prepare for form entry"""
+        self.status.emit("Navigating back to PT-61 efiling...")
+        
+        self.driver.get("https://apps.gsccca.org/pt61efiling/")
+        time.sleep(2)
+        
+        self.status.emit(f"Now at: {self.driver.current_url}")
+        
+        try:
+            logout_link = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.ID, "logout"))
+            )
+            self.status.emit("Confirmed logged in (logout link present)")
+        except TimeoutException:
+            self.status.emit("Warning: Could not confirm login status, continuing anyway...")
 
     def navigate_to_form(self):
         """Navigate to the PT-61 form page"""
@@ -106,19 +228,19 @@ class BasePT61Automation(QObject):
             EC.element_to_be_clickable((By.ID, "btnNext"))
         )
         next_step_button.click()
+        
+        time.sleep(1)
+        if self.accept_alert_if_present():
+            self.status.emit("Alert after Next Step was handled")
 
     def handle_alert_if_present(self):
         """Handle alert if it appears, otherwise continue"""
-        time.sleep(2)  # Wait for potential alert
+        time.sleep(2)
         
-        if self.is_alert_present():
-            alert = self.driver.switch_to.alert
-            alert_text = alert.text
-            self.status.emit(f"Alert detected: {alert_text}")
-            alert.accept()
-            self.status.emit("Alert accepted")
+        if self.accept_alert_if_present():
+            self.status.emit("Alert handled")
         else:
-            self.status.emit("No alert detected, proceeding with form fill")
+            self.status.emit("No alert detected, proceeding")
 
     def is_alert_present(self):
         """Check if an alert is present"""
@@ -129,126 +251,86 @@ class BasePT61Automation(QObject):
             return False
 
     def fill_primary_mailing_address(self, address_config):
-        """
-        Generic function to fill primary mailing address fields
-        
-        Args:
-            address_config (dict): Address configuration with keys:
-                - line1: Street address line 1
-                - city: City name
-                - state: State abbreviation  
-                - zip: ZIP code
-        """
+        """Generic function to fill primary mailing address fields"""
         try:
-            # Fill address line 1
             address_field = self.driver.find_element(By.ID, "street1")
             address_field.send_keys(address_config["line1"])
             self.status.emit(f"Filled address line 1: {address_config['line1']}")
 
-            # Fill city
             city_field = self.driver.find_element(By.ID, "city")
             city_field.send_keys(address_config["city"])
 
-            # Fill state (if there's a state field)
             try:
                 state_field = self.driver.find_element(By.ID, "state")
                 state_field.send_keys(address_config["state"])
             except:
-                # State field might not exist on all forms
                 pass
 
-            # Fill ZIP code
             zip_field = self.driver.find_element(By.ID, "zip")
             zip_field.send_keys(address_config["zip"])
             
             self.status.emit(f"Completed address: {address_config['city']}, {address_config['state']} {address_config['zip']}")
             
         except Exception as e:
-            self.status.emit(f"Error filling address: {str(e)}")
+            self.log_error("Error filling address", e)
             raise
 
     def fill_property_section_standard(self, person_data, property_config):
-        """
-        Generic function to fill property section fields using config
-        
-        Args:
-            person_data (dict): Person data with date_on_deed
-            property_config (dict): Property configuration from version config
-        """
+        """Generic function to fill property section fields using config"""
         try:
-            # Fill date of sale
             sale_date_field = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.ID, "saleDate"))
             )
             sale_date_field.send_keys(person_data['date_on_deed'])
-            self.status.emit(f"Filled out date of sale: {person_data['date_on_deed']}")
+            self.status.emit(f"Filled date of sale: {person_data['date_on_deed']}")
 
-            # Fill street number
             street_number_field = self.driver.find_element(By.ID, "houseNumber")
             street_number_field.send_keys(property_config["street_number"])
 
-            # Fill street name
             street_name_field = self.driver.find_element(By.ID, "houseStreetName")
             street_name_field.send_keys(property_config["street_name"])
 
-            # Select street type from dropdown
             street_type_dropdown = Select(self.driver.find_element(By.ID, "houseStreetType"))
             street_type_dropdown.select_by_value(property_config["street_type_value"])
 
-            # Select post direction
             post_dir_dropdown = Select(self.driver.find_element(By.ID, "housePostDirection"))
             post_dir_dropdown.select_by_value(property_config["post_direction"])
 
-            # Select county
             county_dropdown = Select(self.driver.find_element(By.ID, "county"))
             county_dropdown.select_by_value(property_config["county_value"])
 
-            # Fill map/parcel number
             map_number_field = self.driver.find_element(By.ID, "mapNumber")
             map_number_field.send_keys(property_config["map_parcel"])
             
-            self.status.emit("Completed property section with config data")
+            self.status.emit("Completed property section")
             
         except Exception as e:
-            self.status.emit(f"Error filling property section: {str(e)}")
+            self.log_error("Error filling property section", e)
             raise
 
     def fill_standard_property_fields(self, street_number, street_name, street_type_value, post_direction, county_value, map_parcel):
-        """Fill standard property fields that are the same across versions - DEPRECATED, use fill_property_section_standard"""
-        # Fill out street number
+        """Fill standard property fields - DEPRECATED, use fill_property_section_standard"""
         street_number_field = self.driver.find_element(By.ID, "houseNumber")
         street_number_field.send_keys(street_number)
 
-        # Fill out street name
         street_name_field = self.driver.find_element(By.ID, "houseStreetName")
         street_name_field.send_keys(street_name)
 
-        # Select street type from dropdown
         street_type_dropdown = Select(self.driver.find_element(By.ID, "houseStreetType"))
         street_type_dropdown.select_by_value(street_type_value)
 
-        # Select post direction
         post_dir_dropdown = Select(self.driver.find_element(By.ID, "housePostDirection"))
         post_dir_dropdown.select_by_value(post_direction)
 
-        # Select county
         county_dropdown = Select(self.driver.find_element(By.ID, "county"))
         county_dropdown.select_by_value(county_value)
 
-        # Fill out map/parcel number
         map_number_field = self.driver.find_element(By.ID, "mapNumber")
         map_number_field.send_keys(map_parcel)
 
     def fill_tax_computation_section(self, person_data, tax_config):
-        """
-        Generic function to fill tax computation (financial) section using config
-        
-        Args:
-            person_data (dict): Person data with sales_price
-            tax_config (dict): Tax computation configuration from version config
-        """
+        """Generic function to fill tax computation (financial) section using config"""
         try:
-            # Set exempt code if specified
             if "exempt_code" in tax_config and tax_config["exempt_code"] != "None":
                 try:
                     exempt_dropdown = Select(self.driver.find_element(By.ID, "exemptCode"))
@@ -257,47 +339,40 @@ class BasePT61Automation(QObject):
                 except Exception as e:
                     self.status.emit(f"Could not set exempt code: {str(e)}")
             
-            # Fill actual value (sales price) from Excel data
             sales_price_field = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.ID, "actualValue"))
             )
             sales_price_field.send_keys(person_data['sales_price'])
-            self.status.emit(f"Filled actual value (sales price): {person_data['sales_price']}")
+            self.status.emit(f"Filled sales price: {person_data['sales_price']}")
 
-            # Fill fair market value from config
             fair_market_value_field = self.driver.find_element(By.ID, "fairMarketValue")
             fair_market_value_field.send_keys(tax_config["fair_market_value"])
 
-            # Fill liens and encumbrances from config
             liens_field = self.driver.find_element(By.ID, "liensAndEncumberances")
             liens_field.send_keys(tax_config["liens_encumbrances"])
             
-            self.status.emit("Completed tax computation section with config data")
+            self.status.emit("Completed tax computation section")
             
         except Exception as e:
-            self.status.emit(f"Error filling tax computation section: {str(e)}")
+            self.log_error("Error filling tax computation section", e)
             raise
 
     def fill_standard_financial_fields(self, sales_price, fair_market_value="0", liens_value="0"):
         """Fill standard financial fields - DEPRECATED, use fill_tax_computation_section"""
-        # Wait for the sales price field to be present
         sales_price_field = WebDriverWait(self.driver, 10).until(
             EC.presence_of_element_located((By.ID, "actualValue"))
         )
         sales_price_field.send_keys(sales_price)
-        self.status.emit(f"Filled out sales price: {sales_price}")
+        self.status.emit(f"Filled sales price: {sales_price}")
 
-        # Set fair market value
         fair_market_value_field = self.driver.find_element(By.ID, "fairMarketValue")
         fair_market_value_field.send_keys(fair_market_value)
 
-        # Set liens and encumbrances
         liens_field = self.driver.find_element(By.ID, "liensAndEncumberances")
         liens_field.send_keys(liens_value)
 
     def submit_form(self):
         """Submit the PT-61 form"""
-        # Click the checkboxes
         checkboxes = ["chkCounty", "chkAccept", "chkTaxAccept"]
         for checkbox_id in checkboxes:
             checkbox = WebDriverWait(self.driver, 10).until(
@@ -305,7 +380,6 @@ class BasePT61Automation(QObject):
             )
             checkbox.click()
 
-        # Click "Submit PT-61 Form" button
         submit_button = WebDriverWait(self.driver, 10).until(
             EC.element_to_be_clickable((By.ID, "btnSubmitPT61"))
         )
@@ -314,32 +388,24 @@ class BasePT61Automation(QObject):
 
     def save_pdf(self, filename):
         """Save the generated PDF and optionally add to stack"""
-        # Wait for the specific iframe to be present
         iframe_locator = (By.CSS_SELECTOR, "#dvPT61IFrame iframe")
         WebDriverWait(self.driver, 30).until(EC.presence_of_element_located(iframe_locator))
         self.status.emit("PT-61 iframe found")
 
-        # Get the iframe element
         iframe = self.driver.find_element(*iframe_locator)
 
-        # Extract the src attribute
         iframe_src = iframe.get_attribute('src')
         self.status.emit(f"Iframe src: {iframe_src}")
 
-        # Open the PDF in a new tab
         self.driver.execute_script(f"window.open('{iframe_src}', '_blank');")
 
-        # Switch to the new tab
         self.driver.switch_to.window(self.driver.window_handles[-1])
 
-        # Wait for the PDF to load
         time.sleep(5)
 
-        # Generate file path
         file_path = os.path.join(self.save_location, filename)
         file_path = os.path.normpath(file_path)
 
-        # Use pyautogui to save
         pyautogui.hotkey('ctrl', 's')
         time.sleep(2)
         pyautogui.write(file_path)
@@ -349,15 +415,12 @@ class BasePT61Automation(QObject):
 
         self.status.emit(f"Saved PDF as: {filename}")
 
-        # NEW: Add to PDF stack if document stacking is enabled
         if self.document_stacking:
             self.pdf_stacker.add_pdf(file_path)
             self.status.emit(f"Added to document stack: {filename}")
 
-        # Close the PDF tab
         self.driver.close()
 
-        # Switch back to the original tab
         self.driver.switch_to.window(self.driver.window_handles[0])
 
     def finalize_document_stacking(self):
@@ -366,7 +429,6 @@ class BasePT61Automation(QObject):
             try:
                 self.status.emit("Starting document stacking process...")
                 
-                # Get stack info
                 stack_info = self.pdf_stacker.get_stack_info()
                 self.status.emit(f"Processing {stack_info['total_files']} PDF files for stacking")
                 
@@ -374,31 +436,34 @@ class BasePT61Automation(QObject):
                     self.status.emit("No PDF files to stack")
                     return
                 
-                # Create the combined PDF
                 combined_pdf_path = self.pdf_stacker.create_stacked_pdf(
                     self.save_location, 
                     self.version
                 )
                 
-                self.status.emit(f"Document stacking completed successfully!")
-                self.status.emit(f"Combined PDF saved as: {os.path.basename(combined_pdf_path)}")
+                self.status.emit(f"Document stacking completed!")
+                self.status.emit(f"Combined PDF: {os.path.basename(combined_pdf_path)}")
                 
             except Exception as e:
                 self.status.emit(f"Error during document stacking: {str(e)}")
-                # Don't fail the entire process if stacking fails
                 self.status.emit("Individual PDF files are still available")
 
     def cleanup(self):
         """Clean up resources"""
-        # NEW: Finalize document stacking before cleanup
         if self.document_stacking:
             self.finalize_document_stacking()
         
         if self.driver:
-            self.driver.quit()
-            self.status.emit("Browser closed.")
+            if self.keep_browser_open_on_error:
+                self.status.emit("ERROR - Browser left open for inspection")
+                print("\n" + "*"*60)
+                print("BROWSER LEFT OPEN FOR DEBUGGING")
+                print("Copy the page HTML and share it for troubleshooting.")
+                print("*"*60 + "\n")
+            else:
+                self.driver.quit()
+                self.status.emit("Browser closed.")
 
-    # Abstract methods to be implemented by version-specific classes
     def fill_seller_section(self, person_data):
         """Fill seller section - to be implemented by version classes"""
         raise NotImplementedError("Version classes must implement fill_seller_section")
@@ -418,28 +483,24 @@ class BasePT61Automation(QObject):
     def generate_filename(self, person_data):
         """Generate filename for PDF using config pattern"""
         try:
-            # Get file naming pattern from config
             file_naming = self.config["constants"]["file_naming"]
             pattern = file_naming["pattern"]
             
-            # Replace placeholders with actual data
             filename = pattern.format(
                 last_name=person_data['individual_name']['last'],
                 contract_num=person_data['contract_number'],
-                contract_number=person_data['contract_number'],  # Alias for contract_num
+                contract_number=person_data['contract_number'],
                 first_name=person_data['individual_name']['first'],
                 middle_name=person_data['individual_name']['middle']
             )
             
-            # Clean filename (remove invalid characters)
             import re
             filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
             
             return filename
             
         except Exception as e:
-            # Fallback to simple pattern if config fails
-            self.status.emit(f"Warning: Using fallback filename pattern due to error: {str(e)}")
+            self.status.emit(f"Warning: Using fallback filename pattern: {str(e)}")
             last_name = person_data['individual_name']['last']
             contract_num = person_data['contract_number']
             return f"{last_name}_{contract_num}_PT61.pdf"
@@ -448,29 +509,30 @@ class BasePT61Automation(QObject):
         """Process a single person through the form - template method"""
         self.status.emit(f"Processing person {index} of {total_count}")
 
-        # Navigate to form
-        self.navigate_to_form()
+        try:
+            self.navigate_to_form()
 
-        # Fill sections (version-specific implementations)
-        self.fill_seller_section(person_data)
-        self.click_next_step()
+            self.fill_seller_section(person_data)
+            self.click_next_step()
 
-        self.fill_buyer_section(person_data)
-        self.click_next_step()
+            self.fill_buyer_section(person_data)
+            self.click_next_step()
 
-        self.fill_property_section(person_data)
-        self.click_next_step()
+            self.fill_property_section(person_data)
+            self.click_next_step()
 
-        self.handle_alert_if_present()
+            self.handle_alert_if_present()
 
-        self.fill_financial_section(person_data)
-        self.click_next_step()
+            self.fill_financial_section(person_data)
+            self.click_next_step()
 
-        # Submit and save
-        self.submit_form()
-        filename = self.generate_filename(person_data)
-        self.save_pdf(filename)
+            self.submit_form()
+            filename = self.generate_filename(person_data)
+            self.save_pdf(filename)
 
-        # Update progress
-        progress = int((index / total_count) * 100)
-        self.progress.emit(progress)
+            progress = int((index / total_count) * 100)
+            self.progress.emit(progress)
+            
+        except Exception as e:
+            self.log_error(f"Error processing person {index}", e)
+            raise
