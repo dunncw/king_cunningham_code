@@ -207,7 +207,7 @@ class CRGAutomationWorker(QObject):
             # Click download button
             print("DEBUG: Looking for download button...")
             download_button = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "svg.icon-download"))
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "button.FilesPageSelectedHeader-button-download"))
             )
             time.sleep(0.5)
             print("DEBUG: Download button found, clicking...")
