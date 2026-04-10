@@ -2,6 +2,7 @@
 
 import os
 import json
+import shutil
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTextEdit,
     QLineEdit, QLabel, QComboBox, QFileDialog, QMessageBox,
@@ -21,7 +22,12 @@ class SimplifileWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.worker = None
-        self.config_file = os.path.join(os.path.expanduser("~"), ".simplifile3_config.json")
+        _config_dir = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "King_Cunningham")
+        os.makedirs(_config_dir, exist_ok=True)
+        self.config_file = os.path.join(_config_dir, "simplifile3_config.json")
+        _old_config = os.path.join(os.path.expanduser("~"), ".simplifile3_config.json")
+        if not os.path.exists(self.config_file) and os.path.exists(_old_config):
+            shutil.copy(_old_config, self.config_file)
         self.current_workflow = None
         self.file_paths = {}
         self.file_inputs = {}  # Store file input widgets

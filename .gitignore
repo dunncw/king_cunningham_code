@@ -2,6 +2,7 @@ data/*
 *.pyc
 build/*
 dist/*
+bin/
 dist.zip
 videos/*
 *.xlsx
