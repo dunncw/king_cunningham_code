@@ -35,7 +35,7 @@ class MainWindow(QMainWindow):
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowTitle("King & Cunningham Software Suite")
+        self.setWindowTitle("KC Automation Suite")
         
         self.central_widget = QStackedWidget()
         self.setCentralWidget(self.central_widget)
@@ -102,12 +102,18 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(title_label)
         
         # Subtitle (simplified)
-        subtitle_label = QLabel("Legal Automation Suite")
+        subtitle_label = QLabel("Automation Suite")
         subtitle_font = QFont("Segoe UI", 12)
         subtitle_label.setFont(subtitle_font)
         subtitle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         subtitle_label.setStyleSheet("color: #a0a0a0;")
         header_layout.addWidget(subtitle_label)
+
+        version_label = QLabel(f"v{self.version}")
+        version_label.setFont(QFont("Segoe UI", 9))
+        version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        version_label.setStyleSheet("color: #505050;")
+        header_layout.addWidget(version_label)
         
         header_container.setLayout(header_layout)
         main_layout.addWidget(header_container)
