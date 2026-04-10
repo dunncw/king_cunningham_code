@@ -32,23 +32,31 @@ python build.py
 
 # 2. Clean previous test install
 Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\KC App.lnk" -Force -ErrorAction SilentlyContinue
+Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\KC Automation Suite.lnk" -Force -ErrorAction SilentlyContinue
 
-# 3. Seed install dir with built outputs
+# 3. Seed install dir with KC_app.exe and version.txt only.
+#    Do NOT copy launcher.exe — dist\launcher.exe self-installs it.
 New-Item -ItemType Directory -Force -Path $installDir | Out-Null
-Copy-Item dist\KC_app.exe  $installDir\ -Force
-Copy-Item dist\launcher.exe $installDir\ -Force
+Copy-Item dist\KC_app.exe $installDir\ -Force
 (Get-Content version.txt -Raw).Trim() | Set-Content $installDir\version.txt
 
-# 4. Run launcher (KC_LAUNCHER_SKIP_UPDATE=1 bypasses the GitHub check)
+# 4. Run dist\launcher.exe (triggers self-install + shortcut creation).
+#    KC_LAUNCHER_SKIP_UPDATE=1 bypasses the GitHub check end-to-end.
 $env:KC_LAUNCHER_SKIP_UPDATE = "1"
-& "$installDir\launcher.exe"
+Start-Process dist\launcher.exe
 $env:KC_LAUNCHER_SKIP_UPDATE = $null
+
+# Poll until the launcher copies itself to the install dir (up to 30 s)
+$deadline = (Get-Date).AddSeconds(30)
+while (-not (Test-Path "$installDir\launcher.exe") -and (Get-Date) -lt $deadline) {
+    Start-Sleep -Seconds 1
+}
 ```
 
 Check:
 - App opens normally
-- `%APPDATA%\Microsoft\Windows\Start Menu\Programs\KC App.lnk` exists
+- `$installDir\launcher.exe` exists (self-installed)
+- `%APPDATA%\Microsoft\Windows\Start Menu\Programs\KC Automation Suite.lnk` exists
 - Simplifile3 config saves to `%APPDATA%\King_Cunningham\simplifile3_config.json`
 
 ## Step-by-step: update flow test (requires GitHub)
@@ -85,7 +93,7 @@ git push origin ":refs/tags/v$version"
 
 ```powershell
 Remove-Item "$env:LOCALAPPDATA\King_Cunningham\KC_App" -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\KC App.lnk" -Force -ErrorAction SilentlyContinue
+Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\KC Automation Suite.lnk" -Force -ErrorAction SilentlyContinue
 ```
 
 ## Known gotchas
