@@ -1,18 +1,33 @@
-import sys
+import glob
 import os
+import sys
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
 block_cipher = None
 
-# Add the path to Tesseract executable
-tesseract_path = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Update this path
-if not os.path.exists(tesseract_path):
-    raise FileNotFoundError(f"Tesseract executable not found at {tesseract_path}")
 
-# Add the path to Ghostscript executable
-ghostscript_path = r'C:\Program Files\gs\gs10.04.0\bin\gswin64c.exe'  # Update this path
-if not os.path.exists(ghostscript_path):
-    raise FileNotFoundError(f"Ghostscript executable not found at {ghostscript_path}")
+def _find_one(pattern: str, label: str) -> str:
+    matches = glob.glob(pattern, recursive=True)
+    if not matches:
+        raise FileNotFoundError(
+            f"{label} not found matching '{pattern}'. "
+            "Run 'python scripts/setup_binaries.py' first."
+        )
+    return matches[0]
+
+
+tesseract_path = _find_one(
+    os.path.join("bin", "tesseract", "**", "tesseract.exe"),
+    "tesseract.exe",
+)
+ghostscript_path = _find_one(
+    os.path.join("bin", "ghostscript", "**", "gswin64c.exe"),
+    "gswin64c.exe",
+)
+tessdata_path = _find_one(
+    os.path.join("bin", "tesseract", "**", "tessdata"),
+    "tessdata/",
+)
 
 # Collect pyzbar binary and data files
 pyzbar_binaries = collect_dynamic_libs('pyzbar')
@@ -23,7 +38,7 @@ a = Analysis(['src\\main.py'],
              binaries=[(tesseract_path, '.'), (ghostscript_path, '.')] + pyzbar_binaries,
              datas=[
                  ('resources', 'resources'),
-                 ('C:\\Program Files\\Tesseract-OCR\\tessdata', 'tessdata'),
+                 (tessdata_path, 'tessdata'),
                  (tesseract_path, '.'),
              ] + pyzbar_datas,
              hiddenimports=['pyzbar', 'pytesseract'],
@@ -51,7 +66,7 @@ exe = EXE(pyz,
           upx=True,
           upx_exclude=[],
           runtime_tmpdir=None,
-          console=False,  # Changed back to False to hide the console
+          console=False,
           disable_windowed_traceback=False,
           target_arch=None,
           codesign_identity=None,

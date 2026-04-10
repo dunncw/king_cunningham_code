@@ -1,4 +1,3 @@
-# File: pacer/pacer.py
 from PyQt6.QtCore import QObject, pyqtSignal
 import json
 import os
@@ -12,12 +11,14 @@ class PACERAutomationWorker(QObject):
     status = pyqtSignal(str)
     error = pyqtSignal(str)
 
-    def __init__(self, excel_path: str, username: str, password: str, save_location: str, environment: str = "prod"):
+    def __init__(self, excel_path: str, username: str, password: str, save_location: str, 
+                 use_4digit_mode: bool = False, environment: str = "prod"):
         super().__init__()
         self.excel_path = excel_path
         self.username = username
         self.password = password
         self.save_location = save_location
+        self.use_4digit_mode = use_4digit_mode
         self.environment = environment
         self.excel_processor = None
         self.failed_searches = []
@@ -35,7 +36,6 @@ class PACERAutomationWorker(QObject):
         }
 
     def authenticate(self) -> bool:
-        """Authenticate with PACER and get token"""
         auth_url = f"{self.base_urls[self.environment]['auth']}/services/cso-auth"
         
         headers = {
@@ -65,52 +65,39 @@ class PACERAutomationWorker(QObject):
             return False
 
     def sanitize_last_name(self, last_name: str) -> str:
-        """
-        Sanitize last name for PACER API requirements.
-        Handles suffixes, prefixes, hyphenated names, and special characters.
-        """
         if not last_name or not isinstance(last_name, str):
             return ""
             
-        # Convert to uppercase and trim whitespace
         name = last_name.strip().upper()
         
-        # List of suffixes to remove
         suffixes = [
             "JR", "JR.", "SR", "SR.", "II", "III", "IV", 
             "V", "VI", "VII", "VIII", "IX", "X"
         ]
         
-        # Remove suffixes
         for suffix in suffixes:
             if name.endswith(f" {suffix}"):
                 name = name[:-(len(suffix) + 1)].strip()
         
-        # Handle hyphenated names - take the last part
         if "-" in name:
             name = name.split("-")[-1].strip()
         
-        # Replace commas and periods with spaces
         for char in ",.":
             name = name.replace(char, " ")
         
-        # Remove all other special characters
         special_chars = r"'`\"&@#$%*()[]{}\/|:;?!+=<>"
         for char in special_chars:
             name = name.replace(char, "")
         
-        # Collapse multiple spaces into single space
         name = " ".join(name.split())
         
         return name
 
-    def search_bankruptcy_by_ssn(self, ssn: str, last_name: str) -> Optional[Dict[str, Any]]:
-        """Search for bankruptcy cases by SSN and last name"""
+    def search_by_ssn9(self, ssn: str, last_name: str) -> Optional[Dict[str, Any]]:
         if not self.auth_token:
             self.error.emit("Not authenticated. Authentication required.")
             return None
             
-        # Sanitize the last name before making the API call
         sanitized_last_name = self.sanitize_last_name(last_name)
         
         if not sanitized_last_name:
@@ -136,8 +123,8 @@ class PACERAutomationWorker(QObject):
             
             if response.status_code == 200:
                 result = response.json()
-                # Store the API response with both original and sanitized names
                 self.api_responses.append({
+                    "searchMode": "9-digit",
                     "ssn": ssn,
                     "originalLastName": last_name,
                     "sanitizedLastName": sanitized_last_name,
@@ -154,64 +141,154 @@ class PACERAutomationWorker(QObject):
             self.error.emit(f"API request failed: {str(e)}")
             return None
 
-    def interpret_bankruptcy_status(self, response: Dict[str, Any]) -> str:
-        """
-        Interpret the bankruptcy status from API response
+    def search_by_ssn4(self, ssn4: str, last_name: str, first_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        if not self.auth_token:
+            self.error.emit("Not authenticated. Authentication required.")
+            return None
+            
+        sanitized_last_name = self.sanitize_last_name(last_name)
         
-        Returns one of:
-        - "No Bankruptcy"
-        - "Closed Bankruptcy"
-        - "OPEN Bankruptcy Found"
-        - "FAILED: Invalid API Response"
-        """
+        if not sanitized_last_name:
+            self.error.emit("Invalid last name after sanitization")
+            return None
+            
+        url = f"{self.base_urls[self.environment]['api']}/parties/find"
+        
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-NEXT-GEN-CSO": self.auth_token
+        }
+        
+        search_data = {
+            "lastName": sanitized_last_name,
+            "ssn4": ssn4,
+            "jurisdictionType": "bk"
+        }
+        
         try:
-            # Check for valid response structure
+            response = requests.post(url, headers=headers, json=search_data)
+            
+            if response.status_code == 200:
+                result = response.json()
+                self.api_responses.append({
+                    "searchMode": "4-digit",
+                    "ssn4": ssn4,
+                    "originalLastName": last_name,
+                    "sanitizedLastName": sanitized_last_name,
+                    "excelFirstName": first_name,
+                    "timestamp": datetime.now().isoformat(),
+                    "matchCount": len(result.get("content", [])),
+                    "response": result
+                })
+                return result
+            else:
+                error_msg = f"API request failed with status {response.status_code}"
+                self.error.emit(error_msg)
+                return None
+                
+        except requests.exceptions.RequestException as e:
+            self.error.emit(f"API request failed: {str(e)}")
+            return None
+
+    def interpret_bankruptcy_status(self, response: Dict[str, Any]) -> str:
+        try:
             if not response or "content" not in response or "pageInfo" not in response:
-                print("DEBUG: Invalid response structure")
                 return "FAILED: Invalid API Response"
 
-            # Check for No Bankruptcy
             if (not response["content"] and 
                 response["pageInfo"]["totalElements"] == 0):
-                print("DEBUG: No bankruptcy cases found")
                 return "No Bankruptcy"
 
-            print(f"DEBUG: Found {len(response['content'])} case(s)")
-            
-            # Check each case for open status
-            for case_idx, case in enumerate(response["content"]):
+            for case in response["content"]:
                 court_case = case.get("courtCase", {})
-                case_number = court_case.get("caseNumberFull", "Unknown")
                 effective_date_closed = court_case.get("effectiveDateClosed")
                 
-                print(f"\nDEBUG: Analyzing case {case_number}")
-                print(f"  - Filed: {court_case.get('dateFiled')}")
-                print(f"  - Effective Date Closed: {effective_date_closed}")
-                
-                # If any case lacks an effectiveDateClosed, it's open
                 if not effective_date_closed:
-                    print(f"DEBUG: Case {case_number} is OPEN - no effective close date")
                     return "OPEN Bankruptcy Found"
 
-            print("\nDEBUG: All cases have effective close dates - marking as Closed")
             return "Closed Bankruptcy"
 
         except Exception as e:
-            print(f"DEBUG: Error interpreting bankruptcy status: {str(e)}")
             return "FAILED: Invalid API Response"
 
+    def format_multiple_matches(self, response: Dict[str, Any], excel_first_name: Optional[str] = None) -> Tuple[str, bool]:
+        try:
+            content = response.get("content", [])
+            match_count = len(content)
+            
+            if match_count == 0:
+                return "No Bankruptcy", False
+            
+            scored_matches = []
+            has_exact_match = False
+            
+            for case in content:
+                court_case = case.get("courtCase", {})
+                
+                pacer_first_name = case.get("firstName", "")
+                middle_name = case.get("middleName", "")
+                last_name = case.get("lastName", "")
+                
+                if excel_first_name and pacer_first_name:
+                    score = self.excel_processor.calculate_name_similarity(excel_first_name, pacer_first_name)
+                    if score == 100:
+                        has_exact_match = True
+                else:
+                    score = None
+                
+                full_name_parts = [pacer_first_name, middle_name, last_name]
+                full_name = " ".join([p for p in full_name_parts if p]).strip()
+                
+                case_number = court_case.get("caseNumberFull", "Unknown")
+                date_filed = court_case.get("dateFiled", "Unknown")
+                effective_date_closed = court_case.get("effectiveDateClosed")
+                
+                status = "OPEN" if not effective_date_closed else f"Closed {effective_date_closed}"
+                
+                scored_matches.append({
+                    "score": score,
+                    "full_name": full_name,
+                    "case_number": case_number,
+                    "date_filed": date_filed,
+                    "status": status
+                })
+            
+            if excel_first_name:
+                scored_matches.sort(key=lambda x: x["score"] if x["score"] is not None else -1, reverse=True)
+            
+            result_lines = [f"REVIEW REQUIRED - {match_count} Match{'es' if match_count > 1 else ''}"]
+            
+            for idx, match in enumerate(scored_matches, 1):
+                if match["score"] is not None:
+                    score_prefix = f"[{match['score']}%] "
+                else:
+                    score_prefix = ""
+                
+                match_line = f"\n{idx}. {score_prefix}{match['full_name']} | Case: {match['case_number']} | Filed: {match['date_filed']} | Status: {match['status']}"
+                result_lines.append(match_line)
+            
+            return "".join(result_lines), has_exact_match
+            
+        except Exception as e:
+            return f"FAILED: Error formatting results - {str(e)}", False
+
     def process_single_person(self, person: Dict, account_number: str, row_index: int) -> bool:
-        """Process a single person's bankruptcy search"""
         try:
             original_last_name = person['last_name']
             sanitized_last_name = self.sanitize_last_name(original_last_name)
+            ssn_value = person['ssn']
+            excel_first_name = person.get('first_name')
             
-            # Modified status message to focus on sanitized name
-            status_msg = f"Searching for {sanitized_last_name} (SSN: {person['ssn']})..."
+            status_msg = f"Searching for {sanitized_last_name} (SSN: {'****' if self.use_4digit_mode else ssn_value[-4:]})..."
             if sanitized_last_name != original_last_name:
-                status_msg = f"Searching for {sanitized_last_name} (original: {original_last_name}) (SSN: {person['ssn']})..."
+                status_msg = f"Searching for {sanitized_last_name} (original: {original_last_name}) (SSN: {'****' if self.use_4digit_mode else ssn_value[-4:]})..."
             
-            response = self.search_bankruptcy_by_ssn(person['ssn'], person['last_name'])
+            if self.use_4digit_mode:
+                response = self.search_by_ssn4(ssn_value, person['last_name'], excel_first_name)
+            else:
+                response = self.search_by_ssn9(ssn_value, person['last_name'])
+            
             if response is None:
                 error_msg = f"Failed to get API response for {sanitized_last_name}"
                 self.failed_searches.append((person, error_msg))
@@ -219,21 +296,32 @@ class PACERAutomationWorker(QObject):
                 self.status.emit(f"{status_msg} FAILED: API Error")
                 return False
 
-            result_status = self.interpret_bankruptcy_status(response)
+            has_exact_match = False
             
-            # Format output message based on status
+            if self.use_4digit_mode:
+                match_count = len(response.get("content", []))
+                
+                if match_count == 0:
+                    result_status = "No Bankruptcy"
+                elif match_count == 1:
+                    result_status = self.interpret_bankruptcy_status(response)
+                else:
+                    result_status, has_exact_match = self.format_multiple_matches(response, excel_first_name)
+            else:
+                result_status = self.interpret_bankruptcy_status(response)
+            
             if result_status == "OPEN Bankruptcy Found":
-                output_msg = f"{status_msg} 🚨 {result_status} 🚨"
+                output_msg = f"{status_msg} OPEN Bankruptcy Found"
             else:
                 output_msg = f"{status_msg} {result_status}"
             
             self.status.emit(output_msg)
             
-            # Update Excel with results
             update_success, _ = self.excel_processor.update_results(
                 row_index,
                 person['person_number'],
-                result_status
+                result_status,
+                has_exact_match
             )
             
             if not update_success:
@@ -249,7 +337,6 @@ class PACERAutomationWorker(QObject):
             return False
 
     def update_excel_with_failure(self, row_index: int, person: Dict, error_msg: str):
-        """Update Excel file with failure message"""
         failure_msg = f"FAILED: {error_msg}"
         self.excel_processor.update_results(
             row_index,
@@ -258,10 +345,10 @@ class PACERAutomationWorker(QObject):
         )
 
     def save_api_responses(self):
-        """Save all API responses to a JSON file"""
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"pacer_api_responses_{timestamp}.json"
+            mode_suffix = "4digit" if self.use_4digit_mode else "9digit"
+            filename = f"pacer_api_responses_{mode_suffix}_{timestamp}.json"
             filepath = os.path.join(self.save_location, filename)
             
             with open(filepath, 'w') as f:
@@ -274,17 +361,29 @@ class PACERAutomationWorker(QObject):
             return False
 
     def run(self):
-        """Main execution method"""
         try:
-            # Process Excel file
             from .excel_processor import PACERExcelProcessor
-            self.excel_processor = PACERExcelProcessor(self.excel_path)
             
-            self.status.emit("Processing Excel file...")
-            success, data = self.excel_processor.process_excel()
+            try:
+                self.excel_processor = PACERExcelProcessor(self.excel_path, self.use_4digit_mode)
+            except TypeError as e:
+                self.error.emit(f"Excel processor initialization failed: {str(e)}. Make sure you've updated excel_processor.py with the new code.")
+                self.finished.emit()
+                return
+            
+            mode_text = "4-digit SSN" if self.use_4digit_mode else "9-digit SSN"
+            self.status.emit(f"Processing Excel file ({mode_text} mode)...")
+            
+            try:
+                success, data = self.excel_processor.process_excel()
+            except Exception as e:
+                self.error.emit(f"Excel file processing error: {str(e)}")
+                self.finished.emit()
+                return
 
             if not success:
                 self.error.emit(f"Excel processing failed: {data}")
+                self.finished.emit()
                 return
 
             if not data:
@@ -292,33 +391,46 @@ class PACERAutomationWorker(QObject):
                 self.finished.emit()
                 return
 
-            # Authenticate with PACER
             self.status.emit("Authenticating with PACER...")
             if not self.authenticate():
+                self.finished.emit()
                 return
 
             total_searches = sum(len(row['people']) for row in data)
             completed_searches = 0
 
-            # Process all people from the data
             for row in data:
                 for person in row['people']:
-                    self.process_single_person(person, row['account_number'], row['excel_row_index'])
+                    try:
+                        self.process_single_person(person, row['account_number'], row['excel_row_index'])
+                    except Exception as e:
+                        error_msg = f"Error processing {person.get('last_name', 'Unknown')}: {str(e)}"
+                        self.status.emit(error_msg)
+                        self.failed_searches.append((person, error_msg))
                     
                     completed_searches += 1
                     progress_percentage = int((completed_searches / total_searches) * 100)
                     self.progress.emit(progress_percentage)
 
-            # Apply highlighting to all marked cells at once
-            self.excel_processor.apply_highlighting()
+            try:
+                self.excel_processor.apply_highlighting()
+            except Exception as e:
+                self.status.emit(f"Warning: Could not apply highlighting: {str(e)}")
 
-            # Save API responses
-            self.save_api_responses()
+            try:
+                self.excel_processor.auto_fit_columns_and_rows()
+            except Exception as e:
+                self.status.emit(f"Warning: Could not auto-fit columns/rows: {str(e)}")
+
+            try:
+                self.save_api_responses()
+            except Exception as e:
+                self.status.emit(f"Warning: Could not save API responses: {str(e)}")
 
             if self.failed_searches:
-                failure_message = "\n\nFAILED SEARCHES:"
+                failure_message = f"\n\nFAILED SEARCHES ({len(self.failed_searches)}):"
                 for person, error in self.failed_searches:
-                    failure_message += f"\n- {person['last_name']} (SSN: {person['ssn']}): {error}"
+                    failure_message += f"\n- {person.get('last_name', 'Unknown')} (SSN: {person.get('ssn', 'Unknown')}): {error}"
                 self.status.emit(f"Completed with {len(self.failed_searches)} failed searches.{failure_message}")
             else:
                 self.status.emit("All searches completed successfully")
@@ -326,4 +438,7 @@ class PACERAutomationWorker(QObject):
             self.finished.emit()
 
         except Exception as e:
-            self.error.emit(f"Error during automation: {str(e)}")
+            import traceback
+            error_detail = traceback.format_exc()
+            self.error.emit(f"Critical error during automation:\n\n{str(e)}\n\nFull trace:\n{error_detail}")
+            self.finished.emit()

@@ -28,43 +28,57 @@ class CRGAutomationWorker(QObject):
 
     def run(self):
         try:
+            print("DEBUG: Starting CRG Automation...")
             self.status.emit("Starting CRG Automation...")
             self.progress.emit(10)
 
             # Process Excel file
+            print("DEBUG: Processing Excel file...")
             self.status.emit("Processing Excel file...")
             excel_processor = ExcelProcessor(self.excel_path)
             account_numbers = excel_processor.process_excel()
+            print(f"DEBUG: Found {len(account_numbers)} account numbers: {account_numbers}")
             self.status.emit(f"Found {len(account_numbers)} account numbers for Myrtle Beach.")
             self.progress.emit(20)
 
             # Initialize web driver
+            print("DEBUG: Initializing web browser...")
             self.status.emit("Initializing web browser...")
             self.init_driver()
             self.progress.emit(30)
 
             # Log in to the website
+            print("DEBUG: Attempting login...")
             self.status.emit("Logging in to Capital IT Files...")
             self.login()
             self.progress.emit(40)
 
             # Process each account number
             for i, account_number in enumerate(account_numbers):
+                print(f"DEBUG: Processing account {account_number} ({i+1}/{len(account_numbers)})")
                 self.status.emit(f"Processing account number {account_number} ({i+1}/{len(account_numbers)})...")
                 self.process_account(account_number)
                 progress = 40 + (i + 1) * (60 / len(account_numbers))
                 self.progress.emit(int(progress))
 
+            print("DEBUG: CRG Automation completed successfully!")
             self.status.emit("CRG Automation completed successfully!")
             self.progress.emit(100)
             self.finished.emit()
         except Exception as e:
+            print(f"DEBUG: Error occurred: {str(e)}")
             self.error.emit(str(e))
         finally:
             if self.driver:
-                self.driver.quit()
+                print("DEBUG: Closing browser...")
+                try:
+                    self.driver.quit()
+                except Exception as e:
+                    print(f"DEBUG: Error closing driver: {str(e)}")
+                self.driver = None
 
     def init_driver(self):
+        print(f"DEBUG: Initializing {self.browser} driver...")
         if self.browser.lower() == "chrome":
             options = ChromeOptions()
             options.add_experimental_option('prefs', {
@@ -89,81 +103,138 @@ class CRGAutomationWorker(QObject):
             self.driver = webdriver.Edge(options=options)
         else:
             raise ValueError(f"Unsupported browser: {self.browser}")
+        print(f"DEBUG: {self.browser} driver initialized successfully")
 
     def login(self):
+        print("DEBUG: Navigating to login page...")
         self.driver.get("https://capitalit.files.com/login")
+        time.sleep(0.5)
+        print(f"DEBUG: Current URL after navigation: {self.driver.current_url}")
         
         # Wait for the username field to be visible and enter the username
+        print("DEBUG: Looking for username field...")
         username_field = WebDriverWait(self.driver, 10).until(
             EC.visibility_of_element_located((By.ID, "form-username"))
         )
+        time.sleep(0.5)
+        print("DEBUG: Username field found, entering username...")
+        username_field.clear()
+        time.sleep(0.5)
         username_field.send_keys(self.username)
+        time.sleep(0.5)
 
         # Enter the password
+        print("DEBUG: Looking for password field...")
         password_field = self.driver.find_element(By.ID, "form-password")
+        time.sleep(0.5)
+        print("DEBUG: Password field found, entering password...")
+        password_field.clear()
+        time.sleep(0.5)
         password_field.send_keys(self.password)
+        time.sleep(0.5)
 
         # Click the login button
+        print("DEBUG: Looking for login button...")
         login_button = self.driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+        time.sleep(0.5)
+        print("DEBUG: Login button found, clicking...")
         login_button.click()
+        time.sleep(1.0)  # Longer wait after login click
+        
+        print("DEBUG: Waiting for login to complete...")
+        print(f"DEBUG: Current URL before wait: {self.driver.current_url}")
 
         # Wait for the login process to complete
-        WebDriverWait(self.driver, 10).until(
-            EC.url_changes("https://capitalit.files.com/login")
-        )
+        try:
+            WebDriverWait(self.driver, 15).until(
+                EC.url_changes("https://capitalit.files.com/login")
+            )
+            print(f"DEBUG: URL changed after login: {self.driver.current_url}")
+        except Exception as e:
+            print(f"DEBUG: URL didn't change as expected: {str(e)}")
+            print(f"DEBUG: Current URL: {self.driver.current_url}")
 
         self.status.emit("Successfully logged in to Capital IT Files.")
+        print("DEBUG: Login process completed")
 
     def process_account(self, account_number):
-        print(account_number)
+        print(f"DEBUG: Starting to process account {account_number}")
         try:
             # Navigate to the main page before each search
+            print("DEBUG: Navigating to main page...")
             self.driver.get("https://capitalit.files.com/")
+            time.sleep(1.0)  # Wait for page load
+            print(f"DEBUG: Current URL: {self.driver.current_url}")
             
             # Wait for the page to load and find the search bar
+            print("DEBUG: Looking for search bar...")
             search_bar = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "input[placeholder='Search files and folders...']"))
             )
+            time.sleep(0.5)
+            print("DEBUG: Search bar found, clearing and entering account number...")
             search_bar.clear()
+            time.sleep(0.5)
             search_bar.send_keys(str(account_number))
+            time.sleep(0.5)
             search_bar.send_keys(Keys.RETURN)
+            time.sleep(1.0)  # Wait for search to process
+            print(f"DEBUG: Search submitted for account {account_number}")
 
             # Wait for search results and switch to grid view
-            time.sleep(2)  # Wait for search results to load
+            print("DEBUG: Waiting for search results to load...")
+            time.sleep(2.0)  # Wait for results to appear
+            
+            print("DEBUG: Looking for grid view button...")
             grid_view_button = WebDriverWait(self.driver, 10).until(
                 EC.element_to_be_clickable((By.CSS_SELECTOR, "button[aria-label='Grid view']"))
             )
+            time.sleep(0.5)
+            print("DEBUG: Grid view button found, clicking...")
             grid_view_button.click()
+            time.sleep(1.0)  # Wait for view to change
 
             # Select all files
+            print("DEBUG: Looking for 'Select all' button...")
             select_all_button = WebDriverWait(self.driver, 10).until(
                 EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Select all')]"))
             )
+            time.sleep(0.5)
+            print("DEBUG: 'Select all' button found, clicking...")
             select_all_button.click()
+            time.sleep(1.0)  # Wait for selection
 
             # Click download button
+            print("DEBUG: Looking for download button...")
             download_button = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "svg.icon-download"))
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "button.FilesPageSelectedHeader-button-download"))
             )
+            time.sleep(0.5)
+            print("DEBUG: Download button found, clicking...")
             download_button.click()
-
-            # Wait for the file save dialog to appear
-            time.sleep(2)
+            time.sleep(2.0)  # Wait for download dialog
 
             # Handle file save dialog using PyAutoGUI
             save_path = os.path.join(self.save_location, f"{account_number}")
             save_path = os.path.normpath(save_path)
-            time.sleep(2)
+            print(f"DEBUG: Typing save path: {save_path}")
+            
+            time.sleep(1.0)  # Wait for dialog to fully appear
             pyautogui.write(save_path)
-            time.sleep(2)
+            time.sleep(1.0)
             pyautogui.press('enter')
+            time.sleep(1.0)  # Wait after confirming save
+            print("DEBUG: Save path entered and confirmed")
 
-            # Wait for the download to complete (you may need to adjust this wait time)
-            time.sleep(5)
+            # Wait for the download to complete
+            print("DEBUG: Waiting for download to complete...")
+            time.sleep(5.0)  # Wait for download
 
+            print(f"DEBUG: Account {account_number} processing completed")
             self.status.emit(f"Files for account {account_number} downloaded successfully as {save_path}")
 
         except Exception as e:
+            print(f"DEBUG: Error processing account {account_number}: {str(e)}")
             self.error.emit(f"Error processing account {account_number}: {str(e)}")
 
 
