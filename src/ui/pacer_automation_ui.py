@@ -1,21 +1,18 @@
-# File: ui/pacer_automation_ui.py
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QFileDialog, QProgressBar, QTextEdit, QFrame, QToolTip, QMessageBox
+    QFileDialog, QProgressBar, QTextEdit, QFrame, QMessageBox, QCheckBox
 )
 from PyQt6.QtCore import pyqtSignal, QThread, Qt
-from PyQt6.QtGui import QIcon
 from pacer.pacer import PACERAutomationWorker
 
 class InfoLabel(QLabel):
-    """Custom label with info icon and tooltip"""
     def __init__(self, text: str, tooltip: str, parent=None):
         super().__init__(text, parent)
         self.setToolTip(tooltip)
         self.setCursor(Qt.CursorShape.WhatsThisCursor)
 
 class PACERAutomationUI(QWidget):
-    start_automation = pyqtSignal(str, str, str, str)
+    start_automation = pyqtSignal(str, str, str, str, bool)
 
     def __init__(self):
         super().__init__()
@@ -26,23 +23,20 @@ class PACERAutomationUI(QWidget):
     def init_ui(self):
         layout = QVBoxLayout()
 
-        # Title
         title_label = QLabel("PACER Automation")
         title_label.setStyleSheet("font-size: 18px; font-weight: bold;")
         layout.addWidget(title_label)
 
-        # Excel file selection
         excel_layout = QHBoxLayout()
         excel_label = InfoLabel(
             "Excel File:", 
-            "Select an Excel file (.xlsx) with the following required columns:\n"
-            "- Account #\n"
-            "- Last Name 1\n"
-            "- SSN 1\n"
-            "- Last Name 2 (optional)\n"
-            "- SSN 2 (optional)\n"
-            "\nThe automation will process all rows that have valid SSNs "
-            "and haven't been processed yet."
+            "Select an Excel file (.xlsx) with required columns:\n"
+            "- Account # or Contract Num\n"
+            "- Last Name 1 or Last 1\n"
+            "- SSN 1 (9 digits or 4 digits depending on mode)\n"
+            "- First Name 1 or First 1 (required for 4-digit mode)\n"
+            "Optional: Last Name 2, SSN 2, First Name 2 for second person\n\n"
+            "The automation will process all rows with valid SSNs."
         )
         self.excel_edit = QLineEdit()
         excel_button = QPushButton("Select Excel File")
@@ -52,11 +46,26 @@ class PACERAutomationUI(QWidget):
         excel_layout.addWidget(excel_button)
         layout.addLayout(excel_layout)
 
-        # PACER credentials
+        self.ssn_mode_checkbox = QCheckBox("Use 4-digit SSN mode (last 4 digits only)")
+        self.ssn_mode_checkbox.setStyleSheet("font-weight: bold;")
+        self.ssn_mode_checkbox.stateChanged.connect(self.on_mode_changed)
+        layout.addWidget(self.ssn_mode_checkbox)
+
+        self.mode_warning = QLabel(
+            "Warning: 4-digit SSN searches may return multiple matches requiring manual review. "
+            "Results will include all potential matches for verification."
+        )
+        self.mode_warning.setWordWrap(True)
+        self.mode_warning.setStyleSheet(
+            "color: #ff6b6b; background-color: #fff3cd; "
+            "padding: 8px; border-radius: 4px; border: 1px solid #ffc107;"
+        )
+        self.mode_warning.hide()
+        layout.addWidget(self.mode_warning)
+
         credentials_frame = QFrame()
         credentials_layout = QVBoxLayout(credentials_frame)
         
-        # Username input
         username_layout = QHBoxLayout()
         username_label = InfoLabel(
             "PACER Username:",
@@ -69,7 +78,6 @@ class PACERAutomationUI(QWidget):
         username_layout.addWidget(self.username_edit)
         credentials_layout.addLayout(username_layout)
 
-        # Password input
         password_layout = QHBoxLayout()
         password_label = InfoLabel(
             "PACER Password:",
@@ -83,7 +91,6 @@ class PACERAutomationUI(QWidget):
 
         layout.addWidget(credentials_frame)
 
-        # Save location input
         save_location_layout = QHBoxLayout()
         save_location_label = InfoLabel(
             "Save Location:",
@@ -99,7 +106,6 @@ class PACERAutomationUI(QWidget):
         save_location_layout.addWidget(save_location_button)
         layout.addLayout(save_location_layout)
 
-        # Start button
         self.start_button = QPushButton("Start PACER Automation")
         self.start_button.setStyleSheet("""
             QPushButton {
@@ -119,13 +125,12 @@ class PACERAutomationUI(QWidget):
         self.start_button.clicked.connect(self.on_start_clicked)
         layout.addWidget(self.start_button)
 
-        # Status and progress
         status_layout = QHBoxLayout()
         self.status_label = QLabel()
         status_layout.addWidget(self.status_label)
 
         self.spinner = QProgressBar()
-        self.spinner.setRange(0, 0)  # Indeterminate mode
+        self.spinner.setRange(0, 0)
         self.spinner.setTextVisible(False)
         self.spinner.hide()
         status_layout.addWidget(self.spinner)
@@ -133,17 +138,14 @@ class PACERAutomationUI(QWidget):
 
         layout.addLayout(status_layout)
 
-        # Progress bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         layout.addWidget(self.progress_bar)
 
-        # Output text area
         self.output_text = QTextEdit()
         self.output_text.setReadOnly(True)
         layout.addWidget(self.output_text)
 
-        # Warning message
         self.warning_frame = QFrame()
         warning_layout = QVBoxLayout(self.warning_frame)
         warning_label = QLabel(
@@ -156,6 +158,12 @@ class PACERAutomationUI(QWidget):
         layout.addWidget(self.warning_frame)
 
         self.setLayout(layout)
+
+    def on_mode_changed(self, state):
+        if state == Qt.CheckState.Checked.value:
+            self.mode_warning.show()
+        else:
+            self.mode_warning.hide()
 
     def select_excel_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -174,9 +182,9 @@ class PACERAutomationUI(QWidget):
         username = self.username_edit.text()
         password = self.password_edit.text()
         save_location = self.save_location_edit.text()
+        use_4digit = self.ssn_mode_checkbox.isChecked()
         
         if excel_path and username and password and save_location:
-            # Check if there's existing output and warn user
             if self.output_text.toPlainText():
                 reply = QMessageBox.warning(
                     self,
@@ -194,22 +202,22 @@ class PACERAutomationUI(QWidget):
                     return
             
             self.start_button.setEnabled(False)
-            self.status_label.setText("PACER Automation in progress...")
+            mode_text = "4-digit SSN" if use_4digit else "9-digit SSN"
+            self.status_label.setText(f"PACER Automation in progress ({mode_text} mode)...")
             self.spinner.show()
             self.warning_frame.show()
-            self.output_text.clear()  # Clear previous output
+            self.output_text.clear()
             
-            # Create worker and thread
             self.thread = QThread()
             self.worker = PACERAutomationWorker(
                 excel_path=excel_path,
                 username=username,
                 password=password,
-                save_location=save_location
+                save_location=save_location,
+                use_4digit_mode=use_4digit
             )
             self.worker.moveToThread(self.thread)
             
-            # Connect signals
             self.thread.started.connect(self.worker.run)
             self.worker.finished.connect(self.thread.quit)
             self.worker.finished.connect(self.worker.deleteLater)
@@ -219,7 +227,6 @@ class PACERAutomationUI(QWidget):
             self.worker.error.connect(self.show_error)
             self.thread.finished.connect(self.automation_finished)
             
-            # Start the thread
             self.thread.start()
         else:
             self.status_label.setText("Please provide all required information.")
@@ -228,9 +235,7 @@ class PACERAutomationUI(QWidget):
         self.progress_bar.setValue(value)
 
     def update_output(self, text):
-        """Update output with color highlighting for open bankruptcies"""
         if "OPEN Bankruptcy Found" in text:
-            # Create HTML formatted text with red background and white text
             formatted_text = f'<div style="background-color: #ff0000; color: white; padding: 2px;">{text}</div>'
             self.output_text.append(formatted_text)
         else:
