@@ -20,4 +20,4 @@ task/*
 tests/pt61_helper_doc.py
 tests/test_hoa_fcl_workflow.py
 tests/test_simplifile_api.py
-tests/test_update_checker.py
+tests/test_update_checker.py.claude/todo.md

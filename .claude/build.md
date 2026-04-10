@@ -44,7 +44,7 @@ This will:
 ```
 dist/
   KC_app.exe      ~171 MB
-  launcher.exe    ~50-80 MB
+  launcher.exe    ~37 MB
   version.txt     (version string)
 ```
 
@@ -57,14 +57,18 @@ echo "0.0.14" > version.txt
 # 2. Build
 python build.py
 
-# 3. Tag and push
+# 3. Commit, merge to main, tag, push
 git add version.txt src/main.py
 git commit -m "chore: bump version to 0.0.14"
+# merge feature branch → dev → main (see branch workflow)
+git checkout main && git merge dev
 git tag v0.0.14
-git push origin dev --tags
+git push origin main --tags
 
-# 4. Create GitHub Release (uploads KC_app.exe as a release asset)
-gh release create v0.0.14 dist/KC_app.exe --title "v0.0.14"
+# 4. Create GitHub Release — include both EXEs.
+#    KC_app.exe is what the launcher auto-downloads on update.
+#    launcher.exe is the one-time download for new users.
+gh release create v0.0.14 dist/KC_app.exe dist/launcher.exe --title "v0.0.14"
 ```
 
 The launcher checks `https://api.github.com/repos/dunncw/king_cunningham_code/releases/latest` and
@@ -74,7 +78,7 @@ downloads an asset named exactly `KC_app.exe`. The asset name must match that st
 
 Users only ever need `launcher.exe`. Give it to them once:
 - On first run it installs itself to `%LOCALAPPDATA%\King_Cunningham\KC_App\launcher.exe`
-- Creates a "KC App" Start Menu entry
+- Creates a "KC Automation Suite" Start Menu entry
 - Downloads `KC_app.exe` from the latest GitHub release
 - On every subsequent run it auto-checks for updates before launching
 

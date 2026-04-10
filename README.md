@@ -1,4 +1,4 @@
-# KC_app
+# KC Automation Suite
 
 Desktop automation suite for King & Cunningham. Modules cover Simplifile3 document recording, PT-61 form generation, document OCR processing, court records gathering (CRG), SCRA lookup, and PACER access.
 
@@ -6,7 +6,7 @@ Desktop automation suite for King & Cunningham. Modules cover Simplifile3 docume
 
 1. Download `launcher.exe` from the [latest release](https://github.com/dunncw/king_cunningham_code/releases/latest).
 2. Double-click `launcher.exe` from anywhere (e.g. your Downloads folder).
-3. The launcher installs itself to `%LOCALAPPDATA%\King_Cunningham\KC_App\`, creates a Start Menu shortcut ("KC App"), downloads `KC_app.exe`, and launches it.
+3. The launcher installs itself to `%LOCALAPPDATA%\King_Cunningham\KC_App\`, creates a Start Menu shortcut ("KC Automation Suite"), downloads `KC_app.exe`, and launches it.
 
 From that point on, open the app via the Start Menu shortcut. The launcher checks for updates automatically on each run.
 
@@ -29,7 +29,7 @@ From that point on, open the app via the Start Menu shortcut. The launcher check
 
 ```
 git clone https://github.com/dunncw/king_cunningham_code.git
-cd King_app
+cd king_cunningham_code
 ```
 
 ### 2. Create and activate a virtual environment
@@ -81,7 +81,7 @@ The build script:
 ```
 dist\
   KC_app.exe      ~171 MB
-  launcher.exe    ~50-80 MB
+  launcher.exe    ~37 MB
   version.txt
 ```
 
@@ -92,20 +92,23 @@ dist\
 ```bash
 # 1. Bump version.txt and build (steps 5-6 above)
 
-# 2. Commit and tag
+# 2. Commit, merge to main, tag, push
 git add version.txt src/main.py
 git commit -m "chore: bump to 0.0.14"
+# merge feature branch → dev → main (standard branch workflow)
+git checkout main && git merge dev
 git tag v0.0.14
-git push origin dev --tags
+git push origin main --tags
 
-# 3. Publish release — uploads KC_app.exe as the release asset
-gh release create v0.0.14 dist/KC_app.exe --title "v0.0.14"
+# 3. Publish release — include both EXEs
+gh release create v0.0.14 dist/KC_app.exe dist/launcher.exe --title "v0.0.14"
 ```
 
-Users with the launcher will receive the update automatically on their next launch.
+Users with an existing launcher receive `KC_app.exe` automatically on next launch.
+New users download `launcher.exe` once — it self-installs and handles all future updates.
 
-> The launcher identifies the download by finding a release asset named exactly `KC_app.exe`.
-> Do not rename the asset.
+> The launcher identifies the update asset by the name `KC_app.exe` exactly.
+> Do not rename that asset.
 
 ---
 
