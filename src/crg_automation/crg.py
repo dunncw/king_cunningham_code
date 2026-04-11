@@ -246,7 +246,11 @@ class CRGAutomationWorker(QObject):
 
         except Exception as e:
             print(f"DEBUG: Error processing account {account_number}: {str(e)}")
-            self.error.emit(f"Error processing account {account_number}: {str(e)}")
+            try:
+                self.driver.title
+            except Exception:
+                raise RuntimeError(f"Browser was closed. Stopped at account {account_number}.") from e
+            self.status.emit(f"Error processing account {account_number}: {str(e)}")
 
 
 def main():

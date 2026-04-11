@@ -1,9 +1,48 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QFileDialog, QProgressBar, QTextEdit, QComboBox, QFrame, QGridLayout
+    QFileDialog, QTextEdit, QComboBox, QFrame, QGridLayout
 )
-from PyQt6.QtCore import pyqtSignal, QThread
+from PyQt6.QtCore import pyqtSignal, QThread, QTimer, Qt
+from PyQt6.QtGui import QPainter, QPen, QColor
 from crg_automation.crg import CRGAutomationWorker
+
+
+class SpinnerWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._angle = 0
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._rotate)
+        self.setFixedSize(20, 20)
+        self.hide()
+
+    def start(self):
+        self._angle = 0
+        self._timer.start(50)
+        self.show()
+
+    def stop(self):
+        self._timer.stop()
+        self.hide()
+
+    def _rotate(self):
+        self._angle = (self._angle - 30) % 360
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = self.rect().adjusted(3, 3, -3, -3)
+        track = QPen(QColor("#333333"))
+        track.setWidth(3)
+        track.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(track)
+        painter.drawArc(rect, 0, 360 * 16)
+        arc = QPen(QColor("#5a8dd6"))
+        arc.setWidth(3)
+        arc.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(arc)
+        painter.drawArc(rect, self._angle * 16, 270 * 16)
 
 class CRGAutomationUI(QWidget):
     start_automation = pyqtSignal(str, str, str, str, str)
@@ -68,20 +107,12 @@ class CRGAutomationUI(QWidget):
         layout.addWidget(self.start_button)
 
         status_layout = QHBoxLayout()
+        self.spinner = SpinnerWidget()
+        status_layout.addWidget(self.spinner)
         self.status_label = QLabel()
         status_layout.addWidget(self.status_label)
-
-        self.spinner = QProgressBar()
-        self.spinner.setRange(0, 0)
-        self.spinner.setTextVisible(False)
-        self.spinner.hide()
-        status_layout.addWidget(self.spinner)
         status_layout.addStretch()
         layout.addLayout(status_layout)
-
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 100)
-        layout.addWidget(self.progress_bar)
 
         self.output_text = QTextEdit()
         self.output_text.setReadOnly(True)
@@ -128,7 +159,7 @@ class CRGAutomationUI(QWidget):
 
             self.start_button.setEnabled(False)
             self.status_label.setText("Automation in progress...")
-            self.spinner.show()
+            self.spinner.start()
             self.warning_frame.show()
 
             self.thread = QThread()
@@ -139,7 +170,6 @@ class CRGAutomationUI(QWidget):
             self.worker.finished.connect(self.thread.quit)
             self.worker.finished.connect(self.worker.deleteLater)
             self.thread.finished.connect(self.thread.deleteLater)
-            self.worker.progress.connect(self.update_progress)
             self.worker.status.connect(self.update_output)
             self.worker.error.connect(self.show_error)
             self.thread.finished.connect(self.automation_finished)
@@ -148,21 +178,18 @@ class CRGAutomationUI(QWidget):
         else:
             self.status_label.setText("Please provide all required information.")
 
-    def update_progress(self, value):
-        self.progress_bar.setValue(value)
-
     def update_output(self, text):
         self.output_text.append(text)
 
     def automation_finished(self):
         self.start_button.setEnabled(True)
         self.status_label.setText("Automation complete!")
-        self.spinner.hide()
+        self.spinner.stop()
         self.warning_frame.hide()
 
     def show_error(self, error_message):
         self.status_label.setText(f"Error: {error_message}")
-        self.spinner.hide()
+        self.spinner.stop()
         self.start_button.setEnabled(True)
         self.warning_frame.hide()
 
