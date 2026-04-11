@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QFileDialog, QProgressBar, QTextEdit, QComboBox, QFrame
+    QFileDialog, QProgressBar, QTextEdit, QComboBox, QFrame, QGridLayout
 )
 from PyQt6.QtCore import pyqtSignal, QThread
 from crg_automation.crg import CRGAutomationWorker
@@ -16,72 +16,67 @@ class CRGAutomationUI(QWidget):
 
     def init_ui(self):
         layout = QVBoxLayout()
+        layout.setSpacing(16)
 
-        # Title
-        title_label = QLabel("CRG Automation")
+        title_label = QLabel("Court Records CRG")
         title_label.setStyleSheet("font-size: 18px; font-weight: bold;")
         layout.addWidget(title_label)
 
-        # Excel file selection
-        excel_layout = QHBoxLayout()
-        self.excel_edit = QLineEdit()
-        excel_button = QPushButton("Select Excel File")
-        excel_button.clicked.connect(self.select_excel_file)
-        excel_layout.addWidget(QLabel("Excel File:"))
-        excel_layout.addWidget(self.excel_edit)
-        excel_layout.addWidget(excel_button)
-        layout.addLayout(excel_layout)
+        grid = QGridLayout()
+        grid.setSpacing(10)
+        grid.setColumnStretch(1, 1)
 
-        # Browser selection
-        browser_layout = QHBoxLayout()
+        row = 0
+        grid.addWidget(QLabel("Excel File:"), row, 0)
+        self.excel_edit = QLineEdit()
+        grid.addWidget(self.excel_edit, row, 1)
+        excel_button = QPushButton("Browse")
+        excel_button.setFixedWidth(80)
+        excel_button.clicked.connect(self.select_excel_file)
+        grid.addWidget(excel_button, row, 2)
+
+        row += 1
+        grid.addWidget(QLabel("Browser:"), row, 0)
         self.browser_combo = QComboBox()
         self.browser_combo.addItems(["Chrome", "Firefox", "Edge"])
-        browser_layout.addWidget(QLabel("Select Browser:"))
-        browser_layout.addWidget(self.browser_combo)
-        layout.addLayout(browser_layout)
+        grid.addWidget(self.browser_combo, row, 1, 1, 2)
 
-        # Username input
-        username_layout = QHBoxLayout()
+        row += 1
+        grid.addWidget(QLabel("Username:"), row, 0)
         self.username_edit = QLineEdit()
-        username_layout.addWidget(QLabel("Username:"))
-        username_layout.addWidget(self.username_edit)
-        layout.addLayout(username_layout)
+        grid.addWidget(self.username_edit, row, 1, 1, 2)
 
-        # Password input
-        password_layout = QHBoxLayout()
+        row += 1
+        grid.addWidget(QLabel("Password:"), row, 0)
         self.password_edit = QLineEdit()
         self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        password_layout.addWidget(QLabel("Password:"))
-        password_layout.addWidget(self.password_edit)
-        layout.addLayout(password_layout)
+        grid.addWidget(self.password_edit, row, 1, 1, 2)
 
-        # Add save location input
-        save_location_layout = QHBoxLayout()
+        row += 1
+        grid.addWidget(QLabel("Save Location:"), row, 0)
         self.save_location_edit = QLineEdit()
-        save_location_button = QPushButton("Select Save Location")
-        save_location_button.clicked.connect(self.select_save_location)
-        save_location_layout.addWidget(QLabel("Save Location:"))
-        save_location_layout.addWidget(self.save_location_edit)
-        save_location_layout.addWidget(save_location_button)
-        layout.addLayout(save_location_layout)
+        grid.addWidget(self.save_location_edit, row, 1)
+        save_button = QPushButton("Browse")
+        save_button.setFixedWidth(80)
+        save_button.clicked.connect(self.select_save_location)
+        grid.addWidget(save_button, row, 2)
 
-        # Start button
-        self.start_button = QPushButton("Start CRG Automation")
+        layout.addLayout(grid)
+
+        self.start_button = QPushButton("Start Automation")
         self.start_button.clicked.connect(self.on_start_clicked)
         layout.addWidget(self.start_button)
 
-        # Status and progress
         status_layout = QHBoxLayout()
         self.status_label = QLabel()
         status_layout.addWidget(self.status_label)
 
         self.spinner = QProgressBar()
-        self.spinner.setRange(0, 0)  # Indeterminate mode
+        self.spinner.setRange(0, 0)
         self.spinner.setTextVisible(False)
         self.spinner.hide()
         status_layout.addWidget(self.spinner)
         status_layout.addStretch()
-
         layout.addLayout(status_layout)
 
         self.progress_bar = QProgressBar()
@@ -92,18 +87,16 @@ class CRGAutomationUI(QWidget):
         self.output_text.setReadOnly(True)
         layout.addWidget(self.output_text)
 
-        # Add warning message
         self.warning_frame = QFrame()
-        self.warning_frame.setStyleSheet("background-color: #FFF3CD; border: 1px solid #FFEEBA; border-radius: 4px;")
+        self.warning_frame.setStyleSheet("background-color: #332b1a; border: 1px solid #4a3f2a; border-radius: 6px;")
         warning_layout = QVBoxLayout(self.warning_frame)
-        warning_label = QLabel("WARNING: Do not switch windows or use the keyboard until automation is complete. Doing so may interfere with the process. Note folder you're writing output to should be empty! Click X to stop automation")
+        warning_label = QLabel("WARNING: Do not switch windows or use the keyboard until automation is complete. The output folder should be empty.")
         warning_label.setWordWrap(True)
-        warning_label.setStyleSheet("color: #856404; font-weight: bold;")
+        warning_label.setStyleSheet("color: #d4a854; font-weight: bold;")
         warning_layout.addWidget(warning_label)
-        self.warning_frame.hide()  # Initially hidden
+        self.warning_frame.hide()
         layout.addWidget(self.warning_frame)
 
-        # Add Save Output button
         self.save_button = QPushButton("Save Output")
         self.save_button.clicked.connect(self.save_output)
         layout.addWidget(self.save_button)
@@ -116,7 +109,7 @@ class CRGAutomationUI(QWidget):
         )
         if file_path:
             self.excel_edit.setText(file_path)
-    
+
     def select_save_location(self):
         folder_path = QFileDialog.getExistingDirectory(self, "Select Save Location")
         if folder_path:
@@ -130,16 +123,14 @@ class CRGAutomationUI(QWidget):
         save_location = self.save_location_edit.text()
         if excel_path and username and password and save_location:
             self.start_button.setEnabled(False)
-            self.status_label.setText("CRG Automation in progress...")
+            self.status_label.setText("Automation in progress...")
             self.spinner.show()
             self.warning_frame.show()
-            
-            # Create worker and thread
+
             self.thread = QThread()
             self.worker = CRGAutomationWorker(excel_path, browser, username, password, save_location)
             self.worker.moveToThread(self.thread)
-            
-            # Connect signals
+
             self.thread.started.connect(self.worker.run)
             self.worker.finished.connect(self.thread.quit)
             self.worker.finished.connect(self.worker.deleteLater)
@@ -148,8 +139,7 @@ class CRGAutomationUI(QWidget):
             self.worker.status.connect(self.update_output)
             self.worker.error.connect(self.show_error)
             self.thread.finished.connect(self.automation_finished)
-            
-            # Start the thread
+
             self.thread.start()
         else:
             self.status_label.setText("Please provide all required information.")
@@ -162,7 +152,7 @@ class CRGAutomationUI(QWidget):
 
     def automation_finished(self):
         self.start_button.setEnabled(True)
-        self.status_label.setText("CRG Automation complete!")
+        self.status_label.setText("Automation complete!")
         self.spinner.hide()
         self.warning_frame.hide()
 

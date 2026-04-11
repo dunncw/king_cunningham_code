@@ -230,29 +230,10 @@ class SimplifileWindow(QWidget):
         elif workflow_name == "FULTON_DEEDBACKS":
             self.add_directory_input("documents_dir", "Documents Directory")
 
-        elif workflow_name == "HORRY_HOA_FCL":
-            # Similar to MTG but with condo lien
-            self.add_file_input("deed_stack", "Deed Stack PDF (2 pages/doc)", "PDF Files (*.pdf)")
-            self.add_file_input("affidavit_stack", "Affidavit Stack PDF (Optional)", "PDF Files (*.pdf)", optional=True)
-            self.add_file_input("condo_lien_stack", "Condo Lien Satisfaction Stack PDF (1 page/doc)", "PDF Files (*.pdf)")
-            
-        elif workflow_name == "BEAUFORT_MTG_FCL":
-            # Same as Horry MTG
-            self.add_file_input("deed_stack", "Deed Stack PDF (2 pages/doc)", "PDF Files (*.pdf)")
-            self.add_file_input("affidavit_stack", "Affidavit Stack PDF (Optional)", "PDF Files (*.pdf)", optional=True)
-            self.add_file_input("mortgage_stack", "Mortgage Satisfaction Stack PDF (1 page/doc)", "PDF Files (*.pdf)")
-            
         elif workflow_name == "FULTON_FCL":
-            # 3-page deeds with PT-61
             self.add_file_input("deed_stack", "Deed Stack PDF (3 pages/doc)", "PDF Files (*.pdf)")
             self.add_file_input("pt61_stack", "PT-61 Stack PDF (1 page/doc)", "PDF Files (*.pdf)")
             self.add_file_input("mortgage_stack", "Mortgage Satisfaction Stack PDF (1 page/doc)", "PDF Files (*.pdf)")
-            
-        elif workflow_name == "FULTON_DEEDBACKS":
-            # Directory-based
-            self.add_directory_input("documents_dir", "Documents Directory")
-        
-        # Add more workflow file requirements as needed
     
     def add_file_input(self, key: str, label: str, filter: str, optional: bool = False):
         """Add a file input row."""
@@ -333,11 +314,11 @@ class SimplifileWindow(QWidget):
         self.progress_bar.setVisible(False)
         
         if success:
-            self.validate_btn.setText("✓ Validated")
+            self.validate_btn.setText("Validated")
             self.process_btn.setEnabled(True)
             QMessageBox.information(self, "Success", "Validation passed!")
         else:
-            self.validate_btn.setText("✗ Failed")
+            self.validate_btn.setText("Failed")
             QMessageBox.warning(self, "Validation Failed", "Check the log for errors")
     
     def process(self):
