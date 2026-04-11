@@ -25,6 +25,10 @@ class CRGAutomationWorker(QObject):
         self.password = password
         self.save_location = save_location
         self.driver = None
+        self._abort = False
+
+    def stop(self):
+        self._abort = True
 
     def run(self):
         try:
@@ -55,15 +59,16 @@ class CRGAutomationWorker(QObject):
 
             # Process each account number
             for i, account_number in enumerate(account_numbers):
+                if self._abort:
+                    break
                 print(f"DEBUG: Processing account {account_number} ({i+1}/{len(account_numbers)})")
                 self.status.emit(f"Processing account number {account_number} ({i+1}/{len(account_numbers)})...")
                 self.process_account(account_number)
-                progress = 40 + (i + 1) * (60 / len(account_numbers))
-                self.progress.emit(int(progress))
 
-            print("DEBUG: CRG Automation completed successfully!")
-            self.status.emit("CRG Automation completed successfully!")
-            self.progress.emit(100)
+            if self._abort:
+                self.status.emit("Automation stopped by user.")
+            else:
+                self.status.emit("CRG Automation completed successfully!")
             self.finished.emit()
         except Exception as e:
             print(f"DEBUG: Error occurred: {str(e)}")
