@@ -323,6 +323,21 @@ class MainWindow(QMainWindow):
         btn.clicked.connect(self.show_main_menu)
         return btn
 
+    def tile_left(self):
+        screen = self.screen().availableGeometry()
+        self.showNormal()
+        window = self.windowHandle()
+        if window:
+            m = window.frameMargins()
+            self.setGeometry(
+                screen.x() + m.left(),
+                screen.y() + m.top(),
+                screen.width() // 2 - m.left() - m.right(),
+                screen.height() - m.top() - m.bottom(),
+            )
+        else:
+            self.setGeometry(screen.x(), screen.y(), screen.width() // 2, screen.height())
+
     def show_main_menu(self):
         self.central_widget.setCurrentWidget(self.main_menu)
 
@@ -364,6 +379,7 @@ class MainWindow(QMainWindow):
         self.doc_processor.process_button.setEnabled(True)
 
     def start_web_automation(self, excel_path, browser, username, password, save_location, version, document_stacking):
+        self.tile_left()
         self.thread, self.worker = run_web_automation_thread(
             excel_path, browser, username, password, save_location, version, document_stacking
         )
