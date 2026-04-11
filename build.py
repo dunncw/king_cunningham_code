@@ -1,8 +1,8 @@
 import os
 import re
-import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -35,7 +35,7 @@ def ensure_binaries() -> None:
     tesseract_exe = REPO_ROOT / "bin" / "tesseract" / "tesseract.exe"
     if not tesseract_exe.exists():
         print("[binaries] bin/tesseract/tesseract.exe missing — running setup_binaries.py ...")
-        result = subprocess.run(
+        subprocess.run(
             [sys.executable, str(REPO_ROOT / "scripts" / "setup_binaries.py")],
             check=True,
         )
@@ -44,12 +44,29 @@ def ensure_binaries() -> None:
 
 
 def build_main_app() -> None:
-    print("\n[build] Building KC_app.exe ...")
+    print("\n[build] Building KC_app (onedir) ...")
     subprocess.run(
         ["pyinstaller", "KC_app.spec", "--clean"],
         check=True,
         cwd=str(REPO_ROOT),
     )
+
+
+def zip_onedir_output() -> Path:
+    onedir = REPO_ROOT / "dist" / "KC_app"
+    zippath = REPO_ROOT / "dist" / "KC_app.zip"
+    if not onedir.is_dir():
+        raise FileNotFoundError(f"Expected onedir output at {onedir}")
+    print(f"\n[zip] Packaging {onedir} -> {zippath} ...")
+    with zipfile.ZipFile(zippath, "w", zipfile.ZIP_DEFLATED) as zf:
+        for root, _dirs, files in os.walk(onedir):
+            for f in files:
+                filepath = Path(root) / f
+                arcname = filepath.relative_to(onedir)
+                zf.write(filepath, arcname)
+    size_mb = zippath.stat().st_size // (1024 * 1024)
+    print(f"[zip] Done. ({size_mb} MB)")
+    return zippath
 
 
 def build_launcher() -> None:
@@ -76,14 +93,18 @@ def main() -> None:
     sync_version_in_source(version)
     ensure_binaries()
     build_main_app()
+    zip_onedir_output()
     build_launcher()
     copy_version_to_dist(version)
 
     print("\nBuild complete. Outputs in dist/:")
-    for name in ["KC_app.exe", "launcher.exe", "version.txt"]:
+    for name in ["KC_app/KC_app.exe", "KC_app.zip", "launcher.exe", "version.txt"]:
         p = REPO_ROOT / "dist" / name
-        status = f"{p.stat().st_size // (1024*1024)} MB" if p.exists() else "MISSING"
-        print(f"  {name:20s} {status}")
+        if p.exists():
+            size_mb = p.stat().st_size // (1024 * 1024)
+            print(f"  {name:25s} {size_mb} MB")
+        else:
+            print(f"  {name:25s} MISSING")
 
 
 if __name__ == "__main__":

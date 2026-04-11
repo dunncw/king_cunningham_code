@@ -72,8 +72,6 @@ This module handles OCR-based document processing, barcode detection, and automa
 - **Tesseract OCR**: Text extraction engine
   - Windows: Typically at `C:\Program Files\Tesseract-OCR\tesseract.exe`
   - Linux/Mac: Available via package managers
-- **Ghostscript**: PDF processing support
-
 ### Python Libraries
 - **PyMuPDF (fitz)**: PDF manipulation and rendering
 - **pyzbar**: Barcode detection and decoding

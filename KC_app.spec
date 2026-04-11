@@ -20,10 +20,6 @@ tesseract_path = _find_one(
     os.path.join("bin", "tesseract", "**", "tesseract.exe"),
     "tesseract.exe",
 )
-ghostscript_path = _find_one(
-    os.path.join("bin", "ghostscript", "**", "gswin64c.exe"),
-    "gswin64c.exe",
-)
 tessdata_path = _find_one(
     os.path.join("bin", "tesseract", "**", "tessdata"),
     "tessdata/",
@@ -35,7 +31,7 @@ pyzbar_datas = collect_data_files('pyzbar')
 
 a = Analysis(['src\\main.py'],
              pathex=[os.path.abspath('.')],
-             binaries=[(tesseract_path, '.'), (ghostscript_path, '.')] + pyzbar_binaries,
+             binaries=[(tesseract_path, '.')] + pyzbar_binaries,
              datas=[
                  ('resources', 'resources'),
                  (tessdata_path, 'tessdata'),
@@ -55,10 +51,8 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(pyz,
           a.scripts,
-          a.binaries,
-          a.zipfiles,
-          a.datas,
           [],
+          exclude_binaries=True,
           name='KC_app',
           debug=False,
           bootloader_ignore_signals=False,
@@ -71,5 +65,13 @@ exe = EXE(pyz,
           target_arch=None,
           codesign_identity=None,
           entitlements_file=None,
-          icon='resources\\app_icon.ico',
-          splash='resources\\splash_image.png')
+          icon='resources\\app_icon.ico')
+
+coll = COLLECT(exe,
+               a.binaries,
+               a.zipfiles,
+               a.datas,
+               strip=False,
+               upx=True,
+               upx_exclude=[],
+               name='KC_app')

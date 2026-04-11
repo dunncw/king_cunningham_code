@@ -3,7 +3,6 @@
 import os
 import sys
 import traceback
-from pathlib import Path
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtGui import QIcon
@@ -11,15 +10,6 @@ from PyQt6.QtGui import QIcon
 from ui.main_window import MainWindow, get_resource_path
 
 __version__ = "0.0.14"
-
-_LAUNCHER_SYNC_FLAG = Path(os.environ.get("TEMP", ".")) / "kc_launcher_sync.flag"
-
-
-def _signal_launcher_ready():
-    try:
-        _LAUNCHER_SYNC_FLAG.unlink()
-    except FileNotFoundError:
-        pass
 
 
 class KingCunninghamApp(QApplication):
@@ -34,7 +24,6 @@ class KingCunninghamApp(QApplication):
         self.main_window.showMaximized()
         self.main_window.raise_()
         self.main_window.activateWindow()
-        _signal_launcher_ready()
 
 
 def excepthook(exc_type, exc_value, exc_tb):
