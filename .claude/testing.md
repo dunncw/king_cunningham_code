@@ -18,7 +18,7 @@
 | Test | Build needed | GitHub needed | Covers |
 |---|---|---|---|
 | `test-local.ps1` | yes (or -SkipBuild) | no | Self-install, shortcut creation, app launch |
-| `test-local.ps1 -TestUpdate` | yes | yes (publishes real release) | Update prompt, download, version.txt update |
+| `test-local.ps1 -TestUpdate` | yes | yes (publishes real release) | Update prompt, zip download, extraction, version.txt update |
 
 ## Step-by-step: normal test (no GitHub)
 
@@ -34,10 +34,10 @@ python build.py
 Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\KC Automation Suite.lnk" -Force -ErrorAction SilentlyContinue
 
-# 3. Seed install dir with KC_app.exe and version.txt only.
+# 3. Seed install dir with KC_app directory and version.txt only.
 #    Do NOT copy launcher.exe — dist\launcher.exe self-installs it.
 New-Item -ItemType Directory -Force -Path $installDir | Out-Null
-Copy-Item dist\KC_app.exe $installDir\ -Force
+Copy-Item dist\KC_app "$installDir\KC_app" -Recurse -Force
 (Get-Content version.txt -Raw).Trim() | Set-Content $installDir\version.txt
 
 # 4. Run dist\launcher.exe (triggers self-install + shortcut creation).
@@ -56,6 +56,7 @@ while (-not (Test-Path "$installDir\launcher.exe") -and (Get-Date) -lt $deadline
 Check:
 - App opens normally
 - `$installDir\launcher.exe` exists (self-installed)
+- `$installDir\KC_app\KC_app.exe` exists (app directory)
 - `%APPDATA%\Microsoft\Windows\Start Menu\Programs\KC Automation Suite.lnk` exists
 - Simplifile3 config saves to `%APPDATA%\King_Cunningham\simplifile3_config.json`
 
@@ -66,8 +67,8 @@ Drafts and pre-releases are invisible to the launcher. You need to publish a rea
 
 `test-local.ps1 -TestUpdate` handles this automatically:
 1. Sets `version.txt` in the install dir to `0.0.0`
-2. Publishes a real release under the current version tag
-3. Runs the launcher — you should see the update prompt and progress dialog
+2. Publishes a real release with `KC_app.zip` under the current version tag
+3. Runs the launcher -- you should see the update prompt and progress dialog
 4. After you confirm, deletes the release and the git tag
 
 To do it manually:
@@ -78,7 +79,7 @@ $version = (Get-Content version.txt -Raw).Trim()
 "0.0.0" | Set-Content "$env:LOCALAPPDATA\King_Cunningham\KC_App\version.txt"
 
 # Publish the release (WARNING: visible to users while it exists)
-gh release create "v$version" dist\KC_app.exe --title "v$version"
+gh release create "v$version" dist\KC_app.zip --title "v$version"
 
 # Run the launcher
 & "$env:LOCALAPPDATA\King_Cunningham\KC_App\launcher.exe"
@@ -101,4 +102,5 @@ Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\KC Automation Su
 - **Draft releases** are never returned by `/releases/latest`. Use `test-local.ps1 -TestUpdate` which publishes a real release and cleans it up.
 - **Env var scope**: `$env:KC_LAUNCHER_SKIP_UPDATE` set in PowerShell only affects child processes in that session. The launcher reads it on startup.
 - **Locked EXE**: If a launcher.exe is already running, copying over it will fail. Kill the process first or wait for it to exit.
-- **GitHub repo**: The launcher API URL points to `dunncw/king_cunningham_code` (the resolved name). The git remote URL still shows `King_app.git` — this is fine, GitHub redirects it.
+- **GitHub repo**: The launcher API URL points to `dunncw/king_cunningham_code` (the resolved name). The git remote URL still shows `King_app.git` -- this is fine, GitHub redirects it.
+- **Stale staging dirs**: If an update is interrupted, `KC_app_staging` or `KC_app_old` directories may remain. The launcher cleans these up automatically on next run.

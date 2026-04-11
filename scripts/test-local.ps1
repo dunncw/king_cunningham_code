@@ -1,4 +1,4 @@
-# Test the launcher and KC_app.exe locally.
+# Test the launcher and KC_app locally.
 #
 # Usage:
 #   .\scripts\test-local.ps1              # Build + full self-install + launch test
@@ -33,11 +33,11 @@ Write-Host "[setup] Cleaning previous install ..."
 if (Test-Path $installDir) { Remove-Item $installDir -Recurse -Force }
 if (Test-Path $shortcut)   { Remove-Item $shortcut -Force -ErrorAction SilentlyContinue }
 
-# ── 3. Pre-seed KC_app.exe and version.txt so the installed launcher can
-#       launch immediately without downloading anything.
+# ── 3. Pre-seed KC_app directory and version.txt so the installed launcher
+#       can launch immediately without downloading anything.
 #       Do NOT copy launcher.exe — let dist\launcher.exe self-install it.
 New-Item -ItemType Directory -Force -Path $installDir | Out-Null
-Copy-Item dist\KC_app.exe "$installDir\KC_app.exe" -Force
+Copy-Item "dist\KC_app" "$installDir\KC_app" -Recurse -Force
 $version | Set-Content "$installDir\version.txt"
 
 if ($TestUpdate) {
@@ -49,7 +49,7 @@ if ($TestUpdate) {
     "0.0.0" | Set-Content "$installDir\version.txt"
 
     Write-Host "[release] Publishing test release v$version ..."
-    gh release create "v$version" dist\KC_app.exe `
+    gh release create "v$version" dist\KC_app.zip `
         --title "v$version" `
         --notes "Local test release — will be deleted."
     if ($LASTEXITCODE -ne 0) { Write-Error "gh release create failed."; exit 1 }
@@ -69,8 +69,6 @@ if ($TestUpdate) {
 
 } else {
     # ── Normal test (no GitHub required) ────────────────────────────────────
-    # KC_LAUNCHER_SKIP_UPDATE is inherited by the installed launcher child
-    # process via Popen, so the GitHub check is skipped end-to-end.
     Write-Host "[launch] Running dist\launcher.exe ..."
     Write-Host "         Watch for: self-install, shortcut creation, app launch."
 
@@ -78,10 +76,6 @@ if ($TestUpdate) {
     if (Test-Path $logFile) { Remove-Item $logFile -Force }
 
     $env:KC_LAUNCHER_SKIP_UPDATE = "1"
-    # Start the outer launcher without waiting for it to exit.  PyInstaller
-    # one-file EXEs hold the process open while cleaning up their extraction
-    # temp dir, so waiting for process exit is unreliable.  Instead, poll for
-    # the install artifact — it appears as soon as _self_install() runs.
     Start-Process -FilePath "dist\launcher.exe"
     $env:KC_LAUNCHER_SKIP_UPDATE = $null
 
@@ -91,7 +85,6 @@ if ($TestUpdate) {
         Start-Sleep -Seconds 1
     }
 
-    # Give the installed launcher time to start and launch KC_app.
     Start-Sleep -Seconds 5
 
     Write-Host ""

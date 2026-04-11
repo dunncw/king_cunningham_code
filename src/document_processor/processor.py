@@ -36,12 +36,6 @@ if tesseract_path:
 else:
     print("Tesseract executable not found. OCR functionality will not work.")
 
-def perform_ocr(image):
-    if tesseract_path:
-        return pytesseract.image_to_string(image)
-    else:
-        return "OCR unavailable: Tesseract not found"
-
 class SuppressStderr:
     def __enter__(self):
         self._original_stderr = os.dup(2)

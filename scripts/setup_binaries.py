@@ -1,5 +1,5 @@
 """
-Populate bin/ with Tesseract OCR and Ghostscript binaries needed for the build.
+Populate bin/ with Tesseract OCR binaries needed for the build.
 
 Strategy (in order):
   1. If the target binary already exists in bin/, skip (idempotent).
@@ -9,9 +9,8 @@ Strategy (in order):
 Run this once before 'python build.py'. No admin rights required if a
 global installation is already present.
 
-Pinned installer versions (fallback only):
+Pinned installer version (fallback only):
   Tesseract  5.4.0.20240606  (UB-Mannheim Windows build)
-  Ghostscript 10.04.0        (ArtifexSoftware release)
 """
 
 import os
@@ -25,23 +24,16 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 BIN_DIR = REPO_ROOT / "bin"
 
 TESSERACT_INSTALL_DIR = BIN_DIR / "tesseract"
-GHOSTSCRIPT_INSTALL_DIR = BIN_DIR / "ghostscript"
 
 TESSERACT_URL = (
     "https://github.com/UB-Mannheim/tesseract/releases/download/"
     "v5.4.0.20240606/tesseract-ocr-w64-setup-5.4.0.20240606.exe"
-)
-GHOSTSCRIPT_URL = (
-    "https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/"
-    "gs10040/gs10040w64.exe"
 )
 
 TESSERACT_GLOBAL_PATHS = [
     Path(r"C:\Program Files\Tesseract-OCR"),
     Path(r"C:\Program Files (x86)\Tesseract-OCR"),
 ]
-
-GHOSTSCRIPT_GLOBAL_BASE = Path(r"C:\Program Files\gs")
 
 
 # ---------------------------------------------------------------------------
@@ -103,67 +95,15 @@ def install_tesseract() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Ghostscript
-# ---------------------------------------------------------------------------
-
-def install_ghostscript() -> None:
-    matches = list(GHOSTSCRIPT_INSTALL_DIR.rglob("gswin64c.exe"))
-    if matches:
-        print(f"[skip] Ghostscript already present at {matches[0]}")
-        return
-
-    # 1. Copy from existing global install
-    if GHOSTSCRIPT_GLOBAL_BASE.exists():
-        for ver_dir in sorted(GHOSTSCRIPT_GLOBAL_BASE.iterdir(), reverse=True):
-            gs_exe = ver_dir / "bin" / "gswin64c.exe"
-            if gs_exe.exists():
-                print(f"[ghostscript] Found global install at {ver_dir}")
-                print(f"[ghostscript] Copying to {GHOSTSCRIPT_INSTALL_DIR} ...")
-                shutil.copytree(ver_dir, GHOSTSCRIPT_INSTALL_DIR, dirs_exist_ok=True)
-                print("[ghostscript] Done.")
-                return
-
-    # 2. Fallback: download and silent-install
-    print("[ghostscript] No global install found — downloading installer ...")
-    GHOSTSCRIPT_INSTALL_DIR.mkdir(parents=True, exist_ok=True)
-    installer = BIN_DIR / "ghostscript_setup.exe"
-    download_file(GHOSTSCRIPT_URL, installer)
-
-    print(f"[ghostscript] Installing to {GHOSTSCRIPT_INSTALL_DIR} ...")
-    subprocess.run(
-        [
-            str(installer),
-            "/VERYSILENT",
-            "/SP-",
-            "/SUPPRESSMSGBOXES",
-            "/NORESTART",
-            f"/DIR={GHOSTSCRIPT_INSTALL_DIR.resolve()}",
-        ],
-        check=True,
-    )
-    installer.unlink(missing_ok=True)
-
-    matches = list(GHOSTSCRIPT_INSTALL_DIR.rglob("gswin64c.exe"))
-    if not matches:
-        raise RuntimeError(
-            f"Ghostscript install finished but gswin64c.exe not found under "
-            f"{GHOSTSCRIPT_INSTALL_DIR}."
-        )
-    print(f"[ghostscript] Done. ({matches[0]})")
-
-
-# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 
 def print_summary() -> None:
     print("\n--- bin/ summary ---")
     tesseract_exe = TESSERACT_INSTALL_DIR / "tesseract.exe"
-    gs_matches = list(GHOSTSCRIPT_INSTALL_DIR.rglob("gswin64c.exe"))
     tessdata = list(TESSERACT_INSTALL_DIR.rglob("tessdata"))
 
     print(f"  tesseract.exe : {'OK  ' + str(tesseract_exe) if tesseract_exe.exists() else 'MISSING'}")
-    print(f"  gswin64c.exe  : {'OK  ' + str(gs_matches[0]) if gs_matches else 'MISSING'}")
     print(f"  tessdata/     : {'OK  ' + str(tessdata[0]) if tessdata else 'MISSING'}")
 
 
@@ -171,7 +111,6 @@ if __name__ == "__main__":
     BIN_DIR.mkdir(exist_ok=True)
     try:
         install_tesseract()
-        install_ghostscript()
         print_summary()
     except Exception as exc:
         print(f"\nERROR: {exc}", file=sys.stderr)

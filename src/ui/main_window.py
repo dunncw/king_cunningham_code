@@ -11,7 +11,6 @@ from .crg_automation_ui import CRGAutomationUI
 from .document_processor_ui import DocumentProcessorUI
 from .web_automation_ui import WebAutomationUI
 from web_automation.automation import run_web_automation_thread
-from document_processor.processor import OCRWorker
 from .scra_automation_ui import SCRAAutomationUI
 from .pacer_automation_ui import PACERAutomationUI
 from simplifile3.ui.window import SimplifileWindow
@@ -360,6 +359,7 @@ class MainWindow(QMainWindow):
         self.central_widget.setCurrentWidget(self._pages[self.simplifile_ui])
 
     def start_document_processing(self, input_path, output_dir, is_directory):
+        from document_processor.processor import OCRWorker
         self.ocr_worker = OCRWorker(input_path, output_dir, is_directory)
         self.ocr_worker.progress_update.connect(self.doc_processor.update_progress)
         self.ocr_worker.output_update.connect(self.doc_processor.update_output)

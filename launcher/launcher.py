@@ -7,10 +7,12 @@ creates a Start Menu shortcut, then re-launches from the installed path.
 
 On every subsequent run it:
   1. Shows a splash screen immediately.
-  2. Reads the installed version from version.txt in its own directory.
-  3. Queries the GitHub Releases API for the latest release.
-  4. If a newer version is available, prompts the user and downloads KC_app.exe.
-  5. Launches KC_app.exe from the install directory and exits.
+  2. Cleans up any stale staging directories from previous updates.
+  3. Reads the installed version from version.txt in its own directory.
+  4. Queries the GitHub Releases API for the latest release.
+  5. If a newer version is available, prompts the user and downloads KC_app.zip.
+  6. Extracts the zip into a KC_app/ subdirectory.
+  7. Launches KC_app/KC_app.exe from the install directory and exits.
 
 Set KC_LAUNCHER_SKIP_UPDATE=1 to bypass the GitHub check (local testing).
 """
@@ -20,7 +22,7 @@ import os
 import shutil
 import subprocess
 import sys
-import time
+import zipfile
 from pathlib import Path
 
 import requests
@@ -30,16 +32,14 @@ from PyQt6.QtGui import QColor, QPixmap
 from PyQt6.QtWidgets import QApplication, QMessageBox, QProgressDialog, QSplashScreen
 
 GITHUB_API = "https://api.github.com/repos/dunncw/king_cunningham_code/releases/latest"
+APP_ZIP_NAME = "KC_app.zip"
+APP_DIR_NAME = "KC_app"
 APP_EXE_NAME = "KC_app.exe"
 LAUNCHER_EXE_NAME = "launcher.exe"
 VERSION_FILE_NAME = "version.txt"
 
 INSTALL_DIR = Path(os.environ["LOCALAPPDATA"]) / "King_Cunningham" / "KC_App"
 
-
-# ---------------------------------------------------------------------------
-# Resource path (works frozen and in dev)
-# ---------------------------------------------------------------------------
 
 def _resource_path(relative: str) -> str:
     base = getattr(sys, "_MEIPASS", None) or os.path.join(os.path.dirname(__file__), "..")
@@ -59,7 +59,6 @@ def _make_splash() -> QSplashScreen:
         pixmap.fill(QColor("#000000"))
 
     splash = QSplashScreen(pixmap, Qt.WindowType.WindowStaysOnTopHint)
-    # Transparent background so PNG alpha areas don't show the Qt window colour
     splash.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
     splash.show()
     return splash
@@ -99,12 +98,12 @@ def _fetch_latest_release() -> tuple[str, str]:
     data = resp.json()
     tag = data["tag_name"].lstrip("v")
     asset = next(
-        (a for a in data.get("assets", []) if a["name"] == APP_EXE_NAME),
+        (a for a in data.get("assets", []) if a["name"] == APP_ZIP_NAME),
         None,
     )
     if asset is None:
         raise ValueError(
-            f"Release {data['tag_name']} has no asset named '{APP_EXE_NAME}'."
+            f"Release {data['tag_name']} has no asset named '{APP_ZIP_NAME}'."
         )
     return tag, asset["browser_download_url"]
 
@@ -141,6 +140,36 @@ def _download(url: str, dest: Path, label: str) -> bool:
         progress.close()
 
     return True
+
+
+# ---------------------------------------------------------------------------
+# Zip extraction and install
+# ---------------------------------------------------------------------------
+
+def _install_from_zip(zip_path: Path, version: str) -> None:
+    app_dir = INSTALL_DIR / APP_DIR_NAME
+    staging_dir = INSTALL_DIR / "KC_app_staging"
+    old_dir = INSTALL_DIR / "KC_app_old"
+
+    shutil.rmtree(staging_dir, ignore_errors=True)
+
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        zf.extractall(staging_dir)
+
+    if app_dir.exists():
+        shutil.rmtree(old_dir, ignore_errors=True)
+        app_dir.rename(old_dir)
+
+    staging_dir.rename(app_dir)
+    shutil.rmtree(old_dir, ignore_errors=True)
+
+    _write_local_version(version)
+    zip_path.unlink(missing_ok=True)
+
+
+def _cleanup_stale_dirs() -> None:
+    for name in ("KC_app_staging", "KC_app_old"):
+        shutil.rmtree(INSTALL_DIR / name, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
@@ -218,12 +247,11 @@ def _show_error(title: str, message: str) -> None:
     QMessageBox.critical(None, title, message)
 
 
-_LOG_PATH  = Path(os.environ.get("TEMP", ".")) / "kc_launcher_error.log"
-_SYNC_FLAG = Path(os.environ.get("TEMP", ".")) / "kc_launcher_sync.flag"
+_LOG_PATH = Path(os.environ.get("TEMP", ".")) / "kc_launcher_error.log"
 
 
 # ---------------------------------------------------------------------------
-# Foreground-window transfer and app-launch helpers
+# App launch
 # ---------------------------------------------------------------------------
 
 def _grant_foreground_to(pid: int) -> None:
@@ -233,28 +261,9 @@ def _grant_foreground_to(pid: int) -> None:
         pass
 
 
-def _launch_and_wait(splash: QSplashScreen, app_exe: Path) -> None:
-    """Start KC_app.exe, then hold the splash open until KC_app signals it is
-    ready to show its main window (by deleting _SYNC_FLAG).  This bridges the
-    gap during PyInstaller one-file extraction so the user always sees a splash.
-    """
-    try:
-        _SYNC_FLAG.touch()
-    except OSError:
-        proc = subprocess.Popen([str(app_exe)], cwd=str(INSTALL_DIR))
-        _grant_foreground_to(proc.pid)
-        splash.close()
-        sys.exit(0)
-
-    proc = subprocess.Popen([str(app_exe)], cwd=str(INSTALL_DIR))
+def _launch_app(splash: QSplashScreen, app_exe: Path) -> None:
+    proc = subprocess.Popen([str(app_exe)], cwd=str(app_exe.parent))
     _grant_foreground_to(proc.pid)
-    _splash_msg(splash, "Starting KC Automation Suite...")
-
-    deadline = time.time() + 90
-    while _SYNC_FLAG.exists() and time.time() < deadline:
-        QApplication.processEvents()
-        time.sleep(0.05)
-
     splash.close()
     sys.exit(0)
 
@@ -264,14 +273,16 @@ def _launch_and_wait(splash: QSplashScreen, app_exe: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def run(splash: QSplashScreen) -> None:
-    app_exe = INSTALL_DIR / APP_EXE_NAME
+    _cleanup_stale_dirs()
+
+    app_exe = INSTALL_DIR / APP_DIR_NAME / APP_EXE_NAME
 
     if os.environ.get("KC_LAUNCHER_SKIP_UPDATE"):
         if not app_exe.exists():
             splash.close()
-            _show_error("KC Automation Suite", f"{APP_EXE_NAME} not found in {INSTALL_DIR}.")
+            _show_error("KC Automation Suite", f"{APP_EXE_NAME} not found in {INSTALL_DIR / APP_DIR_NAME}.")
             sys.exit(1)
-        _launch_and_wait(splash, app_exe)
+        _launch_app(splash, app_exe)
         return
 
     _splash_msg(splash, "Checking for updates...")
@@ -279,7 +290,7 @@ def run(splash: QSplashScreen) -> None:
         latest_version, download_url = _fetch_latest_release()
     except Exception as exc:
         if app_exe.exists():
-            _launch_and_wait(splash, app_exe)
+            _launch_app(splash, app_exe)
         else:
             splash.close()
             _show_error("KC Automation Suite — Network Error", f"Could not reach GitHub.\n\n{exc}")
@@ -290,12 +301,12 @@ def run(splash: QSplashScreen) -> None:
 
     if not app_exe.exists():
         splash.close()
-        tmp = INSTALL_DIR / f"{APP_EXE_NAME}.tmp"
+        tmp = INSTALL_DIR / f"{APP_ZIP_NAME}.tmp"
         ok = _download(download_url, tmp, f"Downloading KC Automation Suite v{latest_version}...")
         if not ok:
+            tmp.unlink(missing_ok=True)
             sys.exit(0)
-        tmp.replace(app_exe)
-        _write_local_version(latest_version)
+        _install_from_zip(tmp, latest_version)
     elif _is_newer(local_version, latest_version):
         splash.close()
         reply = QMessageBox.question(
@@ -306,23 +317,18 @@ def run(splash: QSplashScreen) -> None:
             QMessageBox.StandardButton.Yes,
         )
         if reply == QMessageBox.StandardButton.Yes:
-            tmp = INSTALL_DIR / f"{APP_EXE_NAME}.tmp"
+            tmp = INSTALL_DIR / f"{APP_ZIP_NAME}.tmp"
             ok = _download(download_url, tmp, f"Downloading KC Automation Suite v{latest_version}...")
             if ok:
-                tmp.replace(app_exe)
-                _write_local_version(latest_version)
+                _splash_msg(splash, "Installing update...")
+                _install_from_zip(tmp, latest_version)
+            else:
+                tmp.unlink(missing_ok=True)
 
-    _launch_and_wait(splash, app_exe)
+    _launch_app(splash, app_exe)
 
 
 def main() -> None:
-    # Dismiss PyInstaller's extraction-phase splash (no-op in dev mode)
-    try:
-        import pyi_splash  # type: ignore
-        pyi_splash.close()
-    except ImportError:
-        pass
-
     try:
         app = QApplication(sys.argv)
         splash = _make_splash()
