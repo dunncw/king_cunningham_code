@@ -27,7 +27,7 @@ class WebAutomationUI(QWidget):
 
         # Title
         title_label = QLabel("PT-61 Form Automation")
-        title_font = QFont("Segoe UI", 18, QFont.Weight.Bold)
+        title_font = QFont("Styrene B", 18, QFont.Weight.Bold)
         title_label.setFont(title_font)
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title_label)
@@ -114,7 +114,7 @@ class WebAutomationUI(QWidget):
         self.save_location_edit.setPlaceholderText("Output folder...")
         output_row.addWidget(self.save_location_edit)
         
-        save_location_button = QPushButton("📁")
+        save_location_button = QPushButton("...")
         save_location_button.setMaximumWidth(40)
         save_location_button.clicked.connect(self.select_save_location)
         output_row.addWidget(save_location_button)
@@ -132,12 +132,12 @@ class WebAutomationUI(QWidget):
         action_layout = QHBoxLayout()
         action_layout.addStretch()
         
-        self.start_button = QPushButton("▶ Start PT-61 Automation")
+        self.start_button = QPushButton("Start PT-61 Automation")
         self.start_button.setEnabled(False)
         self.start_button.clicked.connect(self.on_start_clicked)
         
         # Make button prominent
-        button_font = QFont("Segoe UI", 12, QFont.Weight.Bold)
+        button_font = QFont("Styrene B", 12, QFont.Weight.Bold)
         self.start_button.setFont(button_font)
         self.start_button.setMinimumHeight(50)
         self.start_button.setMinimumWidth(250)
@@ -153,7 +153,8 @@ class WebAutomationUI(QWidget):
                 background-color: #3498db;
             }
             QPushButton:disabled {
-                background-color: #bdc3c7;
+                background-color: #1e1e1e;
+                color: #555;
             }
         """)
         
@@ -169,7 +170,7 @@ class WebAutomationUI(QWidget):
         # Status line
         self.status_label = QLabel()
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        status_font = QFont("Segoe UI", 10)
+        status_font = QFont("Styrene B", 10)
         self.status_label.setFont(status_font)
         progress_layout.addWidget(self.status_label)
         
@@ -189,7 +190,7 @@ class WebAutomationUI(QWidget):
         self.results_label = QLabel()
         self.results_label.setWordWrap(True)
         self.results_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        results_font = QFont("Segoe UI", 11)
+        results_font = QFont("Styrene B", 11)
         self.results_label.setFont(results_font)
         results_layout.addWidget(self.results_label)
         
@@ -198,12 +199,12 @@ class WebAutomationUI(QWidget):
         # Error Section (hidden by default)
         self.error_frame = QFrame()
         self.error_frame.setVisible(False)
-        self.error_frame.setStyleSheet("background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; padding: 10px;")
+        self.error_frame.setStyleSheet("background-color: #2d1a1a; border: 1px solid #4a2a2a; border-radius: 6px; padding: 10px;")
         error_layout = QVBoxLayout(self.error_frame)
         
         self.error_label = QLabel()
         self.error_label.setWordWrap(True)
-        self.error_label.setStyleSheet("color: #721c24; font-weight: bold;")
+        self.error_label.setStyleSheet("color: #e8706a; font-weight: bold;")
         error_layout.addWidget(self.error_label)
         
         layout.addWidget(self.error_frame)
@@ -264,7 +265,7 @@ class WebAutomationUI(QWidget):
             
             # Validate version name first
             if not is_valid_version_name(version_name):
-                self.excel_status_label.setText("❌ Invalid Version")
+                self.excel_status_label.setText("Invalid Version")
                 self.excel_status_label.setStyleSheet("color: #e74c3c; font-weight: bold;")
                 self.start_button.setEnabled(False)
                 return
@@ -272,18 +273,18 @@ class WebAutomationUI(QWidget):
             result = validate_excel_for_version(excel_path, version_name)
             
             if result.is_valid:
-                self.excel_status_label.setText("✅ Excel Valid")
+                self.excel_status_label.setText("Valid")
                 self.excel_status_label.setStyleSheet("color: #27ae60; font-weight: bold;")
                 self.start_button.setEnabled(True)
             else:
                 # Show first error only
                 first_error = result.errors[0] if result.errors else "Validation failed"
-                self.excel_status_label.setText(f"❌ {first_error}")
+                self.excel_status_label.setText(first_error)
                 self.excel_status_label.setStyleSheet("color: #e74c3c; font-weight: bold;")
                 self.start_button.setEnabled(False)
                 
         except Exception as e:
-            self.excel_status_label.setText("❌ Validation Error")
+            self.excel_status_label.setText("Validation Error")
             self.excel_status_label.setStyleSheet("color: #e74c3c; font-weight: bold;")
             self.start_button.setEnabled(False)
 
@@ -320,7 +321,7 @@ class WebAutomationUI(QWidget):
             
             # Disable inputs
             self.start_button.setEnabled(False)
-            self.start_button.setText("⏸ Running...")
+            self.start_button.setText("Running...")
             
             # Emit signal
             self.start_automation.emit(excel_path, browser, username, password, save_location, version, document_stacking)
@@ -357,9 +358,9 @@ class WebAutomationUI(QWidget):
             individual_pdfs = [f for f in pdf_files if not f.startswith('PT61_')]
             combined_pdfs = [f for f in pdf_files if f.startswith('PT61_')]
             
-            result_text = f"✅ Completed: {len(individual_pdfs)} PDFs saved"
+            result_text = f"Completed: {len(individual_pdfs)} PDFs saved"
             if combined_pdfs:
-                result_text += f"\n📄 Combined PDF: {combined_pdfs[0]}"
+                result_text += f"\nCombined PDF: {combined_pdfs[0]}"
         else:
             result_text = "✅ Automation completed successfully"
         
@@ -368,7 +369,7 @@ class WebAutomationUI(QWidget):
         
         # Reset button
         self.start_button.setEnabled(True)
-        self.start_button.setText("▶ Start PT-61 Automation")
+        self.start_button.setText("Start PT-61 Automation")
 
     def show_error(self, error_message):
         """Show error message"""
@@ -378,8 +379,8 @@ class WebAutomationUI(QWidget):
         
         # Show error
         self.error_frame.setVisible(True)
-        self.error_label.setText(f"❌ Error: {error_message}")
+        self.error_label.setText(f"Error: {error_message}")
         
         # Reset button
         self.start_button.setEnabled(True)
-        self.start_button.setText("▶ Start PT-61 Automation")
+        self.start_button.setText("Start PT-61 Automation")

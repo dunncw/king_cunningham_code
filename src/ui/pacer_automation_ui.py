@@ -57,8 +57,8 @@ class PACERAutomationUI(QWidget):
         )
         self.mode_warning.setWordWrap(True)
         self.mode_warning.setStyleSheet(
-            "color: #ff6b6b; background-color: #fff3cd; "
-            "padding: 8px; border-radius: 4px; border: 1px solid #ffc107;"
+            "color: #e8706a; background-color: #2d1a1a; "
+            "padding: 8px; border-radius: 6px; border: 1px solid #4a2a2a;"
         )
         self.mode_warning.hide()
         layout.addWidget(self.mode_warning)
@@ -109,17 +109,18 @@ class PACERAutomationUI(QWidget):
         self.start_button = QPushButton("Start PACER Automation")
         self.start_button.setStyleSheet("""
             QPushButton {
-                background-color: #4CAF50;
+                background-color: #2980b9;
                 color: white;
                 border: none;
                 padding: 8px;
-                border-radius: 4px;
+                border-radius: 6px;
             }
             QPushButton:hover {
-                background-color: #45a049;
+                background-color: #3498db;
             }
             QPushButton:disabled {
-                background-color: #cccccc;
+                background-color: #1e1e1e;
+                color: #555;
             }
         """)
         self.start_button.clicked.connect(self.on_start_clicked)

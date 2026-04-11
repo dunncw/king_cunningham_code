@@ -8,19 +8,11 @@ from pathlib import Path
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtGui import QIcon
 
-from ui.main_window import MainWindow
+from ui.main_window import MainWindow, get_resource_path
 
 __version__ = "0.0.14"
 
 _LAUNCHER_SYNC_FLAG = Path(os.environ.get("TEMP", ".")) / "kc_launcher_sync.flag"
-
-
-def get_resource_path(relative_path):
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
 
 
 def _signal_launcher_ready():
@@ -39,7 +31,7 @@ class KingCunninghamApp(QApplication):
         self.setWindowIcon(QIcon(get_resource_path(os.path.join("resources", "app_icon.ico"))))
         self.main_window = MainWindow(__version__)
         self.main_window.setWindowIcon(self.windowIcon())
-        self.main_window.show()
+        self.main_window.showMaximized()
         self.main_window.raise_()
         self.main_window.activateWindow()
         _signal_launcher_ready()

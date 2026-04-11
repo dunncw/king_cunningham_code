@@ -1,11 +1,10 @@
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QPushButton,
     QStackedWidget, QMessageBox, QHBoxLayout, QLabel,
-    QStatusBar, QGridLayout, QFrame,
-    QSizePolicy, QSpacerItem
+    QStatusBar, QGridLayout, QFrame
 )
 from PyQt6.QtCore import pyqtSignal, Qt
-from PyQt6.QtGui import QFont, QIcon
+from PyQt6.QtGui import QFont
 import os
 import sys
 from .crg_automation_ui import CRGAutomationUI
@@ -17,6 +16,7 @@ from .scra_automation_ui import SCRAAutomationUI
 from .pacer_automation_ui import PACERAutomationUI
 from simplifile3.ui.window import SimplifileWindow
 
+
 def get_resource_path(relative_path):
     try:
         base_path = sys._MEIPASS
@@ -24,310 +24,325 @@ def get_resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
+
+THEME = """
+QMainWindow {
+    background-color: #191919;
+}
+QWidget {
+    background-color: #191919;
+    color: #e8e4e0;
+    font-family: 'Styrene B';
+}
+QLabel {
+    background-color: transparent;
+}
+QLineEdit {
+    background-color: #242424;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: #e8e4e0;
+}
+QLineEdit:focus {
+    border-color: #5a8dd6;
+}
+QComboBox {
+    background-color: #242424;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 6px 12px;
+    color: #e8e4e0;
+}
+QComboBox::drop-down {
+    border: none;
+    padding-right: 8px;
+}
+QComboBox QAbstractItemView {
+    background-color: #242424;
+    color: #e8e4e0;
+    border: 1px solid #333;
+    selection-background-color: #333;
+}
+QPushButton {
+    background-color: #2a2a2a;
+    color: #e8e4e0;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 8px 16px;
+}
+QPushButton:hover {
+    background-color: #333;
+}
+QPushButton:pressed {
+    background-color: #222;
+}
+QPushButton:disabled {
+    color: #555;
+    border-color: #2a2a2a;
+    background-color: #1e1e1e;
+}
+QProgressBar {
+    background-color: #242424;
+    border: none;
+    border-radius: 4px;
+}
+QProgressBar::chunk {
+    background-color: #5a8dd6;
+    border-radius: 4px;
+}
+QTextEdit {
+    background-color: #1e1e1e;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+    color: #ccc;
+    padding: 8px;
+}
+QGroupBox {
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    margin-top: 16px;
+    padding-top: 16px;
+    font-weight: bold;
+    color: #9a9590;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    padding: 0 8px;
+}
+QCheckBox, QRadioButton {
+    color: #e8e4e0;
+    spacing: 8px;
+}
+QStatusBar {
+    background-color: #191919;
+    color: #555;
+    border: none;
+}
+QScrollBar:vertical {
+    background: transparent;
+    width: 8px;
+}
+QScrollBar::handle:vertical {
+    background-color: #3a3a3a;
+    border-radius: 4px;
+    min-height: 20px;
+}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: none;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+QFrame {
+    border: none;
+}
+"""
+
+
+class ClickableCard(QFrame):
+    clicked = pyqtSignal()
+
+    _NORMAL = "ClickableCard { background-color: #242424; border-radius: 12px; border: 1px solid transparent; }"
+    _HOVER = "ClickableCard { background-color: #2c2c2c; border-radius: 12px; border: 1px solid #3a3a3a; }"
+
+    def __init__(self, title, description, parent=None):
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setStyleSheet(self._NORMAL)
+        self.setFixedHeight(110)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(4)
+
+        title_label = QLabel(title)
+        title_label.setFont(QFont("Styrene B", 14, QFont.Weight.DemiBold))
+        title_label.setStyleSheet("color: #e8e4e0;")
+        layout.addWidget(title_label)
+
+        desc_label = QLabel(description)
+        desc_label.setFont(QFont("Styrene B", 10))
+        desc_label.setStyleSheet("color: #7a7570;")
+        desc_label.setWordWrap(True)
+        layout.addWidget(desc_label)
+
+        self.setLayout(layout)
+
+    def enterEvent(self, event):
+        self.setStyleSheet(self._HOVER)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.setStyleSheet(self._NORMAL)
+        super().leaveEvent(event)
+
+    def mousePressEvent(self, event):
+        self.clicked.emit()
+        super().mousePressEvent(event)
+
+
 class MainWindow(QMainWindow):
-    check_for_updates = pyqtSignal()
     start_web_automation = pyqtSignal(str, str, str, str, str, str, bool)
     start_crg_automation = pyqtSignal()
 
     def __init__(self, version):
         super().__init__()
         self.version = version
+        self._pages = {}
+        self.setStyleSheet(THEME)
         self.init_ui()
 
     def init_ui(self):
         self.setWindowTitle("KC Automation Suite")
-        
+
+        self.setMinimumWidth(940)
+
         self.central_widget = QStackedWidget()
         self.setCentralWidget(self.central_widget)
+        self.setStatusBar(QStatusBar())
 
-        # Clean status bar (minimal)
-        self.statusBar = QStatusBar()
-        self.statusBar.setStyleSheet("background-color: #2c2c2c; color: #e0e0e0;")
-        self.setStatusBar(self.statusBar)
+        self._build_main_menu()
+        self._build_modules()
+        self.show_main_menu()
 
-        # Main menu - Clean, focused design
+    def _build_main_menu(self):
         self.main_menu = QWidget()
-        self.main_menu.setStyleSheet("""
-            QWidget {
-                background-color: #1e1e1e;
-                color: #e0e0e0;
-            }
-            QPushButton {
-                background-color: #2980b9;
-                color: white;
-                border: none;
-                padding: 15px;
-                border-radius: 6px;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #3498db;
-            }
-            QPushButton:pressed {
-                background-color: #1f6aa5;
-            }
-            QFrame {
-                background-color: #2c2c2c;
-                border-radius: 8px;
-                border: 1px solid #3c3c3c;
-            }
-        """)
-        
-        main_layout = QVBoxLayout()
-        main_layout.setSpacing(30)
-        main_layout.setContentsMargins(40, 40, 40, 40)
-        
-        # Clean header section
-        header_container = QFrame()
-        header_container.setStyleSheet("background-color: transparent; border: none;")
-        header_layout = QVBoxLayout()
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(10)
-        
-        # Company logo (smaller, cleaner)
-        logo_label = QLabel()
-        logo_path = get_resource_path(os.path.join("resources", "app_icon.ico"))
-        if os.path.exists(logo_path):
-            logo_label.setPixmap(QIcon(logo_path).pixmap(80, 80))  # Smaller logo
-            logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            header_layout.addWidget(logo_label)
-        
-        # Title (simplified)
-        title_label = QLabel("King & Cunningham")
-        title_font = QFont("Segoe UI", 24, QFont.Weight.Bold)
-        title_label.setFont(title_font)
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_label.setStyleSheet("color: #e0e0e0;")
-        header_layout.addWidget(title_label)
-        
-        # Subtitle (simplified)
-        subtitle_label = QLabel("Automation Suite")
-        subtitle_font = QFont("Segoe UI", 12)
-        subtitle_label.setFont(subtitle_font)
-        subtitle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle_label.setStyleSheet("color: #a0a0a0;")
-        header_layout.addWidget(subtitle_label)
+        layout = QVBoxLayout()
+        layout.setContentsMargins(60, 50, 60, 40)
+        layout.setSpacing(0)
 
-        version_label = QLabel(f"v{self.version}")
-        version_label.setFont(QFont("Segoe UI", 9))
-        version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        version_label.setStyleSheet("color: #505050;")
-        header_layout.addWidget(version_label)
-        
-        header_container.setLayout(header_layout)
-        main_layout.addWidget(header_container)
-        
-        # Clean separator line
-        separator = QFrame()
-        separator.setFrameShape(QFrame.Shape.HLine)
-        separator.setFrameShadow(QFrame.Shadow.Sunken)
-        separator.setStyleSheet("background-color: #3c3c3c; max-height: 1px; border: none;")
-        main_layout.addWidget(separator)
-        
-        # Grid for application buttons (cleaner, more focused)
-        buttons_widget = QWidget()
-        buttons_widget.setStyleSheet("background-color: transparent;")
-        buttons_grid = QGridLayout()
-        buttons_grid.setSpacing(20)
-        
-        # Define modules - Reordered with Simplifile at top
+        title = QLabel("King & Cunningham")
+        title.setFont(QFont("Styrene B", 22, QFont.Weight.DemiBold))
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+
+        layout.addSpacing(4)
+
+        version = QLabel(f"v{self.version}")
+        version.setFont(QFont("Styrene B", 9))
+        version.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        version.setStyleSheet("color: #4a4a4a;")
+        layout.addWidget(version)
+
+        layout.addSpacing(40)
+
         modules = [
-            {
-                "name": "Simplifile",
-                "description": "Workflow-first bulk document recording",
-                "action": self.show_simplifile
-            },
-            {
-                "name": "PT-61 Forms",
-                "description": "Bulk PT-61 form Generation",
-                "action": self.show_web_automation
-            },
-            {
-                "name": "Document Processing", 
-                "description": "OCR and document conversion",
-                "action": self.show_document_processor
-            },
-            {
-                "name": "Court Records",
-                "description": "Automated records gathering",
-                "action": self.show_crg_automation
-            },
-            {
-                "name": "SCRA Lookup",
-                "description": "Bulk Service member verification",
-                "action": self.show_scra_automation
-            },
-            {
-                "name": "PACER Access",
-                "description": "Federal court document gathering",
-                "action": self.show_pacer_automation
-            }
+            ("Simplifile", "Bulk document recording", self.show_simplifile),
+            ("PT-61 Forms", "Bulk form generation", self.show_web_automation),
+            ("Document Processing", "OCR and conversion", self.show_document_processor),
+            ("Court Records CRG", "Automated records gathering", self.show_crg_automation),
+            ("SCRA Lookup", "Service member verification", self.show_scra_automation),
+            ("PACER Access", "Federal court documents", self.show_pacer_automation),
         ]
-        
-        # Create clean module cards (2x3 grid)
-        row, col = 0, 0
-        for module in modules:
-            card = self.create_clean_module_card(
-                module["name"],
-                module["description"], 
-                module["action"]
-            )
-            buttons_grid.addWidget(card, row, col)
-            col += 1
-            if col > 1:  # Two columns layout
-                col = 0
-                row += 1
-        
-        buttons_widget.setLayout(buttons_grid)
-        main_layout.addWidget(buttons_widget)
-        
-        # Add bottom spacing
-        main_layout.addStretch()
-        
-        self.main_menu.setLayout(main_layout)
 
-        # All existing automation UIs (remove simplifile 1 & 2)
+        grid = QGridLayout()
+        grid.setSpacing(16)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        for i, (name, desc, handler) in enumerate(modules):
+            card = ClickableCard(name, desc)
+            card.clicked.connect(handler)
+            grid.addWidget(card, i // 2, i % 2)
+
+        grid_wrapper = QWidget()
+        grid_wrapper.setLayout(grid)
+        grid_wrapper.setFixedWidth(816)
+
+        center = QHBoxLayout()
+        center.addStretch()
+        center.addWidget(grid_wrapper)
+        center.addStretch()
+        layout.addLayout(center)
+
+        layout.addStretch()
+        self.main_menu.setLayout(layout)
+        self.central_widget.addWidget(self.main_menu)
+
+    def _build_modules(self):
         self.doc_processor = DocumentProcessorUI()
         self.doc_processor.start_processing.connect(self.start_document_processing)
-        back_button = QPushButton("← Back to Main Menu")
-        back_button.clicked.connect(self.show_main_menu)
-        self.doc_processor.layout().addWidget(back_button)
 
         self.web_automation = WebAutomationUI()
         self.web_automation.start_automation.connect(self.start_web_automation)
-        back_button = QPushButton("← Back to Main Menu")
-        back_button.clicked.connect(self.show_main_menu)
-        self.web_automation.layout().addWidget(back_button)
 
         self.crg_automation = CRGAutomationUI()
         self.crg_automation.start_automation.connect(self.start_crg_automation)
-        back_button = QPushButton("← Back to Main Menu")
-        back_button.clicked.connect(self.show_main_menu)
-        self.crg_automation.layout().addWidget(back_button)
 
         self.scra_automation = SCRAAutomationUI()
-        back_button = QPushButton("← Back to Main Menu")
-        back_button.clicked.connect(self.show_main_menu)
-        self.scra_automation.layout().addWidget(back_button)
-
         self.pacer_automation = PACERAutomationUI()
-        back_button = QPushButton("← Back to Main Menu")
-        back_button.clicked.connect(self.show_main_menu)
-        self.pacer_automation.layout().addWidget(back_button)
-
-        # Simplifile UI (formerly Simplifile 3)
         self.simplifile_ui = SimplifileWindow()
-        back_button = QPushButton("← Back to Main Menu")
-        back_button.clicked.connect(self.show_main_menu)
-        # Add back button to the UI layout
-        if hasattr(self.simplifile_ui, 'layout'):
-            self.simplifile_ui.layout().addWidget(back_button)
 
-        # Add widgets to stacked widget
-        self.central_widget.addWidget(self.main_menu)
-        self.central_widget.addWidget(self.doc_processor)
-        self.central_widget.addWidget(self.web_automation)
-        self.central_widget.addWidget(self.crg_automation)
-        self.central_widget.addWidget(self.scra_automation)
-        self.central_widget.addWidget(self.pacer_automation)
-        self.central_widget.addWidget(self.simplifile_ui)
+        for widget in [
+            self.doc_processor, self.web_automation, self.crg_automation,
+            self.scra_automation, self.pacer_automation, self.simplifile_ui,
+        ]:
+            page = self._make_page(widget)
+            self._pages[widget] = page
+            self.central_widget.addWidget(page)
 
-        self.show_main_menu()
-    
-    def create_clean_module_card(self, title, description, click_handler):
-        """Create a clean, minimal card widget for each module"""
-        card = QFrame()
-        card.setStyleSheet("""
-            QFrame {
-                background-color: #2c2c2c;
-                border-radius: 8px;
-                border: 1px solid #3c3c3c;
-                padding: 0px;
-            }
-            QFrame:hover {
-                border: 1px solid #3498db;
-                background-color: #353535;
-            }
-        """)
-        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        card.setMinimumSize(280, 120)
-        card.setMaximumSize(320, 140)
-        
-        card_layout = QVBoxLayout()
-        card_layout.setContentsMargins(20, 15, 20, 15)
-        card_layout.setSpacing(8)
-        
-        # Title
-        title_label = QLabel(title)
-        title_font = QFont("Segoe UI", 14, QFont.Weight.Bold)
-        title_label.setFont(title_font)
-        title_label.setStyleSheet("color: #e0e0e0; background: transparent; border: none;")
-        card_layout.addWidget(title_label)
-        
-        # Description
-        description_label = QLabel(description)
-        description_label.setWordWrap(True)
-        description_label.setStyleSheet("color: #a0a0a0; background: transparent; border: none;")
-        card_layout.addWidget(description_label)
-        
-        # Spacer
-        card_layout.addStretch()
-        
-        # Launch button (smaller, integrated)
-        launch_button = QPushButton("Launch")
-        launch_button.setMaximumHeight(35)
-        launch_button.setStyleSheet("""
+    def _make_page(self, widget):
+        page = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(60, 16, 60, 20)
+
+        back_row = QHBoxLayout()
+        back_row.addWidget(self._make_back_button())
+        back_row.addStretch()
+        layout.addLayout(back_row)
+
+        layout.addSpacing(8)
+
+        widget.setFixedWidth(816)
+        center = QHBoxLayout()
+        center.addStretch()
+        center.addWidget(widget)
+        center.addStretch()
+        layout.addLayout(center, 1)
+
+        page.setLayout(layout)
+        return page
+
+    def _make_back_button(self):
+        btn = QPushButton("< Back")
+        btn.setMaximumWidth(80)
+        btn.setStyleSheet("""
             QPushButton {
-                background-color: #2980b9;
-                color: white;
+                background: transparent;
                 border: none;
-                padding: 8px 16px;
-                border-radius: 4px;
-                font-weight: bold;
+                color: #7a7570;
                 font-size: 12px;
+                padding: 4px 0;
+                text-align: left;
             }
             QPushButton:hover {
-                background-color: #3498db;
-            }
-            QPushButton:pressed {
-                background-color: #1f6aa5;
+                color: #e8e4e0;
             }
         """)
-        launch_button.clicked.connect(click_handler)
-        card_layout.addWidget(launch_button)
-        
-        card.setLayout(card_layout)
-        return card
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.clicked.connect(self.show_main_menu)
+        return btn
 
     def show_main_menu(self):
         self.central_widget.setCurrentWidget(self.main_menu)
-        self.resize(900, 650)  # Clean, appropriate size
 
-    # All existing navigation methods (unchanged)
     def show_document_processor(self):
-        self.central_widget.setCurrentWidget(self.doc_processor)
-        self.resize(800, 600)
+        self.central_widget.setCurrentWidget(self._pages[self.doc_processor])
 
     def show_web_automation(self):
-        self.central_widget.setCurrentWidget(self.web_automation)
-        self.resize(800, 600)
+        self.central_widget.setCurrentWidget(self._pages[self.web_automation])
 
     def show_crg_automation(self):
-        self.central_widget.setCurrentWidget(self.crg_automation)
-        self.resize(800, 600)
+        self.central_widget.setCurrentWidget(self._pages[self.crg_automation])
 
     def show_scra_automation(self):
-        self.central_widget.setCurrentWidget(self.scra_automation)
-        self.resize(800, 600)
+        self.central_widget.setCurrentWidget(self._pages[self.scra_automation])
 
     def show_pacer_automation(self):
-        self.central_widget.setCurrentWidget(self.pacer_automation)
-        self.resize(800, 600)
-    
+        self.central_widget.setCurrentWidget(self._pages[self.pacer_automation])
+
     def show_simplifile(self):
-        self.central_widget.setCurrentWidget(self.simplifile_ui)
-        self.resize(1000, 800)
+        self.central_widget.setCurrentWidget(self._pages[self.simplifile_ui])
 
     def start_document_processing(self, input_path, output_dir, is_directory):
         self.ocr_worker = OCRWorker(input_path, output_dir, is_directory)
@@ -335,7 +350,6 @@ class MainWindow(QMainWindow):
         self.ocr_worker.output_update.connect(self.doc_processor.update_output)
         self.ocr_worker.finished.connect(self.on_document_processing_finished)
         self.ocr_worker.error.connect(self.on_document_processing_error)
-        
         self.doc_processor.process_button.setEnabled(False)
         self.doc_processor.update_output("Starting document processing with OCR...")
         self.ocr_worker.start()
@@ -350,49 +364,15 @@ class MainWindow(QMainWindow):
         self.doc_processor.process_button.setEnabled(True)
 
     def start_web_automation(self, excel_path, browser, username, password, save_location, version, document_stacking):
-        """Start web automation with proper signal connections"""
-        
         self.thread, self.worker = run_web_automation_thread(
             excel_path, browser, username, password, save_location, version, document_stacking
         )
-        
-        # Connect ALL worker signals to UI methods
         self.worker.status.connect(self.web_automation.update_status)
         self.worker.progress.connect(self.web_automation.update_progress)
         self.worker.error.connect(self.web_automation.show_error)
         self.worker.finished.connect(self.web_automation.automation_finished)
-        
-        # Also connect error to main window for fallback
         self.worker.error.connect(self.show_error)
-
-        # Log start
-        print(f"Starting automation with version: {version}")
-        if document_stacking:
-            print("Document stacking ENABLED - PDFs will be combined")
-        else:
-            print("Document stacking DISABLED - Individual PDFs will be saved")
-            
         self.thread.start()
-
-    def web_automation_finished(self):
-        self.web_automation.start_button.setEnabled(True)
-        self.web_automation.update_output("Web automation completed.")
-
-    def update_check_status(self, status):
-        self.statusBar.showMessage(status, 5000)
-
-    def show_update_available(self, new_version):
-        reply = QMessageBox.question(
-            self,
-            "Update Available",
-            f"A new version (v{new_version}) is available. Do you want to update?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-        return reply == QMessageBox.StandardButton.Yes
-
-    def show_no_update(self):
-        self.statusBar.showMessage("You are using the latest version.", 5000)
 
     def show_error(self, error_message):
         QMessageBox.critical(self, "Error", error_message)

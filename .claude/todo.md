@@ -1,0 +1,4 @@
+- create launcher [DONE]
+- rework ui to be minimal and more modern.
+- switch from selenium to playwrite
+- for all modules that do broswer automation build a common framework that puts app on one side and browser on the other side so user can see whats happening.
