@@ -52,6 +52,7 @@ class CRGAutomationUI(QWidget):
         self.init_ui()
         self.thread = None
         self.worker = None
+        self._running = False
 
     def init_ui(self):
         layout = QVBoxLayout()
@@ -146,7 +147,17 @@ class CRGAutomationUI(QWidget):
         if folder_path:
             self.save_location_edit.setText(folder_path)
 
+    _STOP_STYLE = """
+        QPushButton { background-color: #6b1a1a; border: 1px solid #8b2020; }
+        QPushButton:hover { background-color: #7a2525; }
+        QPushButton:pressed { background-color: #5a1515; }
+    """
+
     def on_start_clicked(self):
+        if self._running:
+            self._stop_automation()
+            return
+
         excel_path = self.excel_edit.text()
         browser = self.browser_combo.currentText()
         username = self.username_edit.text()
@@ -157,7 +168,9 @@ class CRGAutomationUI(QWidget):
             if hasattr(window, 'tile_left'):
                 window.tile_left()
 
-            self.start_button.setEnabled(False)
+            self._running = True
+            self.start_button.setText("Stop Automation")
+            self.start_button.setStyleSheet(self._STOP_STYLE)
             self.status_label.setText("Automation in progress...")
             self.spinner.start()
             self.warning_frame.show()
@@ -178,19 +191,30 @@ class CRGAutomationUI(QWidget):
         else:
             self.status_label.setText("Please provide all required information.")
 
+    def _stop_automation(self):
+        if self.worker:
+            self.worker.stop()
+        self.start_button.setEnabled(False)
+        self.status_label.setText("Stopping...")
+
     def update_output(self, text):
         self.output_text.append(text)
 
-    def automation_finished(self):
+    def _reset_button(self):
+        self._running = False
+        self.start_button.setText("Start Automation")
+        self.start_button.setStyleSheet("")
         self.start_button.setEnabled(True)
-        self.status_label.setText("Automation complete!")
+
+    def automation_finished(self):
+        self._reset_button()
         self.spinner.stop()
         self.warning_frame.hide()
 
     def show_error(self, error_message):
         self.status_label.setText(f"Error: {error_message}")
+        self._reset_button()
         self.spinner.stop()
-        self.start_button.setEnabled(True)
         self.warning_frame.hide()
 
     def save_output(self):
