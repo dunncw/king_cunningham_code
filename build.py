@@ -46,7 +46,7 @@ def ensure_binaries() -> None:
 def build_main_app() -> None:
     print("\n[build] Building KC_app (onedir) ...")
     subprocess.run(
-        ["pyinstaller", "KC_app.spec", "--clean"],
+        ["pyinstaller", "KC_app.spec", "--clean", "-y"],
         check=True,
         cwd=str(REPO_ROOT),
     )
@@ -72,7 +72,7 @@ def zip_onedir_output() -> Path:
 def build_launcher() -> None:
     print("\n[build] Building launcher.exe ...")
     subprocess.run(
-        ["pyinstaller", str(REPO_ROOT / "launcher" / "launcher.spec"), "--clean"],
+        ["pyinstaller", str(REPO_ROOT / "launcher" / "launcher.spec"), "--clean", "-y"],
         check=True,
         cwd=str(REPO_ROOT),
     )
