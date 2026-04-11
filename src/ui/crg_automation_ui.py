@@ -122,6 +122,10 @@ class CRGAutomationUI(QWidget):
         password = self.password_edit.text()
         save_location = self.save_location_edit.text()
         if excel_path and username and password and save_location:
+            window = self.window()
+            if hasattr(window, 'tile_left'):
+                window.tile_left()
+
             self.start_button.setEnabled(False)
             self.status_label.setText("Automation in progress...")
             self.spinner.show()

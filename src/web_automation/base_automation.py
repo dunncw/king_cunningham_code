@@ -120,6 +120,18 @@ class BasePT61Automation(QObject):
         else:
             raise ValueError(f"Unsupported browser: {self.browser}")
 
+        try:
+            import ctypes
+            from ctypes import wintypes
+            rect = wintypes.RECT()
+            ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0)
+            x = (rect.right - rect.left) // 2 + rect.left
+            w = (rect.right - rect.left) // 2
+            self.driver.set_window_position(x, rect.top)
+            self.driver.set_window_size(w, rect.bottom - rect.top)
+        except Exception:
+            self.driver.maximize_window()
+
     def navigate_to_login(self):
         """Navigate to the PT61 login page"""
         url = "https://apps.gsccca.org/pt61efiling/"

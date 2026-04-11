@@ -103,6 +103,17 @@ class CRGAutomationWorker(QObject):
             self.driver = webdriver.Edge(options=options)
         else:
             raise ValueError(f"Unsupported browser: {self.browser}")
+        try:
+            import ctypes
+            from ctypes import wintypes
+            rect = wintypes.RECT()
+            ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0)
+            x = (rect.right - rect.left) // 2 + rect.left
+            w = (rect.right - rect.left) // 2
+            self.driver.set_window_position(x, rect.top)
+            self.driver.set_window_size(w, rect.bottom - rect.top)
+        except Exception:
+            self.driver.maximize_window()
         print(f"DEBUG: {self.browser} driver initialized successfully")
 
     def login(self):
