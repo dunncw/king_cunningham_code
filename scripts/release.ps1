@@ -24,7 +24,7 @@ python build.py
 if ($LASTEXITCODE -ne 0) { Write-Error "Build failed."; exit 1 }
 
 # Verify expected outputs exist
-foreach ($f in @("dist\KC_app.zip", "dist\launcher.exe", "dist\version.txt")) {
+foreach ($f in @("dist\KC_app.zip", "dist\KC_app.zip.sha256", "dist\launcher.exe", "dist\version.txt")) {
     if (-not (Test-Path $f)) { Write-Error "Missing expected output: $f"; exit 1 }
 }
 
@@ -46,7 +46,7 @@ git push origin (git branch --show-current) --tags
 Write-Host "[git] Pushed tag $tag"
 
 # ── 4. GitHub release ───────────────────────────────────────────────────────
-$releaseArgs = @($tag, "dist\KC_app.zip", "dist\launcher.exe", "--title", $tag)
+$releaseArgs = @($tag, "dist\KC_app.zip", "dist\KC_app.zip.sha256", "dist\launcher.exe", "--title", $tag)
 if ($Draft) {
     $releaseArgs += "--draft"
     Write-Host "[gh] Creating draft release $tag ..."

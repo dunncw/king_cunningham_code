@@ -1,3 +1,4 @@
+import hashlib
 import os
 import re
 import subprocess
@@ -16,19 +17,23 @@ def read_version() -> str:
 
 
 def sync_version_in_source(version: str) -> None:
-    main_py = REPO_ROOT / "src" / "main.py"
-    content = main_py.read_text(encoding="utf-8")
-    updated = re.sub(
-        r'^__version__ = ".*?"',
-        f'__version__ = "{version}"',
-        content,
-        flags=re.MULTILINE,
-    )
-    if updated != content:
-        main_py.write_text(updated, encoding="utf-8")
-        print(f"[version] src/main.py __version__ updated to {version}")
-    else:
-        print(f"[version] src/main.py already at {version}")
+    targets = [
+        REPO_ROOT / "src" / "main.py",
+        REPO_ROOT / "launcher" / "launcher.py",
+    ]
+    for path in targets:
+        content = path.read_text(encoding="utf-8")
+        updated = re.sub(
+            r'^__version__ = ".*?"',
+            f'__version__ = "{version}"',
+            content,
+            flags=re.MULTILINE,
+        )
+        if updated != content:
+            path.write_text(updated, encoding="utf-8")
+            print(f"[version] {path.relative_to(REPO_ROOT)} __version__ updated to {version}")
+        else:
+            print(f"[version] {path.relative_to(REPO_ROOT)} already at {version}")
 
 
 def ensure_binaries() -> None:
@@ -66,6 +71,16 @@ def zip_onedir_output() -> Path:
                 zf.write(filepath, arcname)
     size_mb = zippath.stat().st_size // (1024 * 1024)
     print(f"[zip] Done. ({size_mb} MB)")
+
+    sha256 = hashlib.sha256()
+    with open(zippath, "rb") as f:
+        for block in iter(lambda: f.read(65536), b""):
+            sha256.update(block)
+    digest = sha256.hexdigest()
+    checksum_path = zippath.with_suffix(".zip.sha256")
+    checksum_path.write_text(f"{digest}  {zippath.name}\n", encoding="utf-8")
+    print(f"[zip] SHA-256: {digest}")
+
     return zippath
 
 
@@ -98,7 +113,7 @@ def main() -> None:
     copy_version_to_dist(version)
 
     print("\nBuild complete. Outputs in dist/:")
-    for name in ["KC_app/KC_app.exe", "KC_app.zip", "launcher.exe", "version.txt"]:
+    for name in ["KC_app/KC_app.exe", "KC_app.zip", "KC_app.zip.sha256", "launcher.exe", "version.txt"]:
         p = REPO_ROOT / "dist" / name
         if p.exists():
             size_mb = p.stat().st_size // (1024 * 1024)
