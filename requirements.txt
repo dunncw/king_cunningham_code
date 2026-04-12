@@ -4,7 +4,7 @@ numpy==2.1.1
 opencv-python==4.10.0.84
 packaging==24.1
 pefile==2024.8.26
-pillow==10.4.0
+pillow==12.1.1
 pyinstaller==6.10.0
 pyinstaller-hooks-contrib==2024.8
 PyMuPDF==1.24.10
@@ -18,5 +18,5 @@ python-docx==1.1.2
 pywin32-ctypes==0.2.3
 pywin32
 pyzbar==0.1.9
-setuptools==75.1.0
+setuptools==78.1.1
 typing_extensions==4.12.2
