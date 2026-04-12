@@ -17,7 +17,7 @@ On every subsequent run it:
 Set KC_LAUNCHER_SKIP_UPDATE=1 to bypass the GitHub check (local testing).
 """
 
-__version__ = "0.0.15"
+__version__ = "0.0.16"
 
 import ctypes
 import hashlib
