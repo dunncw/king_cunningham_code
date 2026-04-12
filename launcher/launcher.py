@@ -320,6 +320,7 @@ def run(splash: QSplashScreen) -> None:
             tmp = INSTALL_DIR / f"{APP_ZIP_NAME}.tmp"
             ok = _download(download_url, tmp, f"Downloading KC Automation Suite v{latest_version}...")
             if ok:
+                splash.show()
                 _splash_msg(splash, "Installing update...")
                 _install_from_zip(tmp, latest_version)
             else:
@@ -340,7 +341,10 @@ def main() -> None:
         run(splash)
     except Exception:
         import traceback
-        _LOG_PATH.write_text(traceback.format_exc(), encoding="utf-8")
+        from datetime import datetime
+        entry = f"\n--- {datetime.now().isoformat()} ---\n{traceback.format_exc()}"
+        with open(_LOG_PATH, "a", encoding="utf-8") as fh:
+            fh.write(entry)
         raise
 
 
