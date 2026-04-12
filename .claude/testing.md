@@ -1,105 +1,110 @@
-# Local Testing
+# Testing
 
 ## Quick Ref
 
 ```powershell
-# Test install + launch (no GitHub)
+# Mode 1: Full rebuild + install + launch (no GitHub)
 .\scripts\test-local.ps1
 
-# Skip build step
+# Mode 2: Skip build, reuse dist\ (no GitHub)
 .\scripts\test-local.ps1 -SkipBuild
 
-# Full update download flow (publishes + deletes real release)
+# Mode 3: Update flow — publishes real release, idempotent (GitHub)
 .\scripts\test-local.ps1 -TestUpdate
 ```
 
-## Test Coverage
+## Test Modes
 
-| Test | Build | GitHub | Covers |
-|---|---|---|---|
-| `test-local.ps1` | yes (or -SkipBuild) | no | Self-install, shortcut, app launch |
-| `test-local.ps1 -TestUpdate` | yes | yes (real release) | Update prompt, zip download, extraction, version.txt update |
+| Mode | Flag | Build | GitHub | What it tests |
+|------|------|-------|--------|---------------|
+| 1 | (none) | yes | no | Build pipeline, self-install, shortcut, app launch |
+| 2 | `-SkipBuild` | no | no | Self-install, shortcut, app launch (fast iteration) |
+| 3 | `-TestUpdate` | yes | yes | Old version (0.0.0) sees new release, downloads, extracts, launches |
 
-## Manual: Normal Test (no GitHub)
+## Test Reports
 
-`test-local.ps1` automates this. Manual steps for debugging:
+JSON reports → `data/test-reports/` (gitignored). Each run produces:
 
-```powershell
-$installDir = "$env:LOCALAPPDATA\King_Cunningham\KC_App"
-
-# 1. Build
-python build.py
-
-# 2. Clean prev install
-Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\KC Automation Suite.lnk" -Force -ErrorAction SilentlyContinue
-
-# 3. Seed install dir w/ KC_app dir + version.txt only.
-#    Do NOT copy launcher.exe — dist\launcher.exe self-installs it.
-New-Item -ItemType Directory -Force -Path $installDir | Out-Null
-Copy-Item dist\KC_app "$installDir\KC_app" -Recurse -Force
-(Get-Content version.txt -Raw).Trim() | Set-Content $installDir\version.txt
-
-# 4. Run dist\launcher.exe (self-install + shortcut).
-#    KC_LAUNCHER_SKIP_UPDATE=1 bypasses GitHub check.
-$env:KC_LAUNCHER_SKIP_UPDATE = "1"
-Start-Process dist\launcher.exe
-$env:KC_LAUNCHER_SKIP_UPDATE = $null
-
-# Poll until launcher copies itself (up to 30s)
-$deadline = (Get-Date).AddSeconds(30)
-while (-not (Test-Path "$installDir\launcher.exe") -and (Get-Date) -lt $deadline) {
-    Start-Sleep -Seconds 1
+```json
+{
+  "timestamp": "2026-04-12T14:30:00-05:00",
+  "mode": "full-rebuild",
+  "version": "0.0.15",
+  "host": "WORKSTATION",
+  "timings": { "build": 45.2, "seed": 1.1, "app_load_time": 3.8 },
+  "checks": { "launcher_installed": true, "shortcut_created": true, ... },
+  "passed": 6,
+  "failed": 0
 }
 ```
 
-Verify:
-- App opens
-- `$installDir\launcher.exe` exists (self-installed)
-- `$installDir\KC_app\KC_app.exe` exists
-- `%APPDATA%\Microsoft\Windows\Start Menu\Programs\KC Automation Suite.lnk` exists
-- Simplifile3 config → `%APPDATA%\King_Cunningham\simplifile3_config.json`
+Use reports to track regressions over time (build duration, app load time).
 
-## Manual: Update Flow (requires GitHub)
+## Benchmarks
 
-`/releases/latest` API → only published, non-draft, non-prerelease. Drafts/prereleases invisible to launcher. Must publish real release.
+| Metric | What | Warn threshold |
+|--------|------|----------------|
+| `app_load_time` | Launcher start → KC_app process visible | > 10s |
+| `build` | Full `python build.py` | informational |
+| `user_update_flow_total` | Launcher start → KC_app after update (mode 3) | informational |
 
-`test-local.ps1 -TestUpdate` handles automatically:
-1. Sets install dir `version.txt` → `0.0.0`
-2. Publishes real release w/ `KC_app.zip` under current version tag
-3. Runs launcher → update prompt + progress dialog
-4. After confirm → deletes release + git tag
+## Checks per Mode
 
-Manual:
-```powershell
-$version = (Get-Content version.txt -Raw).Trim()
+### Mode 1 & 2
 
-# Old version → triggers update prompt
-"0.0.0" | Set-Content "$env:LOCALAPPDATA\King_Cunningham\KC_App\version.txt"
+| Check | Validates |
+|-------|-----------|
+| `dist_kc_app_exists` | Build produced `dist\KC_app\KC_app.exe` |
+| `dist_launcher_exists` | Build produced `dist\launcher.exe` |
+| `launcher_installed` | `dist\launcher.exe` self-copied to install dir |
+| `shortcut_created` | Start Menu `.lnk` exists |
+| `kc_app_running` | KC_app.exe process is alive |
+| `kc_app_exe_exists` | `KC_app.exe` in install dir |
+| `version_file_exists` | `version.txt` in install dir |
+| `no_crash_log` | No `%TEMP%\kc_launcher_error.log` |
 
-# Publish (WARNING: visible to users while exists)
-gh release create "v$version" dist\KC_app.zip --title "v$version"
+### Mode 3 (Update)
 
-# Run launcher
-& "$env:LOCALAPPDATA\King_Cunningham\KC_App\launcher.exe"
+| Check | Validates |
+|-------|-----------|
+| `dist_kc_app_exists` | Build artifacts present |
+| `dist_launcher_exists` | Build artifacts present |
+| `dist_zip_exists` | `KC_app.zip` exists for upload |
+| `launcher_installed` | Self-install worked |
+| `shortcut_created` | Shortcut created |
+| `kc_app_running` | App launched after update |
+| `version_updated` | `version.txt` updated from 0.0.0 → current |
+| `staging_cleaned` | No `KC_app_staging` dir left behind |
+| `no_crash_log` | No crash log |
 
-# Cleanup
-gh release delete "v$version" --yes
-git tag -d "v$version"
-git push origin ":refs/tags/v$version"
-```
+## Idempotency (Mode 3)
 
-## Cleanup Between Runs
+Mode 3 is safe to rerun indefinitely:
 
-```powershell
-Remove-Item "$env:LOCALAPPDATA\King_Cunningham\KC_App" -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\KC Automation Suite.lnk" -Force -ErrorAction SilentlyContinue
-```
+1. **Before publish** — deletes any existing release + tag (local + remote) for `v{version}`
+2. **On clean exit** — deletes release + tag after user confirms
+3. **On dirty exit** (ctrl+C, crash) — next run cleans up before creating new release
+
+No manual cleanup needed between runs.
 
 ## Gotchas
 
-- **Draft releases** → never returned by `/releases/latest`. Use `test-local.ps1 -TestUpdate` (publishes real release + cleans up).
-- **Env var scope**: `$env:KC_LAUNCHER_SKIP_UPDATE` in PowerShell → only affects child processes in that session. Launcher reads on startup.
-- **Locked EXE**: Running launcher.exe → copy fails. Kill process first or wait for exit.
-- **GitHub repo**: Launcher API URL → `dunncw/king_cunningham_code` (resolved name). Git remote still shows `King_app.git` — fine, GitHub redirects.
-- **Stale staging dirs**: Interrupted update → `KC_app_staging` or `KC_app_old` may remain. Launcher cleans automatically next run.
+- **Draft releases** — `/releases/latest` API ignores drafts. Mode 3 publishes real release → visible to users while it exists. Press Enter promptly after verifying.
+- **Locked EXE** — script kills stale `KC_app` and `launcher` processes before each run. If still locked, check Task Manager.
+- **GitHub repo** — launcher API URL = `dunncw/king_cunningham_code`. Git remote shows `King_app.git` — GitHub redirects, this is fine.
+- **Stale staging dirs** — interrupted update may leave `KC_app_staging` or `KC_app_old`. Launcher cleans automatically next run. Mode 3 checks for this.
+- **Env var scope** — `KC_LAUNCHER_SKIP_UPDATE` set only for child process in modes 1/2.
+
+## Cleanup (manual, if needed)
+
+```powershell
+# Nuke install dir
+Remove-Item "$env:LOCALAPPDATA\King_Cunningham\KC_App" -Recurse -Force -ErrorAction SilentlyContinue
+
+# Remove shortcut
+Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\KC Automation Suite.lnk" -Force -ErrorAction SilentlyContinue
+
+# Remove orphaned test release
+gh release delete "v$(Get-Content version.txt -Raw)" --yes 2>$null
+git tag -d "v$(Get-Content version.txt -Raw)" 2>$null
+```
