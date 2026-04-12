@@ -89,31 +89,6 @@ dist\
 
 ---
 
-## Creating a Release
-
-```bash
-# 1. Bump version.txt and build (steps 5-6 above)
-
-# 2. Commit, merge to main, tag, push
-git add version.txt src/main.py
-git commit -m "chore: bump to 0.0.15"
-# merge feature branch -> dev -> main (standard branch workflow)
-git checkout main && git merge dev
-git tag v0.0.15
-git push origin main --tags
-
-# 3. Publish release -- include the zip
-gh release create v0.0.15 dist/KC_app.zip --title "v0.0.15"
-```
-
-Users with an existing launcher receive the update automatically on next launch.
-New users download `launcher.exe` once -- it self-installs and handles all future updates.
-
-> The launcher identifies the update asset by the name `KC_app.zip` exactly.
-> Do not rename that asset.
-
----
-
 ## Dependencies
 
 - [Tesseract OCR](https://github.com/tesseract-ocr/tesseract)
