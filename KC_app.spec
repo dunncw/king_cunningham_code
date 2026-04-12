@@ -3,9 +3,6 @@ import os
 import sys
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
-block_cipher = None
-
-
 def _find_one(pattern: str, label: str) -> str:
     matches = glob.glob(pattern, recursive=True)
     if not matches:
@@ -44,10 +41,9 @@ a = Analysis(['src\\main.py'],
              excludes=[],
              win_no_prefer_redirects=False,
              win_private_assemblies=False,
-             cipher=block_cipher,
              noarchive=False)
 
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure, a.zipped_data)
 
 exe = EXE(pyz,
           a.scripts,

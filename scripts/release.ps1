@@ -46,7 +46,7 @@ git push origin (git branch --show-current) --tags
 Write-Host "[git] Pushed tag $tag"
 
 # ── 4. GitHub release ───────────────────────────────────────────────────────
-$releaseArgs = @($tag, "dist\KC_app.zip", "--title", $tag)
+$releaseArgs = @($tag, "dist\KC_app.zip", "dist\launcher.exe", "--title", $tag)
 if ($Draft) {
     $releaseArgs += "--draft"
     Write-Host "[gh] Creating draft release $tag ..."
