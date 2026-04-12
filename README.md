@@ -1,89 +1,78 @@
 # KC Automation Suite
 
-Desktop automation suite for King & Cunningham. Modules cover Simplifile3 document recording, PT-61 form generation, document OCR processing, court records gathering (CRG), SCRA lookup, and PACER access.
+Desktop automation tools for King & Cunningham.
 
-## Installation (end users)
+**Modules:** Simplifile3 recording, PT-61 forms, document OCR, court records (CRG), SCRA lookup, PACER access.
 
-1. Download `launcher.exe` from the [latest release](https://github.com/dunncw/king_cunningham_code/releases/latest).
-2. Double-click `launcher.exe` from anywhere (e.g. your Downloads folder).
-3. The launcher installs itself to `%LOCALAPPDATA%\King_Cunningham\KC_App\`, creates a Start Menu shortcut ("KC Automation Suite"), downloads and extracts `KC_app.zip`, and launches the app.
+## Install
 
-From that point on, open the app via the Start Menu shortcut. The launcher checks for updates automatically on each run.
+1. Download `launcher.exe` from [latest release](https://github.com/dunncw/king_cunningham_code/releases/latest)
+2. Double-click it — works from any folder (Downloads, Desktop, wherever)
+3. Done. Launcher handles everything:
+   - Installs to `%LOCALAPPDATA%\King_Cunningham\KC_App\`
+   - Creates Start Menu shortcut ("KC Automation Suite")
+   - Downloads app files and launches
 
-## Requirements
+**After first install:** use Start Menu shortcut. Updates happen automatically on launch.
 
-- Windows 10 or later
-- Internet access on first run (to download the application)
+### Requirements
+
+- Windows 10+
+- Internet on first run
 
 ---
 
-## Building from Source
+## Build from Source
 
 ### Prerequisites
 
-- Windows 10 or later
-- Python 3.8 or later
+- Windows 10+
+- Python 3.8+
 - Git
 
-### 1. Clone the repository
+### Setup
 
 ```
 git clone https://github.com/dunncw/king_cunningham_code.git
 cd king_cunningham_code
-```
-
-### 2. Create and activate a virtual environment
-
-```
 python -m venv .venv
 .venv\Scripts\activate
-```
-
-### 3. Install dependencies
-
-```
 pip install -r requirements.txt
 ```
 
-### 4. Download external binaries (first time only)
+### External binaries (first time)
 
-Tesseract OCR is not committed to the repo. Run the setup script to download and install the pinned version into `bin\`:
+Tesseract OCR not in repo. Download pinned version:
 
 ```
 python scripts\setup_binaries.py
 ```
 
-This is idempotent -- re-running it skips anything already present.
+Safe to re-run — skips what's already there.
 
-### 5. Set the version
+### Build
 
-Edit `version.txt` at the repo root to the version you want to build:
-
-```
-0.0.14
-```
-
-### 6. Build
+Set version in `version.txt`, then:
 
 ```
 python build.py
 ```
 
-The build script:
+Build script handles:
 - Syncs `__version__` in `src/main.py` from `version.txt`
-- Runs `setup_binaries.py` automatically if `bin\` is not populated
-- Builds `dist\KC_app\` directory via PyInstaller (onedir mode)
-- Zips the directory into `dist\KC_app.zip`
-- Builds `dist\launcher.exe` via PyInstaller
+- Runs `setup_binaries.py` if `bin\` empty
+- PyInstaller onedir build → `dist\KC_app\`
+- Zips to `dist\KC_app.zip`
+- Builds `dist\launcher.exe`
 - Writes `dist\version.txt`
 
-### 7. Verify outputs
+### Output
 
 ```
 dist\
-  KC_app\           (onedir output with KC_app.exe + DLLs)
-  KC_app.zip        (zipped release asset)
-  launcher.exe      (~37 MB)
+  KC_app\           KC_app.exe + DLLs
+  KC_app.zip        release asset
+  launcher.exe      ~37 MB
   version.txt
 ```
 
@@ -96,4 +85,4 @@ dist\
 - [OpenCV](https://opencv.org/)
 - [PyQt6](https://www.riverbankcomputing.com/software/pyqt/)
 
-Refer to each project's license for terms of use.
+See each project's license for terms.
