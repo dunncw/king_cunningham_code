@@ -13,6 +13,7 @@ Pinned installer version (fallback only):
   Tesseract  5.4.0.20240606  (UB-Mannheim Windows build)
 """
 
+import hashlib
 import os
 import shutil
 import subprocess
@@ -29,6 +30,7 @@ TESSERACT_URL = (
     "https://github.com/UB-Mannheim/tesseract/releases/download/"
     "v5.4.0.20240606/tesseract-ocr-w64-setup-5.4.0.20240606.exe"
 )
+TESSERACT_SHA256 = "c885fff6998e0608ba4bb8ab51436e1c6775c2bafc2559a19b423e18678b60c9"
 
 TESSERACT_GLOBAL_PATHS = [
     Path(r"C:\Program Files\Tesseract-OCR"),
@@ -40,7 +42,7 @@ TESSERACT_GLOBAL_PATHS = [
 # Helpers
 # ---------------------------------------------------------------------------
 
-def download_file(url: str, dest: Path) -> None:
+def download_file(url: str, dest: Path, expected_sha256: str | None = None) -> None:
     print(f"  Downloading {url}")
     print(f"  -> {dest}")
 
@@ -51,6 +53,22 @@ def download_file(url: str, dest: Path) -> None:
 
     urllib.request.urlretrieve(url, dest, reporthook=progress)
     print()
+
+    if expected_sha256:
+        h = hashlib.sha256()
+        with open(dest, "rb") as f:
+            for block in iter(lambda: f.read(65536), b""):
+                h.update(block)
+        actual = h.hexdigest()
+        if actual != expected_sha256:
+            dest.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"SHA-256 mismatch for {dest.name}!\n"
+                f"  Expected: {expected_sha256}\n"
+                f"  Got:      {actual}\n"
+                "File may be corrupted or tampered with."
+            )
+        print(f"  SHA-256 verified: {actual}")
 
 
 # ---------------------------------------------------------------------------
@@ -76,7 +94,7 @@ def install_tesseract() -> None:
     print("[tesseract] No global install found — downloading installer ...")
     TESSERACT_INSTALL_DIR.mkdir(parents=True, exist_ok=True)
     installer = BIN_DIR / "tesseract_setup.exe"
-    download_file(TESSERACT_URL, installer)
+    download_file(TESSERACT_URL, installer, expected_sha256=TESSERACT_SHA256)
 
     print(f"[tesseract] Installing to {TESSERACT_INSTALL_DIR} ...")
     # NSIS: /S = silent, /D= = destination (must be last, must be absolute path)

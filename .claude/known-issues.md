@@ -23,15 +23,15 @@
 - Mitigation: README documents SmartScreen bypass steps (click "More info" → "Run anyway")
 - Revisit if user base grows or trust becomes blocker
 
-**`[NEXT]` No integrity verification on downloads**
+**`[DONE]` No integrity verification on downloads**
 - Downloaded ZIP not hash-checked → corrupt/tampered zips silently accepted
-- Fix: publish SHA256 in release, verify before extraction
-- Industry pattern: `KC_app.zip.sha256` asset alongside zip, or embed hash in release body/API response
+- Fix: build.py generates `KC_app.zip.sha256`, release.ps1 uploads as asset, launcher verifies after download
+- setup_binaries.py: pinned SHA-256 for Tesseract installer (from winget manifest)
 
-**`[NEXT]` Launcher not self-updating**
-- Self-install runs only on first launch (not-in-install-dir check)
-- Launcher bugs = users stuck forever unless manually replace
-- Fix: include launcher version, compare against release metadata, self-replace via temp copy trick
+**`[DONE]` Launcher not self-updating**
+- Self-install ran only on first launch (not-in-install-dir check)
+- Fix: `__version__` in launcher.py (synced by build.py), compared against release tag. If newer → download new launcher.exe from release asset, rename-self → launcher.old.exe, swap in new, re-launch. Old cleaned up on next start
+- Graceful: if release has no launcher.exe asset or download fails, skips silently
 
 **`[NEXT]` No rollback on failed extraction**
 - `_install_from_zip` renames old → KC_app_old, extracts new
@@ -92,18 +92,18 @@
 | Installer framework | No (self-install via code) | `WATCH` | NSIS/Inno Setup/WiX/MSIX |
 | Add/Remove Programs | No | `WATCH` | Yes (via installer) |
 | Delta updates | No (full zip) | `WATCH` | Common (bsdiff, courgette, partial zips) |
-| Hash verification | No | `NEXT` | Yes (SHA256 published w/ release) |
+| Hash verification | Yes (SHA256 asset + pinned hashes) | `DONE` | Yes (SHA256 published w/ release) |
 | CI/CD build | No | `WATCH` | Yes (GH Actions, Azure Pipelines) |
 | Crash reporting | Local file only | `WATCH` | Sentry/Bugsnag + remote collection |
 | Rollback | Manual (rename KC_app_old) | `NEXT` | Automatic on failed update |
-| Launcher self-update | No | `NEXT` | Yes (two-phase self-replace) |
+| Launcher self-update | Yes (rename-swap-relaunch) | `DONE` | Yes (two-phase self-replace) |
 
 ## Priority Order for Improvements
 
 1. ~~Code signing~~ → `WONT` — too expensive, README mitigates
-2. Hash verification (`NEXT` — low effort, high value)
+2. ~~Hash verification~~ → `DONE`
 3. CI/CD pipeline (`WATCH` — when manual builds become pain point)
 4. Rollback on failed extraction (`NEXT` — robustness)
-5. Launcher self-update (`NEXT` — maintenance)
+5. ~~Launcher self-update~~ → `DONE`
 6. Uninstaller (`WATCH` — professionalism)
 7. Delta updates (`WATCH` — only if user count grows)

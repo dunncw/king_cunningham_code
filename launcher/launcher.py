@@ -17,7 +17,10 @@ On every subsequent run it:
 Set KC_LAUNCHER_SKIP_UPDATE=1 to bypass the GitHub check (local testing).
 """
 
+__version__ = "0.0.15"
+
 import ctypes
+import hashlib
 import os
 import shutil
 import subprocess
@@ -33,6 +36,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox, QProgressDialog, QSplashS
 
 GITHUB_API = "https://api.github.com/repos/dunncw/king_cunningham_code/releases/latest"
 APP_ZIP_NAME = "KC_app.zip"
+APP_ZIP_SHA256_NAME = "KC_app.zip.sha256"
 APP_DIR_NAME = "KC_app"
 APP_EXE_NAME = "KC_app.exe"
 LAUNCHER_EXE_NAME = "launcher.exe"
@@ -92,20 +96,46 @@ def _is_newer(current: str, candidate: str) -> bool:
 # GitHub helpers
 # ---------------------------------------------------------------------------
 
-def _fetch_latest_release() -> tuple[str, str]:
+def _fetch_latest_release() -> tuple[str, str, str | None, str | None]:
+    """Return (version, zip_url, sha256_url_or_None, launcher_url_or_None)."""
     resp = requests.get(GITHUB_API, timeout=10)
     resp.raise_for_status()
     data = resp.json()
     tag = data["tag_name"].lstrip("v")
-    asset = next(
-        (a for a in data.get("assets", []) if a["name"] == APP_ZIP_NAME),
-        None,
-    )
-    if asset is None:
+    assets = {a["name"]: a["browser_download_url"] for a in data.get("assets", [])}
+    if APP_ZIP_NAME not in assets:
         raise ValueError(
             f"Release {data['tag_name']} has no asset named '{APP_ZIP_NAME}'."
         )
-    return tag, asset["browser_download_url"]
+    return (
+        tag,
+        assets[APP_ZIP_NAME],
+        assets.get(APP_ZIP_SHA256_NAME),
+        assets.get(LAUNCHER_EXE_NAME),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Integrity verification
+# ---------------------------------------------------------------------------
+
+def _sha256_of(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(65536), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def _fetch_expected_sha256(sha256_url: str) -> str | None:
+    """Download .sha256 file, return hex digest or None on failure."""
+    try:
+        resp = requests.get(sha256_url, timeout=10)
+        resp.raise_for_status()
+        # Format: "<hex>  <filename>\n"
+        return resp.text.strip().split()[0].lower()
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +259,43 @@ def _self_install(splash: QSplashScreen) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Launcher self-update
+# ---------------------------------------------------------------------------
+
+def _self_update(splash: QSplashScreen, latest_version: str, launcher_url: str) -> None:
+    """Download new launcher, rename-self, swap, re-launch."""
+    installed_exe = INSTALL_DIR / LAUNCHER_EXE_NAME
+    old_exe = INSTALL_DIR / "launcher.old.exe"
+    tmp_exe = INSTALL_DIR / "launcher.new.exe"
+
+    _splash_msg(splash, "Updating launcher...")
+    try:
+        resp = requests.get(launcher_url, timeout=60)
+        resp.raise_for_status()
+        tmp_exe.write_bytes(resp.content)
+    except Exception:
+        tmp_exe.unlink(missing_ok=True)
+        return
+
+    try:
+        old_exe.unlink(missing_ok=True)
+        installed_exe.rename(old_exe)
+        tmp_exe.rename(installed_exe)
+    except OSError:
+        tmp_exe.unlink(missing_ok=True)
+        return
+
+    splash.close()
+    subprocess.Popen([str(installed_exe)])
+    sys.exit(0)
+
+
+def _cleanup_old_launcher() -> None:
+    old = INSTALL_DIR / "launcher.old.exe"
+    old.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
 # Version file helpers
 # ---------------------------------------------------------------------------
 
@@ -274,6 +341,7 @@ def _launch_app(splash: QSplashScreen, app_exe: Path) -> None:
 
 def run(splash: QSplashScreen) -> None:
     _cleanup_stale_dirs()
+    _cleanup_old_launcher()
 
     app_exe = INSTALL_DIR / APP_DIR_NAME / APP_EXE_NAME
 
@@ -287,7 +355,7 @@ def run(splash: QSplashScreen) -> None:
 
     _splash_msg(splash, "Checking for updates...")
     try:
-        latest_version, download_url = _fetch_latest_release()
+        latest_version, download_url, sha256_url, launcher_url = _fetch_latest_release()
     except Exception as exc:
         if app_exe.exists():
             _launch_app(splash, app_exe)
@@ -297,7 +365,14 @@ def run(splash: QSplashScreen) -> None:
             sys.exit(1)
         return
 
+    if launcher_url and _is_newer(__version__, latest_version):
+        _self_update(splash, latest_version, launcher_url)
+
     local_version = _read_local_version()
+
+    expected_hash = None
+    if sha256_url:
+        expected_hash = _fetch_expected_sha256(sha256_url)
 
     if not app_exe.exists():
         splash.close()
@@ -306,6 +381,17 @@ def run(splash: QSplashScreen) -> None:
         if not ok:
             tmp.unlink(missing_ok=True)
             sys.exit(0)
+        if expected_hash:
+            actual = _sha256_of(tmp)
+            if actual != expected_hash:
+                tmp.unlink(missing_ok=True)
+                _show_error(
+                    "KC Automation Suite — Integrity Error",
+                    f"Download integrity check failed.\n\n"
+                    f"Expected: {expected_hash}\nGot: {actual}\n\n"
+                    "The file may be corrupted or tampered with. Try again later.",
+                )
+                sys.exit(1)
         _install_from_zip(tmp, latest_version)
     elif _is_newer(local_version, latest_version):
         splash.close()
@@ -320,6 +406,17 @@ def run(splash: QSplashScreen) -> None:
             tmp = INSTALL_DIR / f"{APP_ZIP_NAME}.tmp"
             ok = _download(download_url, tmp, f"Downloading KC Automation Suite v{latest_version}...")
             if ok:
+                if expected_hash:
+                    actual = _sha256_of(tmp)
+                    if actual != expected_hash:
+                        tmp.unlink(missing_ok=True)
+                        _show_error(
+                            "KC Automation Suite — Integrity Error",
+                            f"Download integrity check failed.\n\n"
+                            f"Expected: {expected_hash}\nGot: {actual}\n\n"
+                            "The file may be corrupted or tampered with. Try again later.",
+                        )
+                        sys.exit(1)
                 splash.show()
                 _splash_msg(splash, "Installing update...")
                 _install_from_zip(tmp, latest_version)
