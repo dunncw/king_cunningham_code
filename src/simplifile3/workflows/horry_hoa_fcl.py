@@ -165,20 +165,16 @@ class HorryHOAFCLWorkflow(BaseWorkflow):
     def _format_date_for_api(self, date_str: str) -> str:
         """Format date string for API (MM/DD/YYYY format)."""
         if not date_str:
-            return datetime.now().strftime('%m/%d/%Y')
-        
-        try:
-            # Input might be MM/DD/YYYY, try to parse and return same format
-            date_obj = datetime.strptime(date_str, '%m/%d/%Y')
-            return date_obj.strftime('%m/%d/%Y')
-        except ValueError:
+            raise ValueError("Execution date is empty — check spreadsheet 'Execution Date' column")
+
+        formats = ['%m/%d/%Y', '%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M:%S.%f']
+        for fmt in formats:
             try:
-                # Try YYYY-MM-DD format
-                date_obj = datetime.strptime(date_str, '%Y-%m-%d')
-                return date_obj.strftime('%m/%d/%Y')
+                return datetime.strptime(date_str, fmt).strftime('%m/%d/%Y')
             except ValueError:
-                # Return current date as fallback
-                return datetime.now().strftime('%m/%d/%Y')
+                continue
+
+        raise ValueError(f"Cannot parse execution date '{date_str}' — expected MM/DD/YYYY or YYYY-MM-DD")
     
     def extract_pdfs(self, row_data: Dict[str, Any], pdf_paths: Dict[str, str]) -> Dict[str, bytes]:
         """Extract and merge PDFs for Horry HOA-FCL."""
