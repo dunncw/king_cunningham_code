@@ -17,7 +17,7 @@ On every subsequent run it:
 Set KC_LAUNCHER_SKIP_UPDATE=1 to bypass the GitHub check (local testing).
 """
 
-__version__ = "0.0.18"
+__version__ = "0.0.19"
 
 import ctypes
 import hashlib
@@ -212,7 +212,14 @@ def _install_from_zip(zip_path: Path, version: str) -> None:
         _rename_retry(staging_dir, app_dir)
     except PermissionError:
         # Retry exhausted: a lock that never clears (EDR hard-block / Controlled
-        # Folder Access). Turn the crash into something the user can act on.
+        # Folder Access). Restore the working app if we already moved it aside,
+        # so a failed update never strands the user with no app.
+        if old_dir.exists() and not app_dir.exists():
+            try:
+                old_dir.rename(app_dir)
+            except OSError:
+                pass
+        # Turn the crash into something the user can act on.
         _show_error(
             "KC Automation Suite — Update Blocked",
             "The update could not be installed because another program is "
@@ -353,6 +360,13 @@ def _self_update(splash: QSplashScreen, latest_version: str, launcher_url: str) 
         _rename_retry(installed_exe, old_exe)
         _rename_retry(tmp_exe, installed_exe)
     except OSError:
+        # Restore the launcher if the swap died after moving the old one aside,
+        # so a failed self-update doesn't leave a missing launcher.exe.
+        if old_exe.exists() and not installed_exe.exists():
+            try:
+                old_exe.rename(installed_exe)
+            except OSError:
+                pass
         tmp_exe.unlink(missing_ok=True)
         return
 
@@ -444,21 +458,22 @@ def _wait_for_app_close() -> bool:
 # ---------------------------------------------------------------------------
 
 def _self_delete_launcher() -> None:
-    # A running exe can't delete itself; defer to a detached shell that waits,
-    # then removes the launcher (and its parent dir if now empty).
-    # ping (not timeout) for the delay: timeout needs console stdin, which a
-    # DETACHED_PROCESS lacks, so it would error out instantly and del would
-    # fire while this exe is still locked.
-    launcher_exe = INSTALL_DIR / LAUNCHER_EXE_NAME
-    old_exe = INSTALL_DIR / "launcher.old.exe"
-    cmd = (
-        f'ping 127.0.0.1 -n 3 >nul & del /f /q "{launcher_exe}" '
-        f'& del /f /q "{old_exe}" & rmdir "{INSTALL_DIR}" '
-        f'& rmdir "{INSTALL_DIR.parent}"'
+    # A running exe can't delete itself; hand off to a background PowerShell that
+    # outlives us (child processes survive parent exit on Windows) and retries
+    # removing the whole install tree until the exe lock clears.
+    # CREATE_NO_WINDOW (hidden console) -- NOT DETACHED_PROCESS: a console app
+    # launched detached gets no console and the shell never runs the script.
+    target = INSTALL_DIR.parent  # King_Cunningham (holds only our KC_App)
+    script = (
+        "Start-Sleep -Seconds 1;"
+        "for ($i=0; $i -lt 20; $i++) {"
+        f"  Remove-Item -LiteralPath '{target}' -Recurse -Force -ErrorAction SilentlyContinue;"
+        f"  if (-not (Test-Path -LiteralPath '{target}')) {{ break }};"
+        "  Start-Sleep -Seconds 1 }"
     )
     subprocess.Popen(
-        ["cmd", "/c", cmd],
-        creationflags=CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+        ["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", script],
+        creationflags=CREATE_NO_WINDOW,
     )
 
 
