@@ -14,10 +14,9 @@ Explain architecture + process. Stable. Version-agnostic.
 
 | Doc | Scope |
 |---|---|
-| [packaging-architecture.md](packaging-architecture.md) | Two-EXE model, build pipeline, version flow, install layout, update mechanism, dep chain |
+| [installer-updater.md](installer-updater.md) | Two-EXE model, distribution, install + update mechanism, dir layout, version flow, dep chain, end-user flow |
 | [build.md](build.md) | How to build, release, manage binary deps. Hands-on steps |
 | [testing.md](testing.md) | Local test harness, manual test procedures, gotchas |
-| [user-experience.md](user-experience.md) | End user journey: first install, updates, error scenarios, UX pain points |
 
 ### Living Docs — Current State
 
