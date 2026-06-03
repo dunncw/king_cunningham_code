@@ -126,7 +126,7 @@ class Validator:
             # Calculate total pages needed
             total_pages_needed = df[page_field].astype(int).sum()
             
-            # Check PDF has enough pages (would need PyPDF2 here)
+            # Check PDF has enough pages (would need pypdf here)
             # For now, just log the requirement
             self.logger.info(f"Variable PDF needs {total_pages_needed} total pages")
             
@@ -140,7 +140,7 @@ class Validator:
         errors = []
         pages_per_doc = self.spec.get("pages_per_document", 2)
         
-        # Would need PyPDF2 to check actual page count
+        # Would need pypdf to check actual page count
         # For now, just log the requirement
         expected_pages = len(df) * pages_per_doc
         self.logger.info(f"Fixed PDF needs {expected_pages} pages ({len(df)} docs × {pages_per_doc} pages)")
