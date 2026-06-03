@@ -28,16 +28,16 @@ python build.py
 ```
 
 Does:
-- Sync `__version__` in `src/main.py` ← `version.txt`
+- Sync `__version__` in `src/main.py` + `launcher/launcher.py` ← `version.txt`
 - Download Tesseract → `bin/` if missing (first time only)
 - Build `dist/KC_app/` via PyInstaller (onedir)
-- Zip → `dist/KC_app.zip`
+- Zip → `dist/KC_app.zip` + write `.sha256` checksum
 - Build `dist/launcher.exe` via PyInstaller
 - Write `dist/version.txt`
 
 ### 3. Verify
 
-All four outputs in `dist/`. Build script prints summary w/ sizes.
+All outputs in `dist/`. Build script prints summary w/ sizes.
 
 ## Release
 
@@ -69,19 +69,11 @@ git push origin $(git branch --show-current) --tags
 gh release create "v$(cat version.txt)" dist/KC_app.zip dist/launcher.exe --title "v$(cat version.txt)"
 ```
 
-### Critical constraints
+### Release constraints
 
-- Launcher fetches `/releases/latest` → only published, non-draft, non-prerelease releases visible
-- Asset name must = `KC_app.zip` exactly. Launcher matches by name
-- Version tags must follow `vX.Y.Z` format. Launcher strips `v` prefix, splits on `.` for comparison
-
-## New User Distribution
-
-Users only need `launcher.exe`. Give once (email, Slack, USB, GitHub release page).
-
-- First run → self-install → Start Menu shortcut → download app → launch
-- Subsequent runs → auto-check updates before launch
-- See [user-experience.md](user-experience.md) for full UX flow
+Release tag/asset rules the launcher depends on (draft visibility, exact
+`KC_app.zip` name, `vX.Y.Z` tag format) → see Distribution in
+[installer-updater.md](installer-updater.md). Break them and updates silently fail.
 
 ## Binary Deps (bin/)
 
@@ -92,12 +84,11 @@ Pinned:
 
 Upgrade Tesseract: delete `bin/tesseract/`, update URL in `scripts/setup_binaries.py`, rebuild.
 
-## Windows Paths
+## Build-Time Paths
 
 | Data | Location |
 |---|---|
-| Installed EXEs | `%LOCALAPPDATA%\King_Cunningham\KC_App\` |
-| App dir | `%LOCALAPPDATA%\King_Cunningham\KC_App\KC_app\` |
-| App config | `%APPDATA%\King_Cunningham\` |
 | Build outputs | `dist\` (gitignored) |
-| External bins (build-time) | `bin\` (gitignored) |
+| External bins | `bin\` (gitignored) |
+
+Runtime install/config paths on the user machine → [installer-updater.md](installer-updater.md#install-directory-layout).
