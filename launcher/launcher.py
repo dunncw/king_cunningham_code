@@ -17,7 +17,7 @@ On every subsequent run it:
 Set KC_LAUNCHER_SKIP_UPDATE=1 to bypass the GitHub check (local testing).
 """
 
-__version__ = "0.0.17"
+__version__ = "0.0.18"
 
 import ctypes
 import hashlib
@@ -25,8 +25,12 @@ import os
 import shutil
 import subprocess
 import sys
+import winreg
 import zipfile
 from pathlib import Path
+
+# Suppress console flash from shell-outs in a windowed (PyInstaller --noconsole) build.
+CREATE_NO_WINDOW = 0x08000000
 
 import requests
 import win32com.client
@@ -176,6 +180,20 @@ def _download(url: str, dest: Path, label: str) -> bool:
 # Zip extraction and install
 # ---------------------------------------------------------------------------
 
+def _rename_retry(src: Path, dst: Path, retries: int = 10, delay: float = 1.0) -> None:
+    # WinError 5/32 surface as PermissionError when AV/EDR scans freshly extracted
+    # files and holds a transient lock. Retry rides out the scan window.
+    import time
+    for attempt in range(retries):
+        try:
+            src.rename(dst)
+            return
+        except PermissionError:
+            if attempt == retries - 1:
+                raise
+            time.sleep(delay)
+
+
 def _install_from_zip(zip_path: Path, version: str) -> None:
     app_dir = INSTALL_DIR / APP_DIR_NAME
     staging_dir = INSTALL_DIR / "KC_app_staging"
@@ -186,14 +204,31 @@ def _install_from_zip(zip_path: Path, version: str) -> None:
     with zipfile.ZipFile(zip_path, "r") as zf:
         zf.extractall(staging_dir)
 
-    if app_dir.exists():
-        shutil.rmtree(old_dir, ignore_errors=True)
-        app_dir.rename(old_dir)
+    try:
+        if app_dir.exists():
+            shutil.rmtree(old_dir, ignore_errors=True)
+            _rename_retry(app_dir, old_dir)
 
-    staging_dir.rename(app_dir)
+        _rename_retry(staging_dir, app_dir)
+    except PermissionError:
+        # Retry exhausted: a lock that never clears (EDR hard-block / Controlled
+        # Folder Access). Turn the crash into something the user can act on.
+        _show_error(
+            "KC Automation Suite — Update Blocked",
+            "The update could not be installed because another program is "
+            "blocking access to the install folder.\n\n"
+            "This is usually antivirus or endpoint security.\n\n"
+            "Try:\n"
+            "  1. Close KC Automation Suite if it is open, then re-launch.\n"
+            "  2. If it keeps failing, ask IT to allow this folder:\n"
+            f"     {INSTALL_DIR}",
+        )
+        sys.exit(1)
+
     shutil.rmtree(old_dir, ignore_errors=True)
 
     _write_local_version(version)
+    _register_uninstall(version)
     zip_path.unlink(missing_ok=True)
 
 
@@ -206,23 +241,57 @@ def _cleanup_stale_dirs() -> None:
 # Shortcut creation via pywin32 COM
 # ---------------------------------------------------------------------------
 
-def _create_start_menu_shortcut(target_exe: Path) -> None:
-    programs_dir = (
+def _shortcut_path() -> Path:
+    return (
         Path(os.environ["APPDATA"])
         / "Microsoft"
         / "Windows"
         / "Start Menu"
         / "Programs"
+        / "KC Automation Suite.lnk"
     )
-    shortcut_path = programs_dir / "KC Automation Suite.lnk"
 
+
+def _create_start_menu_shortcut(target_exe: Path) -> None:
     shell = win32com.client.Dispatch("WScript.Shell")
-    shortcut = shell.CreateShortCut(str(shortcut_path))
+    shortcut = shell.CreateShortCut(str(_shortcut_path()))
     shortcut.TargetPath = str(target_exe)
     shortcut.WorkingDirectory = str(target_exe.parent)
     shortcut.IconLocation = str(target_exe)
     shortcut.Description = "KC Automation Suite"
     shortcut.save()
+
+
+# ---------------------------------------------------------------------------
+# Add/Remove Programs registration (per-user, no admin needed)
+# ---------------------------------------------------------------------------
+
+_UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\KCAutomationSuite"
+
+
+def _register_uninstall(version: str) -> None:
+    launcher_exe = INSTALL_DIR / LAUNCHER_EXE_NAME
+    try:
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, _UNINSTALL_KEY) as key:
+            winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, "KC Automation Suite")
+            winreg.SetValueEx(key, "DisplayVersion", 0, winreg.REG_SZ, version)
+            winreg.SetValueEx(key, "Publisher", 0, winreg.REG_SZ, "King & Cunningham")
+            winreg.SetValueEx(key, "InstallLocation", 0, winreg.REG_SZ, str(INSTALL_DIR))
+            winreg.SetValueEx(key, "DisplayIcon", 0, winreg.REG_SZ, str(launcher_exe))
+            winreg.SetValueEx(
+                key, "UninstallString", 0, winreg.REG_SZ, f'"{launcher_exe}" --uninstall'
+            )
+            winreg.SetValueEx(key, "NoModify", 0, winreg.REG_DWORD, 1)
+            winreg.SetValueEx(key, "NoRepair", 0, winreg.REG_DWORD, 1)
+    except OSError:
+        pass  # Registration is best-effort; never block install on it.
+
+
+def _unregister_uninstall() -> None:
+    try:
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, _UNINSTALL_KEY)
+    except OSError:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -253,6 +322,8 @@ def _self_install(splash: QSplashScreen) -> None:
             f"Could not create Start Menu shortcut:\n\n{exc}",
         )
 
+    _register_uninstall(__version__)
+
     splash.close()
     subprocess.Popen([str(installed_exe)])
     sys.exit(0)
@@ -279,8 +350,8 @@ def _self_update(splash: QSplashScreen, latest_version: str, launcher_url: str) 
 
     try:
         old_exe.unlink(missing_ok=True)
-        installed_exe.rename(old_exe)
-        tmp_exe.rename(installed_exe)
+        _rename_retry(installed_exe, old_exe)
+        _rename_retry(tmp_exe, installed_exe)
     except OSError:
         tmp_exe.unlink(missing_ok=True)
         return
@@ -332,6 +403,97 @@ def _launch_app(splash: QSplashScreen, app_exe: Path) -> None:
     proc = subprocess.Popen([str(app_exe)], cwd=str(app_exe.parent))
     _grant_foreground_to(proc.pid)
     splash.close()
+    sys.exit(0)
+
+
+# ---------------------------------------------------------------------------
+# Running-process detection (update path only)
+# ---------------------------------------------------------------------------
+
+def _app_is_running() -> bool:
+    try:
+        out = subprocess.run(
+            ["tasklist", "/FI", f"IMAGENAME eq {APP_EXE_NAME}", "/NH"],
+            capture_output=True,
+            text=True,
+            creationflags=CREATE_NO_WINDOW,
+        )
+        return APP_EXE_NAME.lower() in out.stdout.lower()
+    except Exception:
+        return False  # If we can't tell, don't block the update.
+
+
+def _wait_for_app_close() -> bool:
+    """Block update until KC_app.exe is gone. Return False if user cancels."""
+    while _app_is_running():
+        reply = QMessageBox.warning(
+            None,
+            "KC Automation Suite — Close Required",
+            "KC Automation Suite is currently running and must be closed "
+            "before updating.\n\nPlease close it, then click Retry.",
+            QMessageBox.StandardButton.Retry | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Retry,
+        )
+        if reply == QMessageBox.StandardButton.Cancel:
+            return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Uninstall flow (--uninstall)
+# ---------------------------------------------------------------------------
+
+def _self_delete_launcher() -> None:
+    # A running exe can't delete itself; defer to a detached shell that waits,
+    # then removes the launcher (and its parent dir if now empty).
+    # ping (not timeout) for the delay: timeout needs console stdin, which a
+    # DETACHED_PROCESS lacks, so it would error out instantly and del would
+    # fire while this exe is still locked.
+    launcher_exe = INSTALL_DIR / LAUNCHER_EXE_NAME
+    old_exe = INSTALL_DIR / "launcher.old.exe"
+    cmd = (
+        f'ping 127.0.0.1 -n 3 >nul & del /f /q "{launcher_exe}" '
+        f'& del /f /q "{old_exe}" & rmdir "{INSTALL_DIR}" '
+        f'& rmdir "{INSTALL_DIR.parent}"'
+    )
+    subprocess.Popen(
+        ["cmd", "/c", cmd],
+        creationflags=CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+    )
+
+
+def _uninstall() -> None:
+    reply = QMessageBox.question(
+        None,
+        "Uninstall KC Automation Suite",
+        "Remove KC Automation Suite from this computer?",
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        QMessageBox.StandardButton.No,
+    )
+    if reply != QMessageBox.StandardButton.Yes:
+        sys.exit(0)
+
+    try:
+        subprocess.run(
+            ["taskkill", "/F", "/IM", APP_EXE_NAME],
+            capture_output=True,
+            creationflags=CREATE_NO_WINDOW,
+        )
+    except Exception:
+        pass
+
+    for name in (APP_DIR_NAME, "KC_app_staging", "KC_app_old"):
+        shutil.rmtree(INSTALL_DIR / name, ignore_errors=True)
+    (INSTALL_DIR / VERSION_FILE_NAME).unlink(missing_ok=True)
+    _shortcut_path().unlink(missing_ok=True)
+    _unregister_uninstall()
+
+    QMessageBox.information(
+        None,
+        "KC Automation Suite",
+        "KC Automation Suite has been uninstalled.",
+    )
+    _self_delete_launcher()
     sys.exit(0)
 
 
@@ -417,6 +579,10 @@ def run(splash: QSplashScreen) -> None:
                             "The file may be corrupted or tampered with. Try again later.",
                         )
                         sys.exit(1)
+                if not _wait_for_app_close():
+                    tmp.unlink(missing_ok=True)
+                    _launch_app(splash, app_exe)
+                    return
                 splash.show()
                 _splash_msg(splash, "Installing update...")
                 _install_from_zip(tmp, latest_version)
@@ -429,6 +595,11 @@ def run(splash: QSplashScreen) -> None:
 def main() -> None:
     try:
         app = QApplication(sys.argv)
+
+        if "--uninstall" in sys.argv:
+            _uninstall()
+            return
+
         splash = _make_splash()
 
         if _needs_install():
