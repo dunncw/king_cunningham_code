@@ -5,7 +5,7 @@ import base64
 from io import BytesIO
 from typing import Dict, List, Any, Optional
 import pandas as pd
-from PyPDF2 import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 
 class BaseWorkflow:

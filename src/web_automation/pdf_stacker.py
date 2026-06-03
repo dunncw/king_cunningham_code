@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from PyPDF2 import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter
 from typing import List
 from PyQt6.QtCore import QObject, pyqtSignal
 
