@@ -22,6 +22,30 @@ Desktop automation tools for King & Cunningham.
 
 ---
 
+## Uninstall
+
+The app registers in **Add/Remove Programs** as "KC Automation Suite". Open Settings > Apps > Installed apps (or Control Panel > Programs), find it, and click Uninstall.
+
+### Manual removal
+
+If it is not listed (installed before this feature shipped), remove manually:
+
+1. End any running instance: open Task Manager (`Ctrl+Shift+Esc`), find `KC_app.exe` or `KC Automation Suite`, click End Task
+2. Delete app files: press `Win+R`, type `%LOCALAPPDATA%`, click OK, delete the `King_Cunningham` folder
+3. Delete Start Menu shortcut: press `Win+R`, type `%APPDATA%\Microsoft\Windows\Start Menu\Programs`, click OK, delete `KC Automation Suite.lnk`
+4. Delete the original `launcher.exe` you downloaded
+
+### Update stuck / corrupted install
+
+If the launcher fails during an update, reset the app files:
+
+1. End Task on any running `KC_app.exe` (Task Manager)
+2. Press `Win+R`, type `%LOCALAPPDATA%\King_Cunningham\KC_App`, click OK
+3. Delete these folders if present: `KC_app_staging`, `KC_app_old`, `KC_app`
+4. Re-launch — it will re-download fresh
+
+---
+
 ## Build from Source
 
 ### Prerequisites
