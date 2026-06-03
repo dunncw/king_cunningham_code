@@ -83,10 +83,10 @@ python build.py
 ```
 
 Build script handles:
-- Syncs `__version__` in `src/main.py` from `version.txt`
-- Runs `setup_binaries.py` if `bin\` empty
+- Syncs `__version__` in `src/main.py` and `launcher/launcher.py` from `version.txt`
+- Runs `setup_binaries.py` if Tesseract missing
 - PyInstaller onedir build → `dist\KC_app\`
-- Zips to `dist\KC_app.zip`
+- Zips to `dist\KC_app.zip` + writes `.sha256` checksum
 - Builds `dist\launcher.exe`
 - Writes `dist\version.txt`
 
@@ -94,9 +94,10 @@ Build script handles:
 
 ```
 dist\
-  KC_app\           KC_app.exe + DLLs
-  KC_app.zip        release asset
-  launcher.exe      ~37 MB
+  KC_app\             KC_app.exe + DLLs
+  KC_app.zip          release asset
+  KC_app.zip.sha256   checksum
+  launcher.exe        ~37 MB
   version.txt
 ```
 
