@@ -17,7 +17,7 @@ On every subsequent run it:
 Set KC_LAUNCHER_SKIP_UPDATE=1 to bypass the GitHub check (local testing).
 """
 
-__version__ = "0.0.19"
+__version__ = "0.0.20"
 
 import ctypes
 import hashlib
@@ -33,7 +33,6 @@ from pathlib import Path
 CREATE_NO_WINDOW = 0x08000000
 
 import requests
-import win32com.client
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QPixmap
 from PyQt6.QtWidgets import QApplication, QMessageBox, QProgressDialog, QSplashScreen
@@ -245,7 +244,11 @@ def _cleanup_stale_dirs() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Shortcut creation via pywin32 COM
+# Shortcut creation via PowerShell WScript.Shell
+#
+# Shelling out to PowerShell instead of importing pywin32 keeps the launcher
+# free of the pywintypes native-DLL dependency, which PyInstaller fails to
+# bundle reliably into this binary.
 # ---------------------------------------------------------------------------
 
 def _shortcut_path() -> Path:
@@ -260,13 +263,28 @@ def _shortcut_path() -> Path:
 
 
 def _create_start_menu_shortcut(target_exe: Path) -> None:
-    shell = win32com.client.Dispatch("WScript.Shell")
-    shortcut = shell.CreateShortCut(str(_shortcut_path()))
-    shortcut.TargetPath = str(target_exe)
-    shortcut.WorkingDirectory = str(target_exe.parent)
-    shortcut.IconLocation = str(target_exe)
-    shortcut.Description = "KC Automation Suite"
-    shortcut.save()
+    lnk = _shortcut_path()
+    lnk.parent.mkdir(parents=True, exist_ok=True)
+
+    # Double any single quote so a username like O'Brien can't break out of the
+    # single-quoted PowerShell string literals below.
+    def _ps_quote(p: Path) -> str:
+        return str(p).replace("'", "''")
+
+    ps = (
+        "$s = (New-Object -ComObject WScript.Shell)."
+        f"CreateShortcut('{_ps_quote(lnk)}'); "
+        f"$s.TargetPath = '{_ps_quote(target_exe)}'; "
+        f"$s.WorkingDirectory = '{_ps_quote(target_exe.parent)}'; "
+        f"$s.IconLocation = '{_ps_quote(target_exe)}'; "
+        "$s.Description = 'KC Automation Suite'; "
+        "$s.Save()"
+    )
+    subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+        check=True,
+        creationflags=CREATE_NO_WINDOW,
+    )
 
 
 # ---------------------------------------------------------------------------
