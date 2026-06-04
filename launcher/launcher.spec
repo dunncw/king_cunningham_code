@@ -11,7 +11,7 @@ a = Analysis(
         # Bundle splash image so QSplashScreen can find it at runtime
         (os.path.join(project_dir, 'resources', 'splash_image.png'), 'resources'),
     ],
-    hiddenimports=['win32com', 'win32com.client', 'win32com.server', 'pywintypes'],
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
