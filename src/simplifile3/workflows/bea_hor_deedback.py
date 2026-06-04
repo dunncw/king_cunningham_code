@@ -262,15 +262,19 @@ class BeaHorDeedbackWorkflow(BaseWorkflow):
             data["package_name"] = excel_package_name
         else:
             # Auto-generate package name (always uses first unit info)
+            # Trailing DB marks this as a deedback so it reads distinct from the
+            # original deed package recorded under the same contract.
             oeb_suffix = data["oeb"]
             if project == 93 and oeb_suffix:
-                data["package_name"] = f"{data['last_1']} {data['unit']}-{data['week']}{oeb_suffix} {project}-{data['number']}"
+                data["package_name"] = f"{data['last_1']} {data['unit']}-{data['week']}{oeb_suffix} {project}-{data['number']} DB"
             else:
-                data["package_name"] = f"{data['last_1']} {data['unit']}-{data['week']} {project}-{data['number']}"
+                data["package_name"] = f"{data['last_1']} {data['unit']}-{data['week']} {project}-{data['number']} DB"
         # Document naming - always use project-number format
         data["document_name"] = f"{project}-{data['number']}"
-        data["package_id"] = f"P-{data['number']}"
-        data["document_id"] = f"D-{data['number']}"
+        # -DB namespaces the submitter IDs away from the original deed's
+        # P-{number}/D-{number}, which Simplifile rejects as duplicates.
+        data["package_id"] = f"P-{data['number']}-DB"
+        data["document_id"] = f"D-{data['number']}-DB"
         
         # Clean consideration
         data["consideration"] = self.clean_money(data.get("consideration", "0"))

@@ -83,13 +83,15 @@ class FultonDeedbacksWorkflow(BaseWorkflow):
         data["has_second_owner"] = bool(data["grantor_2_first_name"])
         
         # Package naming: {Last 1} DB {Contract Num}
+        # -DB namespaces the submitter IDs away from the original deed recorded
+        # under the same contract, which Simplifile rejects as duplicates.
         data["package_name"] = f"{data['grantor_1_last_name']} DB {data['contract_number']}"
-        data["package_id"] = f"P-{data['contract_number']}"
-        
+        data["package_id"] = f"P-{data['contract_number']}-DB"
+
         # Document IDs
-        data["deed_document_id"] = f"D-{data['contract_number']}-DEED"
+        data["deed_document_id"] = f"D-{data['contract_number']}-DEED-DB"
         data["deed_document_name"] = f"{data['grantor_1_last_name']} DB {data['contract_number']} DEED"
-        data["satisfaction_document_id"] = f"D-{data['contract_number']}-SAT"
+        data["satisfaction_document_id"] = f"D-{data['contract_number']}-SAT-DB"
         data["satisfaction_document_name"] = f"{data['grantor_1_last_name']} DB {data['contract_number']} SAT"
         
         # Clean consideration
