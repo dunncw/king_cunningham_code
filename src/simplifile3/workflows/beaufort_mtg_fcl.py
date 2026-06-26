@@ -145,7 +145,7 @@ class BeaufortMTGFCLWorkflow(BaseWorkflow):
         deed_doc = {
             "submitterDocumentID": package_data["deed_id"],
             "name": package_data["doc_name_prefix"] + " TD",
-            "kindOfInstrument": ["DEED - HILTON HEAD TIMESHARE"],
+            "kindOfInstrument": ["DEED - HILTON HEAD"],
             "indexingData": {
                 "consideration": float(package_data["consideration"]) if package_data["consideration"] != "0" else 0.0,
                 "grantors": self._build_deed_grantors(package_data),
