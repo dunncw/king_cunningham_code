@@ -23,6 +23,7 @@ from webdriver_manager.microsoft import EdgeChromiumDriverManager
 from PyQt6.QtCore import QObject, pyqtSignal
 import pyautogui
 from .pdf_stacker import PT61PDFStacker
+from .path_validator import validate_save_location, sanitize_filename, validate_output_path
 
 class BasePT61Automation(QObject):
     """Base class for PT61 automation with shared functionality"""
@@ -418,6 +419,10 @@ class BasePT61Automation(QObject):
         file_path = os.path.join(self.save_location, filename)
         file_path = os.path.normpath(file_path)
 
+        path_ok, path_error = validate_output_path(self.save_location, filename)
+        if not path_ok:
+            raise ValueError(path_error)
+
         pyautogui.hotkey('ctrl', 's')
         time.sleep(2)
         pyautogui.write(file_path)
@@ -506,16 +511,13 @@ class BasePT61Automation(QObject):
                 middle_name=person_data['individual_name']['middle']
             )
             
-            import re
-            filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
-            
-            return filename
-            
+            return sanitize_filename(filename)
+
         except Exception as e:
             self.status.emit(f"Warning: Using fallback filename pattern: {str(e)}")
             last_name = person_data['individual_name']['last']
             contract_num = person_data['contract_number']
-            return f"{last_name}_{contract_num}_PT61.pdf"
+            return sanitize_filename(f"{last_name}_{contract_num}_PT61.pdf")
 
     def process_person(self, person_data, index, total_count):
         """Process a single person through the form - template method"""

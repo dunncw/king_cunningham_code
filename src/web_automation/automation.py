@@ -5,6 +5,7 @@ import os
 from PyQt6.QtCore import QThread
 from .excel_processor import validate_and_extract_data
 from .version_factory import create_automation_worker
+from .path_validator import validate_save_location
 
 def run_web_automation_thread(excel_path, browser, username, password, save_location, version, document_stacking=False):
     """
@@ -32,7 +33,20 @@ class PT61AutomationOrchestrator:
         """Main automation workflow"""
         try:
             self.worker.status.emit(f"Starting automation with version: {self.worker.version}")
-            
+
+            location_ok, location_error = validate_save_location(self.worker.save_location)
+            if not location_ok:
+                self.worker.error.emit(location_error)
+                return
+
+            if not os.path.exists(self.worker.excel_path):
+                self.worker.error.emit(
+                    f"Excel file not found: {self.worker.excel_path}\n"
+                    "Fix: pick the spreadsheet again. If it is on a network drive or "
+                    "in OneDrive, confirm the file is downloaded and available offline."
+                )
+                return
+
             if self.worker.document_stacking:
                 self.worker.status.emit("Document stacking ENABLED - PDFs will be combined")
                 self.worker.pdf_stacker.clear_stack()
@@ -62,11 +76,45 @@ class PT61AutomationOrchestrator:
                 stack_info = self.worker.pdf_stacker.get_stack_info()
                 self.worker.status.emit(f"Document stacking: {stack_info['total_files']} PDFs ready")
             
+        except ValueError as e:
+            # Validation failures already carry a user-facing explanation.
+            error_msg = str(e)
+
+            print(f"\n{'!'*60}")
+            print(f"VALIDATION ERROR: {error_msg}")
+            print(f"{'!'*60}\n")
+
+            self.worker.keep_browser_open_on_error = True
+            self.worker.error.emit(error_msg)
+        except OSError as e:
+            if e.errno == 22:
+                error_msg = (
+                    "Could not save the PDF because the save location or a file name "
+                    "contains characters Windows cannot use.\n"
+                    f"Save location: {self.worker.save_location}\n"
+                    "Fix: re-pick the output folder with the '...' button, and check the "
+                    "spreadsheet's name columns for unusual characters such as curly "
+                    "apostrophes or accented letters."
+                )
+            else:
+                error_msg = (
+                    f"File error while saving: {e.strerror or str(e)}\n"
+                    f"Save location: {self.worker.save_location}\n"
+                    "Fix: confirm the folder still exists, you can write to it, and any "
+                    "network or OneDrive drive is connected."
+                )
+
+            print(f"\n{'!'*60}")
+            print(f"OS ERROR (errno {e.errno}): {e}")
+            print(f"{'!'*60}\n")
+
+            self.worker.keep_browser_open_on_error = True
+            self.worker.error.emit(error_msg)
         except Exception as e:
             exc_type = type(e).__name__
             exc_msg = str(e).split('\n')[0][:100]
             error_msg = f"Automation error: {exc_type}: {exc_msg}"
-            
+
             print(f"\n{'!'*60}")
             print(f"ORCHESTRATOR ERROR: {exc_type}")
             print(f"  Message: {exc_msg}")
