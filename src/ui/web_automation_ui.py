@@ -310,6 +310,20 @@ class WebAutomationUI(QWidget):
         document_stacking = self.document_stacking_checkbox.isChecked()
         
         if excel_path and username and password and save_location:
+            from web_automation.path_validator import validate_save_location
+
+            location_ok, location_error = validate_save_location(save_location)
+            if not location_ok:
+                self.show_error(location_error)
+                return
+
+            if not os.path.exists(excel_path):
+                self.show_error(
+                    f"Excel file not found: {excel_path}\n"
+                    "Fix: pick the spreadsheet again with the '...' button."
+                )
+                return
+
             # Hide results/error sections
             self.results_frame.setVisible(False)
             self.error_frame.setVisible(False)
