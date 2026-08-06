@@ -25,6 +25,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import winreg
 import zipfile
 from pathlib import Path
@@ -389,13 +390,28 @@ def _self_update(splash: QSplashScreen, latest_version: str, launcher_url: str) 
         return
 
     splash.close()
+
+    # Let the freshly written 36 MB exe settle before executing it. Defender
+    # scans a new binary on first execution, and reads that lose the race
+    # leave the onefile bootloader with a partial extraction -- which fails as
+    # ModuleNotFoundError on whichever module was still unpacked.
+    time.sleep(2)
+
     subprocess.Popen([str(installed_exe)])
     sys.exit(0)
 
 
 def _cleanup_old_launcher() -> None:
+    # Best-effort. missing_ok only covers FileNotFoundError; the previous
+    # launcher process still has this image mapped while it exits, so the
+    # delete surfaces as PermissionError (WinError 5) and would otherwise
+    # crash the launcher on the first run after an update. Leaving the file
+    # behind is harmless -- the next run clears it.
     old = INSTALL_DIR / "launcher.old.exe"
-    old.unlink(missing_ok=True)
+    try:
+        old.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 # ---------------------------------------------------------------------------
