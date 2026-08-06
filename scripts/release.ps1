@@ -39,10 +39,13 @@ foreach ($f in @("dist\KC_app.zip", "dist\KC_app.zip.sha256", "dist\launcher.exe
 }
 
 # ── 2. Commit version bump if needed ────────────────────────────────────────
-$staged = git diff --name-only HEAD -- version.txt src/main.py
+# build.py syncs __version__ into launcher/launcher.py too, so commit it here.
+# Leaving it out strands the launcher a version ahead of version.txt.
+$versionFiles = @("version.txt", "src/main.py", "launcher/launcher.py")
+$staged = git diff --name-only HEAD -- $versionFiles
 if ($staged) {
     Write-Host "[git] Committing version bump ..."
-    git add version.txt src/main.py
+    git add $versionFiles
     git commit -m "chore: bump version to $version"
 }
 
