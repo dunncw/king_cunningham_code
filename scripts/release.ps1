@@ -19,8 +19,18 @@ $tag     = "v$version"
 Write-Host "[release] Version: $version  Tag: $tag"
 
 # ── 1. Build ────────────────────────────────────────────────────────────────
+# Use the venv interpreter explicitly. A bare "python" resolves to system Python,
+# which lacks pyinstaller and fails mid-build with a bare FileNotFoundError.
+$venvPython = Join-Path $PSScriptRoot "..\.venv\Scripts\python.exe"
+if (-not (Test-Path $venvPython)) {
+    Write-Error "Virtual env not found at .venv. Create it before releasing."
+    exit 1
+}
+$venvScripts = Split-Path $venvPython -Parent
+$env:PATH = "$venvScripts;$env:PATH"
+
 Write-Host "[build] Building ..."
-python build.py
+& $venvPython build.py
 if ($LASTEXITCODE -ne 0) { Write-Error "Build failed."; exit 1 }
 
 # Verify expected outputs exist
