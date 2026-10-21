@@ -9,7 +9,7 @@ from PyQt6.QtGui import QIcon
 
 from ui.main_window import MainWindow, get_resource_path
 
-__version__ = "0.0.25"
+__version__ = "0.0.26"
 
 
 class KingCunninghamApp(QApplication):
