@@ -2,6 +2,7 @@ from .bea_hor_deedback import BeaHorDeedbackWorkflow
 from .horry_mtg_fcl import HorryMTGFCLWorkflow
 from .beaufort_mtg_fcl import BeaufortMTGFCLWorkflow
 from .horry_hoa_fcl import HorryHOAFCLWorkflow
+from .beaufort_hoa_fcl import BeaufortHOAFCLWorkflow
 from .fulton_deedbacks import FultonDeedbacksWorkflow
 from .fulton_mtg_fcl import FultonMTGFCLWorkflow
 
@@ -11,6 +12,7 @@ WORKFLOWS = {
     "HORRY_MTG_FCL": HorryMTGFCLWorkflow,
     "BEAUFORT_MTG_FCL": BeaufortMTGFCLWorkflow,
     "HORRY_HOA_FCL": HorryHOAFCLWorkflow,
+    "BEAUFORT_HOA_FCL": BeaufortHOAFCLWorkflow,
     "FULTON_DEEDBACKS": FultonDeedbacksWorkflow,
     "FULTON_MTG_FCL": FultonMTGFCLWorkflow,
 }

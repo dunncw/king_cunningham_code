@@ -18,7 +18,7 @@ class HorryHOAFCLWorkflow(BaseWorkflow):
     
     required_columns = [
         "KC File No.", "Account", "Last Name #1", "First Name #1",
-        "Deed Book", "Deed Page", "Recorded Date", "Mortgage Book", "Mortgage Page",
+        "Deed Book", "Deed Page", "Recorded Date", "Lien Book", "Lien Page",
         "Suite", "Consideration", "Execution Date", "GRANTOR", "GRANTEE", "LEGAL DESCRIPTION"
     ]
     
@@ -33,8 +33,8 @@ class HorryHOAFCLWorkflow(BaseWorkflow):
         "Deed Book": "deed_book",
         "Deed Page": "deed_page",
         "Recorded Date": "recorded_date",
-        "Mortgage Book": "condo_lien_book",  # Reused for condo lien
-        "Mortgage Page": "condo_lien_page",  # Reused for condo lien
+        "Lien Book": "condo_lien_book",
+        "Lien Page": "condo_lien_page",
         "Suite": "suite",
         "Consideration": "consideration",
         "Execution Date": "execution_date",
